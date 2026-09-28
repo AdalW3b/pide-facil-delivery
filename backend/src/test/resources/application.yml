@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/omnirest-db?stringtype=unspecified}
+    driverClassName: org.postgresql.Driver
+    username: ${DB_USER:adal}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+jwt:
+  secret: ${JWT_SECRET:T21uaVJlc3RTZWN1cmVCYXNlNjRLZXkyMDI2KysrKys=}
+  expiration: 14400000
+
+bot:
+  secret: ${BOT_SECRET:test_bot_secret}
+
+cors:
+  allowed-origins: http://localhost:4200
+
+whatsapp:
+  service-url: http://localhost:4000

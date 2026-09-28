@@ -1,0 +1,80 @@
+server:
+  # Detras de nginx, la IP de quien pide viene en X-Forwarded-For. "native"
+  # solo la cree cuando la peticion llega desde una red interna (el proxy):
+  # de otro modo cualquiera podria inventarse una IP y saltarse el freno de
+  # intentos de login.
+  forward-headers-strategy: native
+
+# Documentacion de la API. Apagada salvo que se pida: describe cada endpoint y
+# sus parametros, que es justo el mapa que necesita quien quiere atacar.
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/omnirest-db?stringtype=unspecified}
+    driverClassName: org.postgresql.Driver
+    username: ${DB_USER:adal}
+    password: ${DB_PASSWORD}
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    # La base ya existia con el esquema hasta V4 aplicado a mano. El baseline
+    # marca ese punto de partida, para que Flyway solo aplique lo que venga
+    # despues en vez de fallar al encontrar tablas que no creo el.
+    baseline-on-migrate: true
+    baseline-version: 4
+    baseline-description: esquema existente antes de Flyway
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 14400000 # 4 horas
+
+bot:
+  secret: ${BOT_SECRET}
+
+omnirest:
+  # Desde donde abren el sitio los clientes y los repartidores. Con esto se
+  # arman los enlaces que salen por WhatsApp, asi que tiene que ser una
+  # direccion publica: con localhost el enlace no abre en ningun telefono.
+  url-publica: ${PUBLIC_WEB_URL:http://localhost:4200}
+
+  # Plan con el que nace un restaurante nuevo. En desarrollo se pone PRO desde
+  # el .env; en produccion se deja el valor conservador.
+  plan-por-defecto: ${PLAN_POR_DEFECTO:INICIAL}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+
+whatsapp:
+  service-url: ${WHATSAPP_URL:http://localhost:4000}
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+n8n:
+  webhook-url: ${N8N_WEBHOOK_URL:https://automata.bitend.ai/webhook/omnirest-whatsapp}
+
+app:
+  brand-name: ${APP_BRAND_NAME:OmniRest}
+  brand-origin: ${APP_BRAND_ORIGIN:omnirest}

@@ -1,0 +1,2047 @@
+import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
+import { AvisosService } from '../../core/services/avisos.service';
+import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
+import { sucursalInicial } from '../../shared/utils/sucursal-inicial';
+import { PesosPipe } from '../../shared/utils/pesos';
+import { Component, ChangeDetectionStrategy, signal, computed, inject, OnInit, effect, untracked } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { AuthService } from '../../core/services/auth.service';
+import { environment } from '../../../environments/environment';
+import { Restaurant, Branch } from '../admin-core/models/admin.model';
+import { Category, Product, Ingredient, RecipeItem } from './models/catalog.model';
+import { AdicionalesAdminComponent } from './adicionales-admin.component';
+import { comprimirImagen } from '../../shared/utils/imagen';
+import { 
+  LucidePlus, 
+  LucideEdit, 
+  LucideTrash2, 
+  LucideGrid, 
+  LucideList, 
+  LucideSearch, 
+  LucideX, 
+  LucideLoader2, 
+  LucideTag, 
+  LucideAlertCircle,
+  LucidePackage,
+  LucideChefHat,
+  LucideBoxes,
+  LucideRefreshCw,
+  LucideChevronDown,
+  LucideChevronUp,
+  LucideLayers
+} from '@lucide/angular';
+
+@Component({
+  selector: 'app-catalog',
+  standalone: true,
+  imports: [TituloPaginaComponent, PesosPipe, 
+    CommonModule, 
+    FormsModule, 
+    LucidePlus, 
+    LucideEdit, 
+    LucideTrash2, 
+    LucideGrid, 
+    LucideList, 
+    LucideSearch, 
+    LucideX, 
+    LucideLoader2, 
+    LucideTag, 
+    LucideAlertCircle,
+    LucidePackage,
+    LucideChefHat,
+    LucideBoxes,
+    LucideRefreshCw,
+    LucideChevronDown,
+    LucideChevronUp,
+    LucideLayers,
+    AdicionalesAdminComponent
+  ],
+  template: `
+    <div class="space-y-6 select-none">
+      <!-- Header Section -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
+        <div>
+          <app-titulo-pagina titulo="Catálogo" descripcion="Platillos, fotos, ingredientes y adicionales del menú." />
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <!-- Background Sync Indicator -->
+          @if (isSyncing()) {
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider shrink-0">
+              <svg lucideLoader2 class="animate-spin w-3.5 h-3.5"></svg>
+              <span>Sincronizando...</span>
+            </div>
+          }
+          
+          <button
+            (click)="reloadAll()"
+            [disabled]="isLoading()"
+            class="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40"
+          >
+            <svg lucideRefreshCw [class.animate-spin]="isLoading()" class="w-4 h-4"></svg>
+            <span>Actualizar</span>
+          </button>
+        </div>
+      </div>
+
+
+      <!-- Navigation Tabs Selector -->
+      <div class="flex items-center gap-2 border-b border-slate-800/80 pb-4">
+        <button
+          (click)="activeTab.set('products')"
+          [class.bg-indigo-600]="activeTab() === 'products'"
+          [class.text-white]="activeTab() === 'products'"
+          [class.shadow-indigo-600\/20]="activeTab() === 'products'"
+          [class.bg-slate-900\/60]="activeTab() !== 'products'"
+          [class.text-slate-400]="activeTab() !== 'products'"
+          [class.hover:text-white]="activeTab() !== 'products'"
+          class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer border border-slate-800/60"
+        >
+          <svg lucidePackage class="w-4 h-4"></svg>
+          <span>Productos</span>
+        </button>
+
+        <button
+          (click)="activeTab.set('ingredients')"
+          [class.bg-indigo-600]="activeTab() === 'ingredients'"
+          [class.text-white]="activeTab() === 'ingredients'"
+          [class.shadow-indigo-600\/20]="activeTab() === 'ingredients'"
+          [class.bg-slate-900\/60]="activeTab() !== 'ingredients'"
+          [class.text-slate-400]="activeTab() !== 'ingredients'"
+          [class.hover:text-white]="activeTab() !== 'ingredients'"
+          class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer border border-slate-800/60"
+        >
+          <svg lucideChefHat class="w-4 h-4"></svg>
+          <span>Ingredientes (Materia Prima)</span>
+        </button>
+
+        <button
+          (click)="activeTab.set('adicionales')"
+          [class.bg-indigo-600]="activeTab() === 'adicionales'"
+          [class.text-white]="activeTab() === 'adicionales'"
+          [class.shadow-indigo-600\/20]="activeTab() === 'adicionales'"
+          [class.bg-slate-900\/60]="activeTab() !== 'adicionales'"
+          [class.text-slate-400]="activeTab() !== 'adicionales'"
+          [class.hover:text-white]="activeTab() !== 'adicionales'"
+          class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer border border-slate-800/60"
+        >
+          <svg lucideLayers class="w-4 h-4"></svg>
+          <span>Adicionales</span>
+        </button>
+      </div>
+
+      <!-- TAB 3: ADICIONALES POR PLATILLO -->
+      @if (activeTab() === 'adicionales') {
+        <app-adicionales-admin [categorias]="categories()" [productos]="products()" [ingredientes]="ingredients()" />
+      }
+
+      <!-- TAB 1: PRODUCTS & CATEGORIES MANAGEMENT -->
+      @if (activeTab() === 'products') {
+        <div class="flex flex-col lg:flex-row gap-8 items-stretch min-h-[600px] animate-fadeIn">
+          <!-- Left Sidebar: Categories Management -->
+          <aside class="w-full lg:w-80 bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-md p-6 flex flex-col shrink-0">
+            <div class="flex items-center justify-between mb-4 border-b border-slate-800/60 pb-3">
+              <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <svg lucideTag class="w-4 h-4"></svg>
+                Categorías
+              </h2>
+              <button aria-label="Nueva Categoría"
+                (click)="showCreateCategoryForm()"
+                class="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                title="Nueva Categoría"
+              >
+                <svg lucidePlus class="w-4 h-4"></svg>
+              </button>
+            </div>
+
+            <!-- Inline Category Form (Create / Edit) -->
+            @if (isCategoryFormOpen()) {
+              <div class="mb-4 p-4 bg-slate-950/40 border border-slate-800/80 rounded-xl space-y-3 animate-fadeIn">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nombre</label>
+                  <input aria-label="Nombre de la categoría"
+                    type="text"
+                    placeholder="Ej: Bebidas, Postres"
+                    [(ngModel)]="categoryForm.name"
+                    class="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+                <div class="flex items-center justify-between">
+                  <button
+                    (click)="cancelCategoryForm()"
+                    class="px-2.5 py-1.5 text-[11px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    (click)="saveCategory()"
+                    [disabled]="!categoryForm.name.trim()"
+                    class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {{ categoryForm.id ? 'Actualizar' : 'Guardar' }}
+                  </button>
+                </div>
+              </div>
+            }
+
+            <!-- Categories List -->
+            <div class="flex-1 overflow-y-auto space-y-1 max-h-[450px] pr-1">
+              @if (isLoading()) {
+                <div class="flex justify-center py-8">
+                  <svg lucideLoader2 class="animate-spin w-6 h-6 text-indigo-500"></svg>
+                </div>
+              } @else if (categories().length === 0) {
+                <div class="text-center py-8 text-xs text-slate-400">
+                  No hay categorías creadas.
+                </div>
+              } @else {
+                @for (cat of categories(); track cat.id) {
+                  <div
+                    [class.bg-indigo-600\/10]="selectedCategoryId() === cat.id"
+                    [class.border-indigo-500\/30]="selectedCategoryId() === cat.id"
+                    [class.text-indigo-400]="selectedCategoryId() === cat.id"
+                    [class.bg-transparent]="selectedCategoryId() !== cat.id"
+                    [class.border-transparent]="selectedCategoryId() !== cat.id"
+                    [class.text-slate-400]="selectedCategoryId() !== cat.id"
+                    class="flex items-center justify-between px-4 py-3 rounded-xl border hover:bg-slate-800/40 hover:text-white transition-all cursor-pointer group"
+                    (click)="selectCategory(cat.id)"
+                  >
+                    <span class="text-sm font-semibold truncate pr-2">{{ cat.name }}</span>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button aria-label="Editar"
+                        (click)="$event.stopPropagation(); editCategory(cat)"
+                        class="p-1 text-slate-500 hover:text-white hover:bg-slate-700/80 rounded transition-colors"
+                        title="Editar"
+                      >
+                        <svg lucideEdit class="w-3.5 h-3.5"></svg>
+                      </button>
+                      <button aria-label="Eliminar"
+                        (click)="$event.stopPropagation(); deleteCategoryPrompt(cat.id)"
+                        class="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"
+                        title="Eliminar"
+                      >
+                        <svg lucideTrash2 class="w-3.5 h-3.5"></svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </aside>
+
+          <!-- Right Pane: Products Catalog Area -->
+          <main class="flex-1 bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-md p-6 flex flex-col">
+            <!-- Selection Warning -->
+            @if (!selectedCategoryId()) {
+              <div class="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-4">
+                <div class="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <svg lucideTag class="w-8 h-8"></svg>
+                </div>
+                <div>
+                  <h3 class="font-bold text-white text-lg">Catálogo Vacío</h3>
+                  <p class="text-xs text-slate-400 mt-1 max-w-sm">Selecciona una categoría de la barra lateral izquierda para ver y gestionar sus productos.</p>
+                </div>
+              </div>
+            } @else {
+              <!-- Active Category Header & Search Controls -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-5 mb-6">
+                <div>
+                  @if (soloSinFoto()) {
+                    <span class="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Todas las categorías</span>
+                    <h2 class="text-xl font-bold text-white mt-0.5">Platillos sin foto</h2>
+                  } @else {
+                    <span class="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">Categoría seleccionada</span>
+                    <h2 class="text-xl font-bold text-white mt-0.5">{{ selectedCategory()?.name }}</h2>
+                  }
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                  <!-- Search Box -->
+                  <div class="relative w-full sm:w-60">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <svg lucideSearch class="w-4 h-4"></svg>
+                    </div>
+                    <input aria-label="Buscar producto"
+                      type="text"
+                      placeholder="Buscar producto..."
+                      [value]="searchQuery()"
+                      (input)="onSearchChange($event)"
+                      class="w-full pl-10 pr-4 py-2.5 bg-slate-950/40 border border-slate-800/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+
+                  <!-- Grid/List View Toggle -->
+                  <div class="flex items-center bg-slate-950/50 border border-slate-850 p-1 rounded-xl">
+                    <button aria-label="Vista en Cuadrícula"
+                      (click)="viewMode.set('grid')"
+                      [class.bg-slate-800]="viewMode() === 'grid'"
+                      [class.text-white]="viewMode() === 'grid'"
+                      [class.text-slate-500]="viewMode() !== 'grid'"
+                      class="p-1.5 rounded-lg transition-all cursor-pointer"
+                      title="Vista en Cuadrícula"
+                    >
+                      <svg lucideGrid class="w-4 h-4"></svg>
+                    </button>
+                    <button aria-label="Vista en Lista"
+                      (click)="viewMode.set('list')"
+                      [class.bg-slate-800]="viewMode() === 'list'"
+                      [class.text-white]="viewMode() === 'list'"
+                      [class.text-slate-500]="viewMode() !== 'list'"
+                      class="p-1.5 rounded-lg transition-all cursor-pointer"
+                      title="Vista en Lista"
+                    >
+                      <svg lucideList class="w-4 h-4"></svg>
+                    </button>
+                  </div>
+
+                  <!-- Add Product Button -->
+                  <button
+                    (click)="showCreateProductModal()"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 cursor-pointer"
+                  >
+                    <svg lucidePlus class="w-4 h-4"></svg>
+                    <span>Agregar Producto</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Fotos pendientes: el menú en línea vende más con fotos -->
+              @if (products().length > 0 && (sinFotoTotal() > 0 || soloSinFoto())) {
+                <div class="mb-5 flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border px-4 py-3"
+                  [class]="soloSinFoto() ? 'border-amber-500/40 bg-amber-500/10' : 'border-slate-800 bg-slate-900/60'">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-white">
+                      @if (sinFotoTotal() === 0) {
+                        Todos los platillos tienen foto.
+                      } @else {
+                        {{ sinFotoTotal() }} de {{ products().length }} platillos sin foto
+                      }
+                    </p>
+                    <div class="mt-1.5 h-1.5 rounded-full bg-slate-800 overflow-hidden" aria-hidden="true">
+                      <div class="h-full bg-emerald-500 rounded-full transition-all"
+                        [style.width.%]="(products().length - sinFotoTotal()) / products().length * 100"></div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1.5">Los platillos con foto se venden más en el menú en línea.</p>
+                  </div>
+                  <button
+                    (click)="soloSinFoto.set(!soloSinFoto())"
+                    [attr.aria-pressed]="soloSinFoto()"
+                    class="shrink-0 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                    [class]="soloSinFoto() ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'"
+                  >
+                    {{ soloSinFoto() ? 'Volver a las categorías' : 'Ver los que no tienen foto' }}
+                  </button>
+                </div>
+              }
+
+              <!-- Products View -->
+              <div class="flex-1">
+                @if (filteredProducts().length === 0) {
+                  <div class="py-16 text-center border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-3">
+                    <svg lucideAlertCircle class="w-10 h-10 text-slate-600"></svg>
+                    <h3 class="font-bold text-white text-sm">No se encontraron productos</h3>
+                    <p class="text-xs text-slate-400 max-w-xs">No hay productos registrados en esta categoría o no coinciden con la búsqueda.</p>
+                  </div>
+                } @else {
+                  <!-- Grid View -->
+                  @if (viewMode() === 'grid') {
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 animate-fadeIn">
+                      @for (prod of filteredProducts(); track prod.id) {
+                        <div class="bg-slate-900/60 border border-slate-800/60 hover:border-slate-700/80 rounded-2xl p-5 flex flex-col justify-between shadow-lg relative group transition-all duration-200">
+                          <!-- Foto: es lo primero que ve el cliente en el menú en línea -->
+                          <input #inputFoto type="file" accept="image/*" class="hidden" (change)="alElegirFoto(prod.id, $event)" />
+                          @if (fotoDe(prod.id); as src) {
+                            <div class="relative -mx-5 -mt-5 mb-4 aspect-[4/3] rounded-t-2xl overflow-hidden bg-slate-950">
+                              <img [src]="src" [alt]="prod.name" loading="lazy" class="w-full h-full object-cover" />
+                              <div class="absolute bottom-2 right-2 flex gap-1.5">
+                                <button (click)="inputFoto.click()" [disabled]="subiendoFoto() === prod.id"
+                                  class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-900 text-white text-[11px] font-bold backdrop-blur cursor-pointer disabled:opacity-60">
+                                  {{ subiendoFoto() === prod.id ? 'Subiendo...' : 'Cambiar' }}
+                                </button>
+                                <button (click)="quitarFoto(prod.id)" [attr.aria-label]="'Quitar la foto de ' + prod.name"
+                                  class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-rose-600 text-white text-[11px] font-bold backdrop-blur cursor-pointer">
+                                  Quitar
+                                </button>
+                              </div>
+                            </div>
+                          } @else {
+                            <button (click)="inputFoto.click()" [disabled]="subiendoFoto() === prod.id"
+                              class="-mx-5 -mt-5 mb-4 h-24 rounded-t-2xl border-b border-dashed border-slate-700 bg-slate-950/40 hover:bg-slate-900/60 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:text-slate-300 text-xs font-semibold cursor-pointer transition-colors disabled:cursor-wait">
+                              <svg lucidePlus class="w-5 h-5"></svg>
+                              {{ subiendoFoto() === prod.id ? 'Subiendo foto...' : 'Agregar foto' }}
+                            </button>
+                          }
+                          <div class="space-y-2">
+                            <div class="space-y-1.5">
+                              <h4 class="font-bold text-white text-base leading-snug line-clamp-2" [title]="prod.name">{{ prod.name }}</h4>
+                              <span class="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-xs font-black text-indigo-400 inline-block">
+                                {{ prod.price | pesos }}
+                              </span>
+                            </div>
+                            <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed min-h-[32px]">{{ prod.description || 'Sin descripción' }}</p>
+                          </div>
+
+                          <!-- Recipe & Inventory Badges (Requirement 4) -->
+                          <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                            @if (prod.isRecipe) {
+                              <span class="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                <svg lucideChefHat class="w-3 h-3"></svg> Receta
+                              </span>
+                            }
+
+                            @if (prod.trackStock || prod.isRecipe) {
+                              @if (!activeBranchId() || prod.stock === null || prod.stock === undefined) {
+                                <span class="px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" title="Selecciona una sucursal para ver el inventario">
+                                  <svg lucideAlertCircle class="w-3 h-3"></svg> Selecciona una sucursal para ver stock
+                                </span>
+                              } @else if (prod.stock > 0) {
+                                <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                  <svg lucideBoxes class="w-3 h-3"></svg> Stock: {{ prod.stock }}
+                                </span>
+                              } @else {
+                                <span class="px-2 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                  <svg lucideAlertCircle class="w-3 h-3"></svg> Stock: {{ prod.stock }} (Sin Stock)
+                                </span>
+                              }
+                            }
+
+                            @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined) {
+                              <button
+                                type="button"
+                                (click)="toggleRecipeBreakdown(prod.id)"
+                                class="px-2 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                              >
+                                <svg lucideLayers class="w-3 h-3 text-amber-400"></svg>
+                                <span>{{ isRecipeBreakdownExpanded(prod.id) ? 'Ocultar desglose' : 'Ver desglose de materia prima' }}</span>
+                                @if (isRecipeBreakdownExpanded(prod.id)) {
+                                  <svg lucideChevronUp class="w-3 h-3 text-amber-400"></svg>
+                                } @else {
+                                  <svg lucideChevronDown class="w-3 h-3 text-amber-400"></svg>
+                                }
+                              </button>
+                            }
+                          </div>
+
+                          <!-- Desglose de Materia Prima Desplegable (Grid) -->
+                          @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined && isRecipeBreakdownExpanded(prod.id)) {
+                            <div class="mt-3 p-3 rounded-xl bg-slate-955/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
+                              <div class="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
+                                <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                                  <svg lucideChefHat class="w-3 h-3"></svg> Materia Prima Proyectada
+                                </span>
+                                <span class="text-[11px] text-slate-400 font-mono">
+                                  Lote Máx: {{ prod.stock }}
+                                </span>
+                              </div>
+
+                              <div class="space-y-1.5">
+                                @if (!prod.recipeItems || prod.recipeItems.length === 0) {
+                                  <p class="text-[11px] text-slate-500 italic py-1 text-center">Sin ingredientes configurados.</p>
+                                } @else {
+                                  @for (item of getRecipeBreakdown(prod); track item.ingredientId) {
+                                    <div 
+                                      [class.bg-amber-500\/10]="item.isBottleneck"
+                                      [class.border-amber-500\/30]="item.isBottleneck"
+                                      [class.bg-slate-900\/60]="!item.isBottleneck"
+                                      [class.border-slate-800\/60]="!item.isBottleneck"
+                                      class="p-2 rounded-lg border flex flex-col gap-1 text-[11px] transition-colors"
+                                    >
+                                      <div class="flex items-center justify-between gap-1">
+                                        <span class="font-bold text-white truncate">{{ item.name }}</span>
+                                        @if (item.isBottleneck) {
+                                          <span class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider shrink-0 flex items-center gap-0.5" title="Ingrediente limitante / cuello de botella">
+                                            <svg lucideAlertCircle class="w-2.5 h-2.5"></svg> Limitante
+                                          </span>
+                                        }
+                                      </div>
+                                      <div class="text-[11px] text-slate-300 font-mono flex items-center justify-between">
+                                        <span [class.text-amber-300]="item.isBottleneck" [class.font-bold]="item.isBottleneck">
+                                          {{ formatQuantity(item.requiredTotal) }} {{ item.unitOfMeasure }}
+                                        </span>
+                                        <span class="text-slate-400">
+                                          de {{ formatQuantity(item.availableStock) }} {{ item.unitOfMeasure }} dispon.
+                                        </span>
+                                      </div>
+                                    </div>
+                                  }
+                                }
+                              </div>
+                            </div>
+                          }
+
+                          <div class="mt-4 pt-3 border-t border-slate-800/40 flex items-center justify-between">
+                            <span 
+                              [class.bg-emerald-500/10]="prod.active"
+                              [class.text-emerald-400]="prod.active"
+                              [class.border-emerald-500/20]="prod.active"
+                              [class.bg-slate-800/50]="!prod.active"
+                              [class.text-slate-500]="!prod.active"
+                              [class.border-slate-700/30]="!prod.active"
+                              class="px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wider"
+                            >
+                              {{ prod.active ? 'Activo' : 'Inactivo' }}
+                            </span>
+                            
+                            <div class="flex items-center gap-1">
+                              @if (prod.trackStock || prod.isRecipe) {
+                                <button
+                                  (click)="openAdjustStockModal('PRODUCT', prod)"
+                                  [disabled]="prod.isRecipe"
+                                  [title]="prod.isRecipe ? 'El stock de los preparados se ajusta modificando la cantidad de sus ingredientes' : 'Ajustar stock físico'"
+                                  class="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-500/10"
+                                >
+                                  <svg lucideBoxes class="w-3 h-3"></svg>
+                                  <span>Ajustar</span>
+                                </button>
+                              }
+                              
+                              <button aria-label="Editar"
+                                (click)="editProduct(prod)"
+                                class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                title="Editar"
+                              >
+                                <svg lucideEdit class="w-3.5 h-3.5"></svg>
+                              </button>
+                              <button aria-label="Eliminar"
+                                (click)="deleteProductPrompt(prod.id)"
+                                class="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar"
+                              >
+                                <svg lucideTrash2 class="w-3.5 h-3.5"></svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <!-- List View -->
+                    <div class="divide-y divide-slate-800/60 border border-slate-800/60 rounded-2xl bg-slate-900/10 overflow-hidden animate-fadeIn">
+                      @for (prod of filteredProducts(); track prod.id) {
+                        <div class="flex flex-col p-4 hover:bg-slate-800/20 transition-colors group gap-2">
+                          <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4 flex-1 min-w-0 pr-4">
+                              <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-slate-500 border border-slate-800/50 shrink-0 overflow-hidden">
+                                @if (fotoDe(prod.id); as src) {
+                                  <img [src]="src" [alt]="prod.name" loading="lazy" class="w-full h-full object-cover" />
+                                } @else {
+                                {{ prod.name.charAt(0).toUpperCase() }}
+                                }
+                              </div>
+                              <div class="min-w-0 space-y-0.5">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                  <h4 class="font-bold text-white text-sm truncate">{{ prod.name }}</h4>
+                                  @if (prod.isRecipe) {
+                                    <span class="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase">
+                                      Receta
+                                    </span>
+                                  }
+                                  
+                                  @if (prod.trackStock || prod.isRecipe) {
+                                    @if (!activeBranchId() || prod.stock === null || prod.stock === undefined) {
+                                      <span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-bold uppercase">
+                                        Selecciona una sucursal para ver stock
+                                      </span>
+                                    } @else if (prod.stock > 0) {
+                                      <span class="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase">
+                                        Stock: {{ prod.stock }}
+                                      </span>
+                                    } @else {
+                                      <span class="px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold uppercase">
+                                        Stock: {{ prod.stock }} (Sin stock)
+                                      </span>
+                                    }
+                                  }
+
+                                  @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined) {
+                                    <button
+                                      type="button"
+                                      (click)="toggleRecipeBreakdown(prod.id)"
+                                      class="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                    >
+                                      <svg lucideLayers class="w-3 h-3 text-amber-400"></svg>
+                                      <span>{{ isRecipeBreakdownExpanded(prod.id) ? 'Ocultar desglose' : 'Ver desglose de materia prima' }}</span>
+                                      @if (isRecipeBreakdownExpanded(prod.id)) {
+                                        <svg lucideChevronUp class="w-3 h-3 text-amber-400"></svg>
+                                      } @else {
+                                        <svg lucideChevronDown class="w-3 h-3 text-amber-400"></svg>
+                                      }
+                                    </button>
+                                  }
+                                </div>
+                                <p class="text-xs text-slate-400 truncate max-w-lg">{{ prod.description || 'Sin descripción' }}</p>
+                              </div>
+                            </div>
+
+                            <div class="flex items-center gap-4 shrink-0">
+                              <span class="text-xs font-bold text-white bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
+                                {{ prod.price | pesos }}
+                              </span>
+                              
+                              <span 
+                                [class.bg-emerald-500/10]="prod.active"
+                                [class.text-emerald-400]="prod.active"
+                                [class.border-emerald-500/20]="prod.active"
+                                [class.bg-slate-800/50]="!prod.active"
+                                [class.text-slate-500]="!prod.active"
+                                [class.border-slate-700/30]="!prod.active"
+                                class="px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wider hidden sm:inline"
+                              >
+                                {{ prod.active ? 'Activo' : 'Inactivo' }}
+                              </span>
+
+                              <div class="flex items-center gap-1">
+                                @if (prod.trackStock || prod.isRecipe) {
+                                  <button
+                                    (click)="openAdjustStockModal('PRODUCT', prod)"
+                                    [disabled]="prod.isRecipe"
+                                    [title]="prod.isRecipe ? 'El stock de los preparados se ajusta modificando la cantidad de sus ingredientes' : 'Ajustar stock físico'"
+                                    class="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-500/10"
+                                  >
+                                    <svg lucideBoxes class="w-3.5 h-3.5"></svg>
+                                    <span>Ajustar Stock</span>
+                                  </button>
+                                }
+
+                                <button aria-label="Editar"
+                                  (click)="editProduct(prod)"
+                                  class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                  title="Editar"
+                                >
+                                  <svg lucideEdit class="w-3.5 h-3.5"></svg>
+                                </button>
+                                <button aria-label="Eliminar"
+                                  (click)="deleteProductPrompt(prod.id)"
+                                  class="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                  title="Eliminar"
+                                >
+                                  <svg lucideTrash2 class="w-3.5 h-3.5"></svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Desglose desplegable (List View) -->
+                          @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined && isRecipeBreakdownExpanded(prod.id)) {
+                            <div class="mt-2 p-3 rounded-xl bg-slate-955/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
+                              <div class="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
+                                <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                                  <svg lucideChefHat class="w-3 h-3"></svg> Desglose de Materia Prima Proyectada (Lote Máximo: {{ prod.stock }} {{ prod.stock === 1 ? 'unidad' : 'unidades' }})
+                                </span>
+                              </div>
+
+                              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                @if (!prod.recipeItems || prod.recipeItems.length === 0) {
+                                  <p class="text-[11px] text-slate-500 italic py-1 col-span-full">Sin ingredientes configurados en la receta.</p>
+                                } @else {
+                                  @for (item of getRecipeBreakdown(prod); track item.ingredientId) {
+                                    <div 
+                                      [class.bg-amber-500\/10]="item.isBottleneck"
+                                      [class.border-amber-500\/30]="item.isBottleneck"
+                                      [class.bg-slate-900\/60]="!item.isBottleneck"
+                                      [class.border-slate-800\/60]="!item.isBottleneck"
+                                      class="p-2.5 rounded-lg border flex flex-col justify-between gap-1 text-[11px] transition-colors"
+                                    >
+                                      <div class="flex items-center justify-between gap-1">
+                                        <span class="font-bold text-white truncate">{{ item.name }}</span>
+                                        @if (item.isBottleneck) {
+                                          <span class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider shrink-0 flex items-center gap-0.5" title="Ingrediente limitante / cuello de botella">
+                                            <svg lucideAlertCircle class="w-2.5 h-2.5"></svg> Limitante
+                                          </span>
+                                        }
+                                      </div>
+                                      <div class="text-[11px] text-slate-300 font-mono flex items-center justify-between mt-1">
+                                        <span [class.text-amber-300]="item.isBottleneck" [class.font-bold]="item.isBottleneck">
+                                          Requerido: {{ formatQuantity(item.requiredTotal) }} {{ item.unitOfMeasure }}
+                                        </span>
+                                        <span class="text-slate-400">
+                                          de {{ formatQuantity(item.availableStock) }} {{ item.unitOfMeasure }} dispon.
+                                        </span>
+                                      </div>
+                                    </div>
+                                  }
+                                }
+                              </div>
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                }
+              </div>
+            }
+          </main>
+        </div>
+      }
+
+      <!-- TAB 2: INGREDIENTS (MATERIA PRIMA) MANAGEMENT -->
+      @if (activeTab() === 'ingredients') {
+        <div class="bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-md p-6 animate-fadeIn space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
+            <div>
+              <span class="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">Inventario de Materia Prima</span>
+              <h2 class="text-xl font-bold text-white mt-0.5">Ingredientes y Stock en Sucursal</h2>
+            </div>
+            
+            <div class="flex items-center gap-3">
+              <div class="relative w-full sm:w-60">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                  <svg lucideSearch class="w-4 h-4"></svg>
+                </div>
+                <input aria-label="Buscar ingrediente"
+                  type="text"
+                  placeholder="Buscar ingrediente..."
+                  [value]="ingredientSearchQuery()"
+                  (input)="ingredientSearchQuery.set($any($event.target).value)"
+                  class="w-full pl-10 pr-4 py-2.5 bg-slate-955 border border-slate-800/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              <button
+                (click)="showCreateIngredientModal()"
+                class="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 cursor-pointer shrink-0"
+              >
+                <svg lucidePlus class="w-4 h-4"></svg>
+                <span>Agregar Ingrediente</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Ingredients Table -->
+          <div class="overflow-x-auto border border-slate-800/80 rounded-2xl bg-slate-955/30">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-900/80 border-b border-slate-800/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th class="py-3.5 px-5">Nombre del Ingrediente</th>
+                  <th class="py-3.5 px-5">Unidad de Medida</th>
+                  <th class="py-3.5 px-5">Stock en Sucursal</th>
+                  <th class="py-3.5 px-5 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 text-xs">
+                @if (isLoading()) {
+                  <tr>
+                    <td colspan="4" class="py-12 text-center">
+                      <svg lucideLoader2 class="animate-spin w-6 h-6 text-indigo-500 mx-auto"></svg>
+                    </td>
+                  </tr>
+                } @else if (filteredIngredients().length === 0) {
+                  <tr>
+                    <td colspan="4" class="py-12 text-center text-slate-500">
+                      No hay ingredientes registrados.
+                    </td>
+                  </tr>
+                } @else {
+                  @for (ing of filteredIngredients(); track ing.id) {
+                    <tr class="hover:bg-slate-800/30 transition-colors group">
+                      <td class="py-4 px-5 font-semibold text-white">
+                        <div class="flex items-center gap-3">
+                          <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                            <svg lucideBoxes class="w-4 h-4"></svg>
+                          </div>
+                          <span>{{ ing.name }}</span>
+                        </div>
+                      </td>
+                      <td class="py-4 px-5 font-mono text-slate-300">
+                        <span class="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-indigo-300 font-bold uppercase text-[11px]">
+                          {{ ing.unitOfMeasure }}
+                        </span>
+                      </td>
+                      <td class="py-4 px-5 font-bold">
+                        @if (!activeBranchId() || ing.stock === null || ing.stock === undefined) {
+                          <span class="text-slate-400 text-xs italic">
+                            Selecciona una sucursal para ver stock
+                          </span>
+                        } @else if (ing.stock > 0) {
+                          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+                            {{ ing.stock }} {{ ing.unitOfMeasure }}
+                          </span>
+                        } @else {
+                          <span class="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+                            {{ ing.stock }} {{ ing.unitOfMeasure }} (Sin Stock)
+                          </span>
+                        }
+                      </td>
+                      <td class="py-4 px-5 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                          <button
+                            (click)="openAdjustStockModal('INGREDIENT', ing)"
+                            class="px-2.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+                            title="Ajustar Inventario"
+                          >
+                            <svg lucideBoxes class="w-3.5 h-3.5"></svg>
+                            <span>Ajustar Stock</span>
+                          </button>
+
+                          <button aria-label="Editar"
+                            (click)="editIngredient(ing)"
+                            class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                            title="Editar"
+                          >
+                            <svg lucideEdit class="w-4 h-4"></svg>
+                          </button>
+                          <button aria-label="Eliminar"
+                            (click)="deleteIngredientPrompt(ing.id)"
+                            class="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar"
+                          >
+                            <svg lucideTrash2 class="w-4 h-4"></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Product Modal (Create/Edit) -->
+    @if (isProductModalOpen()) {
+      <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+        <!-- Backdrop -->
+        <div (click)="closeProductModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+
+        <!-- Dialog Body -->
+        <div class="w-full max-w-xl bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col max-h-[90vh]">
+          <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/80 shrink-0">
+            <h3 class="text-base font-bold text-white">
+              {{ productForm.id ? 'Editar Producto' : 'Crear Producto' }}
+            </h3>
+            <button aria-label="Cerrar"
+              (click)="closeProductModal()"
+              class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <svg lucideX class="w-5 h-5"></svg>
+            </button>
+          </div>
+
+          <div class="p-6 space-y-5 overflow-y-auto">
+            <!-- Name & Price -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nombre</label>
+                <input aria-label="Nombre del producto"
+                  type="text"
+                  placeholder="Nombre del plato o bebida"
+                  [(ngModel)]="productForm.name"
+                  class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Precio ($)</label>
+                <input aria-label="Precio"
+                  type="number"
+                  step="0.01"
+                  placeholder="10.00"
+                  [(ngModel)]="productForm.price"
+                  class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Descripción</label>
+              <textarea aria-label="Descripción"
+                rows="2"
+                placeholder="Ingredientes o detalles del producto"
+                [(ngModel)]="productForm.description"
+                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors resize-none"
+              ></textarea>
+            </div>
+
+            <!-- Active Checkbox -->
+            <div class="flex items-center gap-3 py-1">
+              <input
+                type="checkbox"
+                id="prod-active"
+                [(ngModel)]="productForm.active"
+                class="w-4 h-4 accent-indigo-600 cursor-pointer"
+              />
+              <label for="prod-active" class="text-xs font-semibold text-slate-300 cursor-pointer">Producto Disponible / Activo</label>
+            </div>
+
+            <!-- INVENTORY & RECIPE CONFIGURATION SECTION -->
+            <div class="p-4 rounded-xl bg-slate-955/60 border border-slate-800 space-y-4">
+              <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                <svg lucideBoxes class="w-4 h-4"></svg>
+                Configuración de Inventario & Receta
+              </h4>
+
+              <!-- Toggle switch: ¿Es un producto preparado/receta? (isRecipe) -->
+              <div class="flex items-center justify-between p-3 rounded-lg bg-slate-900/80 border border-slate-800/80">
+                <div class="space-y-0.5">
+                  <span class="text-xs font-bold text-white block">¿Es un producto preparado/receta?</span>
+                  <span class="text-[11px] text-slate-400 block">Elaborado en cocina a partir de materias primas e ingredientes</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    [(ngModel)]="productForm.isRecipe"
+                    class="sr-only peer"
+                  />
+                  <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              <!-- IF isRecipe ES FALSO -->
+              @if (!productForm.isRecipe) {
+                <div class="space-y-3 pt-1 animate-fadeIn">
+                  <!-- Toggle Controlar Inventario (trackStock) -->
+                  <div class="flex items-center justify-between p-3 rounded-lg bg-slate-900/50 border border-slate-800/60">
+                    <div class="space-y-0.5">
+                      <span class="text-xs font-semibold text-slate-200 block">Controlar Inventario</span>
+                      <span class="text-[11px] text-slate-400 block">Ideal para productos terminados como refrescos, cervezas o postres envasados</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        [(ngModel)]="productForm.trackStock"
+                        class="sr-only peer"
+                      />
+                      <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
+                    </label>
+                  </div>
+                </div>
+              }
+
+              <!-- IF isRecipe ES VERDADERO: Receta -->
+              @if (productForm.isRecipe) {
+                <div class="space-y-3 pt-1 animate-fadeIn">
+                  <div class="flex items-center justify-between">
+                    <h5 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <svg lucideChefHat class="w-4 h-4"></svg>
+                      Fórmula de Receta
+                    </h5>
+                    <button
+                      type="button"
+                      (click)="addRecipeItem()"
+                      class="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <svg lucidePlus class="w-3.5 h-3.5"></svg>
+                      <span>Agregar Ingrediente</span>
+                    </button>
+                  </div>
+
+                  @if (productForm.recipeItems.length === 0) {
+                    <div class="p-4 text-center border border-dashed border-slate-800 rounded-xl text-slate-400 text-xs">
+                      No se han añadido ingredientes a esta receta. Haz clic en '+ Agregar Ingrediente'.
+                    </div>
+                  } @else {
+                    <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      @for (item of productForm.recipeItems; track $index) {
+                        <div class="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <!-- Select Ingredient -->
+                          <select aria-label="Ingrediente"
+                            [(ngModel)]="item.ingredientId"
+                            (change)="onRecipeIngredientChange(item)"
+                            class="flex-1 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500 cursor-pointer min-w-0"
+                          >
+                            <option value="" disabled class="bg-slate-950 text-slate-400">Selecciona ingrediente</option>
+                            @for (ing of ingredients(); track ing.id) {
+                              <option [value]="ing.id" class="bg-slate-950 text-white">
+                                {{ ing.name }} ({{ ing.unitOfMeasure }})
+                              </option>
+                            }
+                          </select>
+
+                          <!-- Quantity required for 1 serving -->
+                          <div class="w-24 relative shrink-0">
+                            <input aria-label="Cantidad"
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              placeholder="Cant."
+                              [(ngModel)]="item.quantity"
+                              class="w-full bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <!-- Dynamic Unit Selector -->
+                          <select aria-label="Unidad"
+                            [(ngModel)]="item.recipeUnit"
+                            class="w-20 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-amber-300 font-semibold outline-none focus:border-indigo-500 cursor-pointer shrink-0"
+                            title="Unidad de medida en la receta"
+                          >
+                            @for (unitOpt of getAvailableUnitsForItem(item); track unitOpt) {
+                              <option [value]="unitOpt" class="bg-slate-950 text-white font-normal">
+                                {{ unitOpt }}
+                              </option>
+                            }
+                          </select>
+
+                          <!-- Delete Row Button -->
+                          <button aria-label="Quitar ingrediente"
+                            type="button"
+                            (click)="removeRecipeItem($index)"
+                            class="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Quitar ingrediente"
+                          >
+                            <svg lucideX class="w-4 h-4"></svg>
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
+            <button
+              (click)="closeProductModal()"
+              class="px-4 py-2 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              (click)="saveProduct()"
+              [disabled]="!productForm.name.trim() || productForm.price <= 0"
+              class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 hover:shadow-indigo-500/25 cursor-pointer"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Ingredient Modal (Create/Edit) -->
+    @if (isIngredientModalOpen()) {
+      <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+        <!-- Backdrop -->
+        <div (click)="closeIngredientModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+
+        <!-- Dialog Body -->
+        <div class="w-full max-w-md bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col">
+          <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/80 shrink-0">
+            <h3 class="text-base font-bold text-white">
+              {{ ingredientForm.id ? 'Editar Ingrediente' : 'Crear Ingrediente' }}
+            </h3>
+            <button aria-label="Cerrar"
+              (click)="closeIngredientModal()"
+              class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <svg lucideX class="w-5 h-5"></svg>
+            </button>
+          </div>
+
+          <div class="p-6 space-y-4 overflow-y-auto">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nombre del Ingrediente</label>
+              <input aria-label="Nombre del ingrediente"
+                type="text"
+                placeholder="Ej: Carne Sirloin, Queso Gouda, Tomate"
+                [(ngModel)]="ingredientForm.name"
+                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Unidad de Medida</label>
+              <select aria-label="Unidad de medida"
+                [(ngModel)]="ingredientForm.unitOfMeasure"
+                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+              >
+                <option value="g" class="bg-slate-950 text-white">Gramos (g)</option>
+                <option value="ml" class="bg-slate-950 text-white">Mililitros (ml)</option>
+                <option value="pz" class="bg-slate-950 text-white">Piezas (pz)</option>
+                <option value="kg" class="bg-slate-950 text-white">Kilogramos (kg)</option>
+                <option value="l" class="bg-slate-950 text-white">Litros (l)</option>
+                <option value="oz" class="bg-slate-950 text-white">Onzas (oz)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
+            <button
+              (click)="closeIngredientModal()"
+              class="px-4 py-2 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              (click)="saveIngredient()"
+              [disabled]="!ingredientForm.name.trim() || !ingredientForm.unitOfMeasure"
+              class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 hover:shadow-indigo-500/25 cursor-pointer"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Quick Stock Adjustment Modal (Ajuste de Inventario Físico) -->
+    @if (isAdjustStockModalOpen()) {
+      <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+        <div (click)="closeAdjustStockModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+
+        <div class="w-full max-w-md bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col">
+          <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/80 shrink-0">
+            <div class="flex items-center gap-2">
+              <svg lucideBoxes class="w-5 h-5 text-sky-400"></svg>
+              <h3 class="text-base font-bold text-white">Ajustar Inventario</h3>
+            </div>
+            <button aria-label="Cerrar"
+              (click)="closeAdjustStockModal()"
+              class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <svg lucideX class="w-5 h-5"></svg>
+            </button>
+          </div>
+
+          <div class="p-6 space-y-4">
+            <div>
+              <span class="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">Elemento</span>
+              <h4 class="text-lg font-bold text-white mt-0.5">{{ adjustStockItem()?.name }}</h4>
+              <p class="text-xs text-slate-400 mt-1">Ajustando existencias físicas en la sucursal actual</p>
+            </div>
+
+            <div class="p-4 rounded-xl bg-slate-955 border border-slate-800 space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-400">Stock Actual Registrado:</span>
+                <span class="font-bold text-indigo-300">
+                  {{ adjustStockItem()?.stock ?? 0 }} {{ adjustStockItem()?.unitOfMeasure || 'unidades' }}
+                </span>
+              </div>
+
+              <div>
+                <label for="new-stock-input" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Nuevo Stock Físico (Cantidad Real)
+                </label>
+                <input
+                  id="new-stock-input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  [ngModel]="adjustStockValue()"
+                  (ngModelChange)="adjustStockValue.set($event)"
+                  class="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-4 text-base font-bold text-white placeholder-slate-600 outline-none focus:border-sky-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
+            <button
+              (click)="closeAdjustStockModal()"
+              class="px-4 py-2 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              (click)="saveStockAdjustment()"
+              class="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-sky-600/15 cursor-pointer"
+            >
+              Guardar Ajuste
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  `,
+  styles: [`
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .animate-fadeIn {
+      animation: fadeIn 0.2s ease-out forwards;
+    }
+    .animate-scaleIn {
+      animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class CatalogComponent implements OnInit {
+  private readonly avisos = inject(AvisosService);
+  private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
+
+  // Active navigation tab
+  readonly activeTab = signal<'products' | 'ingredients' | 'adicionales'>('products');
+
+  // Writable Signals for state
+  readonly categories = signal<Category[]>([]);
+  readonly products = signal<Product[]>([]);
+  /** productId -> URL de su miniatura. */
+  readonly fotos = signal<Record<string, string>>({});
+  readonly subiendoFoto = signal<string | null>(null);
+  readonly ingredients = signal<Ingredient[]>([]);
+  
+  readonly selectedCategoryId = signal<string>('');
+  readonly searchQuery = signal<string>('');
+  /** Recorrer los platillos sin foto de todas las categorías, uno tras otro. */
+  readonly soloSinFoto = signal(false);
+  readonly sinFotoTotal = computed(() => {
+    const fotos = this.fotos();
+    return this.products().filter((p) => !fotos[p.id]).length;
+  });
+  readonly ingredientSearchQuery = signal<string>('');
+  readonly viewMode = signal<'grid' | 'list'>('grid');
+
+  // Expanded recipe breakdown product IDs
+  readonly expandedRecipeIds = signal<Set<string>>(new Set());
+  
+  // Loaders & sync status
+  readonly isLoading = signal(false);
+  readonly isSyncing = signal(false);
+
+  // Forms / Modals opening flags
+  readonly isCategoryFormOpen = signal(false);
+  readonly isProductModalOpen = signal(false);
+  readonly isIngredientModalOpen = signal(false);
+  readonly isAdjustStockModalOpen = signal(false);
+
+  // SUPER_ADMIN & SYSTEM_ADMIN dropdown bindings (El Refrigerador)
+  readonly isSuperAdmin = computed(() => {
+    const role = this.authService.userRole();
+    return role === 'SUPER_ADMIN' || role === 'SYSTEM_ADMIN';
+  });
+
+  // Restaurante y sucursal: los mismos para todo el panel (se eligen en la barra superior).
+  private readonly sucursalActiva = inject(SucursalActivaService);
+  readonly restaurants = this.sucursalActiva.restaurantes;
+  readonly selectedRestaurantId = this.sucursalActiva.restaurantId;
+  readonly selectedBranchId = this.sucursalActiva.branchId;
+
+  /** Al elegir otra sucursal en la barra superior se recarga esta pantalla. */
+  private readonly recargarAlCambiarSucursal = effect(() => {
+    const b = this.selectedBranchId();
+    if (!this.isSuperAdmin()) return;
+    untracked(() => b && this.reloadAll());
+  });
+
+  readonly availableBranches = computed(() => {
+    const rId = this.selectedRestaurantId();
+    if (!rId) return [];
+    const matched = this.restaurants().find((r) => r.id === rId);
+    return matched ? matched.branches : [];
+  });
+
+  // Active Branch ID resolved dynamically according to role
+  readonly activeBranchId = computed<string | null>(() => {
+    if (this.isSuperAdmin()) {
+      return this.selectedBranchId() || null;
+    }
+    const token = this.authService.decodedToken() as any;
+    const branchFromToken = token?.branchId || token?.branch_id || this.authService.userBranchId();
+    return branchFromToken !== undefined && branchFromToken !== null ? String(branchFromToken) : null;
+  });
+
+  // Category local form binding
+  categoryForm = {
+    id: '',
+    name: '',
+    active: true
+  };
+
+  // Product local form binding
+  productForm: {
+    id: string;
+    name: string;
+    price: number;
+    description: string;
+    active: boolean;
+    isRecipe: boolean;
+    trackStock: boolean;
+    stock: number;
+    recipeItems: RecipeItem[];
+  } = {
+    id: '',
+    name: '',
+    price: 0,
+    description: '',
+    active: true,
+    isRecipe: false,
+    trackStock: false,
+    stock: 0,
+    recipeItems: []
+  };
+
+  // Ingredient local form binding
+  ingredientForm: {
+    id: string;
+    name: string;
+    unitOfMeasure: string;
+  } = {
+    id: '',
+    name: '',
+    unitOfMeasure: 'g'
+  };
+
+  // Stock Adjustment local state
+  adjustStockItem = signal<{
+    type: 'PRODUCT' | 'INGREDIENT';
+    id: string;
+    name: string;
+    unitOfMeasure?: string;
+    stock: number;
+  } | null>(null);
+
+  adjustStockValue = signal<number>(0);
+
+  // Computed signals
+  readonly selectedCategory = computed(() => {
+    const id = this.selectedCategoryId();
+    return this.categories().find(c => c.id === id) || null;
+  });
+
+  readonly filteredProducts = computed(() => {
+    const catId = this.selectedCategoryId();
+    const query = this.searchQuery().trim().toLowerCase();
+    let list = this.products();
+
+    if (this.soloSinFoto()) {
+      const fotos = this.fotos();
+      list = list.filter(p => !fotos[p.id]);
+    } else if (catId) {
+      list = list.filter(p => p.categoryId === catId);
+    }
+    if (query) {
+      list = list.filter(p => 
+        p.name.toLowerCase().includes(query) || 
+        (p.description && p.description.toLowerCase().includes(query))
+      );
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  readonly filteredIngredients = computed(() => {
+    const query = this.ingredientSearchQuery().trim().toLowerCase();
+    let list = this.ingredients();
+
+    if (query) {
+      list = list.filter(ing => ing.name.toLowerCase().includes(query));
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  ngOnInit(): void {
+    if (!this.isSuperAdmin()) {
+      this.reloadAll();
+    }
+  }
+
+  loadRestaurants(): void {
+    this.http.get<Restaurant[]>(`${environment.apiUrl}/admin/restaurants`).subscribe({
+      next: (data) => {
+        const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+        this.restaurants.set(sorted);
+        this.preseleccionarPrimeraSucursal(sorted);
+      },
+      error: (err) => console.error('Error fetching restaurants selector', err)
+    });
+  }
+
+  /**
+   * Deja elegido el primer restaurante y su primera sucursal, para no abrir
+   * el catálogo en blanco esperando una selección.
+   */
+  private preseleccionarPrimeraSucursal(lista: Restaurant[]): void {
+    if (this.selectedRestaurantId() || lista.length === 0) return;
+    const inicial = sucursalInicial(lista, this.authService.userBranchId());
+    if (!inicial) return;
+    this.selectedRestaurantId.set(inicial.restaurantId);
+    this.selectedBranchId.set(inicial.branchId);
+    this.reloadAll();
+  }
+
+  onRestaurantChange(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    this.selectedRestaurantId.set(select.value);
+    this.selectedBranchId.set('');
+    this.categories.set([]);
+    this.products.set([]);
+    this.ingredients.set([]);
+  }
+
+  onBranchChange(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    this.selectedBranchId.set(select.value);
+    this.reloadAll();
+  }
+
+  reloadAll(): void {
+    this.loadCatalogData();
+    this.loadIngredients();
+  }
+
+  // ------------------------------------------------------------------
+  // Fotos de los platillos
+  // ------------------------------------------------------------------
+
+  fotoDe(productId: string): string | null {
+    const ruta = this.fotos()[productId];
+    return ruta ? `${environment.apiUrl}${ruta}` : null;
+  }
+
+  private cargarFotos(): void {
+    this.http.get<Record<string, string>>(`${environment.apiUrl}/products/fotos`).subscribe({
+      next: (f) => this.fotos.set(f),
+      error: (err) => console.error('No se pudieron cargar las fotos', err),
+    });
+  }
+
+  async alElegirFoto(productId: string, evento: Event): Promise<void> {
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    input.value = ''; // Para poder elegir la misma foto otra vez si falla.
+    if (!archivo) return;
+
+    this.subiendoFoto.set(productId);
+    try {
+      const comprimida = await comprimirImagen(archivo);
+      const datos = new FormData();
+      datos.append('foto', comprimida, 'foto.jpg');
+      this.http.post<{ miniatura: string }>(`${environment.apiUrl}/products/${productId}/foto`, datos).subscribe({
+        next: (r) => {
+          this.fotos.update((f) => ({ ...f, [productId]: r.miniatura }));
+          this.subiendoFoto.set(null);
+        },
+        error: (err) => {
+          this.subiendoFoto.set(null);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo subir la foto.');
+        },
+      });
+    } catch (e) {
+      this.subiendoFoto.set(null);
+      this.avisos.error((e as Error).message);
+    }
+  }
+
+  async quitarFoto(productId: string): Promise<void> {
+    if (!(await this.avisos.confirmar({ titulo: '¿Quitar la foto?', mensaje: 'Dejará de verse en el menú en línea.', confirmar: 'Quitar foto', peligro: true }))) return;
+    this.http.delete(`${environment.apiUrl}/products/${productId}/foto`).subscribe({
+      next: () =>
+        this.fotos.update((f) => {
+          const copia = { ...f };
+          delete copia[productId];
+          return copia;
+        }),
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo quitar la foto.'),
+    });
+  }
+
+  /**
+   * Initializes catalog data (categories & products) from backend with ?branchId=
+   */
+  loadCatalogData(): void {
+    this.isLoading.set(true);
+    this.cargarFotos();
+    const branchId = this.activeBranchId();
+    const queryParam = branchId ? `?branchId=${branchId}` : '';
+
+    this.http.get<Category[]>(`${environment.apiUrl}/categories${queryParam}`).subscribe({
+      next: (cats) => {
+        const sortedCats = cats.sort((a, b) => a.name.localeCompare(b.name));
+        this.categories.set(sortedCats);
+        
+        if (sortedCats.length > 0 && !this.selectedCategoryId()) {
+          this.selectedCategoryId.set(sortedCats[0].id);
+        }
+
+        // Fetch products with ?branchId=
+        this.http.get<Product[]>(`${environment.apiUrl}/products${queryParam}`).subscribe({
+          next: (prods) => {
+            this.products.set(prods);
+            this.isLoading.set(false);
+          },
+          error: (err) => {
+            console.error('Error fetching products', err);
+            this.isLoading.set(false);
+          }
+        });
+      },
+      error: (err) => {
+        console.error('Error fetching categories', err);
+        this.isLoading.set(false);
+      }
+    });
+  }
+
+  /**
+   * Loads ingredients list from backend with ?branchId=
+   */
+  loadIngredients(): void {
+    const branchId = this.activeBranchId();
+    const queryParam = branchId ? `?branchId=${branchId}` : '';
+
+    this.http.get<Ingredient[]>(`${environment.apiUrl}/ingredients${queryParam}`).subscribe({
+      next: (ings) => {
+        this.ingredients.set(ings);
+      },
+      error: (err) => {
+        console.error('Error fetching ingredients', err);
+      }
+    });
+  }
+
+  // --- Search ---
+  onSearchChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.searchQuery.set(input.value);
+  }
+
+  // --- Category Actions ---
+  selectCategory(id: string): void {
+    this.selectedCategoryId.set(id);
+    this.soloSinFoto.set(false);
+    this.cancelCategoryForm();
+  }
+
+  showCreateCategoryForm(): void {
+    this.categoryForm = { id: '', name: '', active: true };
+    this.isCategoryFormOpen.set(true);
+  }
+
+  editCategory(cat: Category): void {
+    this.categoryForm = { id: cat.id, name: cat.name, active: cat.active };
+    this.isCategoryFormOpen.set(true);
+  }
+
+  cancelCategoryForm(): void {
+    this.isCategoryFormOpen.set(false);
+  }
+
+  saveCategory(): void {
+    const name = this.categoryForm.name.trim();
+    if (!name) return;
+
+    this.isSyncing.set(true);
+    this.isCategoryFormOpen.set(false);
+
+    if (this.categoryForm.id) {
+      const catId = this.categoryForm.id;
+      const previousCats = [...this.categories()];
+      
+      this.categories.update(list => 
+        list.map(c => c.id === catId ? { ...c, name } : c)
+      );
+
+      this.http.put<Category>(`${environment.apiUrl}/categories/${catId}`, { name, active: true }).subscribe({
+        next: (updated) => {
+          this.categories.update(list => list.map(c => c.id === catId ? updated : c));
+          this.isSyncing.set(false);
+        },
+        error: (err) => {
+          console.error('Error updating category', err);
+          this.categories.set(previousCats);
+          this.isSyncing.set(false);
+        }
+      });
+    } else {
+      const tempId = 'temp-' + Math.random();
+      const tempCategory: Category = {
+        id: tempId,
+        restaurantId: '',
+        name,
+        active: true
+      };
+      
+      this.categories.update(list => [...list, tempCategory]);
+      if (!this.selectedCategoryId()) {
+        this.selectedCategoryId.set(tempId);
+      }
+
+      this.http.post<Category>(`${environment.apiUrl}/categories`, { name, active: true }).subscribe({
+        next: (created) => {
+          this.categories.update(list => list.map(c => c.id === tempId ? created : c));
+          if (this.selectedCategoryId() === tempId) {
+            this.selectedCategoryId.set(created.id);
+          }
+          this.isSyncing.set(false);
+        },
+        error: (err) => {
+          console.error('Error creating category', err);
+          this.categories.update(list => list.filter(c => c.id !== tempId));
+          if (this.selectedCategoryId() === tempId) {
+            const first = this.categories()[0];
+            this.selectedCategoryId.set(first ? first.id : '');
+          }
+          this.isSyncing.set(false);
+        }
+      });
+    }
+  }
+
+  async deleteCategoryPrompt(id: string): Promise<void> {
+    if (!(await this.avisos.confirmar({ titulo: '¿Eliminar la categoría?', mensaje: 'También se eliminan todos sus productos.', confirmar: 'Eliminar categoría', peligro: true }))) return;
+
+    this.isSyncing.set(true);
+    const previousCats = [...this.categories()];
+    const previousProds = [...this.products()];
+
+    this.categories.update(list => list.filter(c => c.id !== id));
+    this.products.update(list => list.filter(p => p.categoryId !== id));
+
+    if (this.selectedCategoryId() === id) {
+      const first = this.categories()[0];
+      this.selectedCategoryId.set(first ? first.id : '');
+    }
+
+    this.http.delete(`${environment.apiUrl}/categories/${id}`).subscribe({
+      next: () => {
+        this.isSyncing.set(false);
+      },
+      error: (err) => {
+        console.error('Error deleting category', err);
+        this.categories.set(previousCats);
+        this.products.set(previousProds);
+        this.selectedCategoryId.set(id);
+        this.isSyncing.set(false);
+        this.avisos.error(err.error?.error || err.error?.message || 'Ocurrió un error al eliminar la categoría.');
+      }
+    });
+  }
+
+  // --- Product Actions ---
+  showCreateProductModal(): void {
+    this.productForm = {
+      id: '',
+      name: '',
+      price: 0,
+      description: '',
+      active: true,
+      isRecipe: false,
+      trackStock: false,
+      stock: 0,
+      recipeItems: []
+    };
+    this.isProductModalOpen.set(true);
+  }
+
+  editProduct(prod: Product): void {
+    this.productForm = {
+      id: prod.id,
+      name: prod.name,
+      price: prod.price,
+      description: prod.description || '',
+      active: prod.active,
+      isRecipe: prod.isRecipe ?? false,
+      trackStock: prod.trackStock ?? false,
+      stock: prod.stock ?? 0,
+      recipeItems: prod.recipeItems ? prod.recipeItems.map(item => {
+        const matchedIng = this.ingredients().find(i => i.id === item.ingredientId);
+        return {
+          ...item,
+          recipeUnit: item.recipeUnit || matchedIng?.unitOfMeasure || ''
+        };
+      }) : []
+    };
+    this.isProductModalOpen.set(true);
+  }
+
+  closeProductModal(): void {
+    this.isProductModalOpen.set(false);
+  }
+
+  addRecipeItem(): void {
+    const available = this.ingredients();
+    const defaultIng = available.length > 0 ? available[0] : null;
+    this.productForm.recipeItems.push({
+      ingredientId: defaultIng ? defaultIng.id : '',
+      ingredientName: defaultIng ? defaultIng.name : '',
+      quantity: 1,
+      recipeUnit: defaultIng ? defaultIng.unitOfMeasure : ''
+    });
+  }
+
+  onRecipeIngredientChange(item: RecipeItem): void {
+    const ing = this.ingredients().find(i => i.id === item.ingredientId);
+    if (ing) {
+      item.ingredientName = ing.name;
+      item.recipeUnit = ing.unitOfMeasure;
+    }
+  }
+
+  removeRecipeItem(index: number): void {
+    this.productForm.recipeItems.splice(index, 1);
+  }
+
+  saveProduct(): void {
+    const name = this.productForm.name.trim();
+    const price = this.productForm.price;
+    const description = this.productForm.description.trim();
+    const active = this.productForm.active;
+    const categoryId = this.selectedCategoryId();
+    const branchId = this.activeBranchId();
+
+    if (!name || price <= 0 || !categoryId) return;
+
+    this.isSyncing.set(true);
+    this.isProductModalOpen.set(false);
+
+    const isRecipe = this.productForm.isRecipe;
+    const trackStock = !isRecipe ? this.productForm.trackStock : false;
+    const stock = (!isRecipe && trackStock) ? this.productForm.stock : 0;
+    const recipeItems = isRecipe ? this.productForm.recipeItems : [];
+
+    const requestPayload = {
+      categoryId,
+      name,
+      price,
+      description,
+      active,
+      isRecipe,
+      trackStock,
+      stock,
+      recipeItems,
+      branchId
+    };
+
+    if (this.productForm.id) {
+      const prodId = this.productForm.id;
+      const previousProds = [...this.products()];
+
+      this.products.update(list => 
+        list.map(p => p.id === prodId ? { 
+          ...p, 
+          name, 
+          price, 
+          description, 
+          active,
+          isRecipe,
+          trackStock,
+          stock,
+          recipeItems
+        } : p)
+      );
+
+      this.http.put<Product>(`${environment.apiUrl}/products/${prodId}`, requestPayload).subscribe({
+        next: (updated) => {
+          this.products.update(list => list.map(p => p.id === prodId ? updated : p));
+          this.isSyncing.set(false);
+          this.reloadAll();
+        },
+        error: (err) => {
+          console.error('Error updating product', err);
+          this.products.set(previousProds);
+          this.isSyncing.set(false);
+        }
+      });
+    } else {
+      const tempId = 'temp-prod-' + Math.random();
+      const tempProduct: Product = {
+        id: tempId,
+        categoryId,
+        categoryName: this.selectedCategory()?.name || '',
+        name,
+        price,
+        description,
+        active,
+        isRecipe,
+        trackStock,
+        stock,
+        recipeItems
+      };
+
+      this.products.update(list => [...list, tempProduct]);
+
+      this.http.post<Product>(`${environment.apiUrl}/products`, requestPayload).subscribe({
+        next: (created) => {
+          this.products.update(list => list.map(p => p.id === tempId ? created : p));
+          this.isSyncing.set(false);
+          this.reloadAll();
+        },
+        error: (err) => {
+          console.error('Error creating product', err);
+          this.products.update(list => list.filter(p => p.id !== tempId));
+          this.isSyncing.set(false);
+        }
+      });
+    }
+  }
+
+  async deleteProductPrompt(id: string): Promise<void> {
+    if (!(await this.avisos.confirmar({ titulo: '¿Eliminar el producto?', mensaje: 'Deja de aparecer en el menú y en el panel de meseros.', confirmar: 'Eliminar producto', peligro: true }))) return;
+
+    this.isSyncing.set(true);
+    const previousProds = [...this.products()];
+
+    this.products.update(list => list.filter(p => p.id !== id));
+
+    this.http.delete(`${environment.apiUrl}/products/${id}`).subscribe({
+      next: () => {
+        this.isSyncing.set(false);
+      },
+      error: (err) => {
+        console.error('Error deleting product', err);
+        this.products.set(previousProds);
+        this.isSyncing.set(false);
+        this.avisos.error(err.error?.error || err.error?.message || 'Ocurrió un error al eliminar el producto.');
+      }
+    });
+  }
+
+  // --- Ingredient Actions ---
+  showCreateIngredientModal(): void {
+    this.ingredientForm = {
+      id: '',
+      name: '',
+      unitOfMeasure: 'g'
+    };
+    this.isIngredientModalOpen.set(true);
+  }
+
+  editIngredient(ing: Ingredient): void {
+    this.ingredientForm = {
+      id: ing.id,
+      name: ing.name,
+      unitOfMeasure: ing.unitOfMeasure
+    };
+    this.isIngredientModalOpen.set(true);
+  }
+
+  closeIngredientModal(): void {
+    this.isIngredientModalOpen.set(false);
+  }
+
+  saveIngredient(): void {
+    const name = this.ingredientForm.name.trim();
+    const unitOfMeasure = this.ingredientForm.unitOfMeasure;
+    const branchId = this.activeBranchId();
+
+    if (!name || !unitOfMeasure) return;
+
+    this.isSyncing.set(true);
+    this.isIngredientModalOpen.set(false);
+
+    const payload = { name, unitOfMeasure, branchId };
+
+    if (this.ingredientForm.id) {
+      const ingId = this.ingredientForm.id;
+      const previousIngs = [...this.ingredients()];
+
+      this.ingredients.update(list =>
+        list.map(i => i.id === ingId ? { ...i, name, unitOfMeasure } : i)
+      );
+
+      this.http.put<Ingredient>(`${environment.apiUrl}/ingredients/${ingId}`, payload).subscribe({
+        next: (updated) => {
+          this.ingredients.update(list => list.map(i => i.id === ingId ? updated : i));
+          this.isSyncing.set(false);
+          this.loadIngredients();
+        },
+        error: (err) => {
+          console.error('Error updating ingredient', err);
+          this.ingredients.set(previousIngs);
+          this.isSyncing.set(false);
+        }
+      });
+    } else {
+      const tempId = 'temp-ing-' + Math.random();
+      const tempIng: Ingredient = {
+        id: tempId,
+        name,
+        unitOfMeasure,
+        stock: 0
+      };
+
+      this.ingredients.update(list => [...list, tempIng]);
+
+      this.http.post<Ingredient>(`${environment.apiUrl}/ingredients`, payload).subscribe({
+        next: (created) => {
+          this.ingredients.update(list => list.map(i => i.id === tempId ? created : i));
+          this.isSyncing.set(false);
+          this.loadIngredients();
+        },
+        error: (err) => {
+          console.error('Error creating ingredient', err);
+          this.ingredients.update(list => list.filter(i => i.id !== tempId));
+          this.isSyncing.set(false);
+        }
+      });
+    }
+  }
+
+  async deleteIngredientPrompt(id: string): Promise<void> {
+    if (!(await this.avisos.confirmar({ titulo: '¿Eliminar el ingrediente?', mensaje: 'Se quita también de las recetas que lo usan.', confirmar: 'Eliminar ingrediente', peligro: true }))) return;
+
+    this.isSyncing.set(true);
+    const previousIngs = [...this.ingredients()];
+
+    this.ingredients.update(list => list.filter(i => i.id !== id));
+
+    this.http.delete(`${environment.apiUrl}/ingredients/${id}`).subscribe({
+      next: () => {
+        this.isSyncing.set(false);
+      },
+      error: (err) => {
+        console.error('Error deleting ingredient', err);
+        this.ingredients.set(previousIngs);
+        this.isSyncing.set(false);
+        this.avisos.error(err.error?.error || err.error?.message || 'Ocurrió un error al eliminar el ingrediente.');
+      }
+    });
+  }
+
+  // --- Adjust Stock Modal Actions (Requirement 4) ---
+  openAdjustStockModal(type: 'PRODUCT' | 'INGREDIENT', item: { id: string; name: string; unitOfMeasure?: string; stock?: number | null }): void {
+    const branchId = this.activeBranchId();
+    if (!branchId) {
+      this.avisos.error('Por favor selecciona una sucursal para ajustar el inventario.');
+      return;
+    }
+
+    const currentStock = item.stock ?? 0;
+    this.adjustStockItem.set({
+      type,
+      id: item.id,
+      name: item.name,
+      unitOfMeasure: item.unitOfMeasure,
+      stock: currentStock
+    });
+    this.adjustStockValue.set(currentStock);
+    this.isAdjustStockModalOpen.set(true);
+  }
+
+  closeAdjustStockModal(): void {
+    this.isAdjustStockModalOpen.set(false);
+    this.adjustStockItem.set(null);
+  }
+
+  saveStockAdjustment(): void {
+    const item = this.adjustStockItem();
+    const branchId = this.activeBranchId();
+
+    if (!item || !branchId) return;
+
+    const newStock = Number(this.adjustStockValue());
+    this.isSyncing.set(true);
+
+    const endpoint = item.type === 'PRODUCT'
+      ? `${environment.apiUrl}/products/${item.id}/stock?branchId=${branchId}`
+      : `${environment.apiUrl}/ingredients/${item.id}/stock?branchId=${branchId}`;
+
+    const payload = { stock: newStock };
+
+    this.http.patch(endpoint, payload).subscribe({
+      next: () => {
+        this.isAdjustStockModalOpen.set(false);
+        this.adjustStockItem.set(null);
+        this.isSyncing.set(false);
+        this.reloadAll();
+      },
+      error: (err) => {
+        console.error('Error adjusting stock via PATCH endpoint:', err);
+        this.isSyncing.set(false);
+      }
+    });
+  }
+
+  // --- Recipe Raw Material Breakdown Helpers ---
+  toggleRecipeBreakdown(productId: string): void {
+    this.expandedRecipeIds.update(set => {
+      const next = new Set(set);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }
+
+  isRecipeBreakdownExpanded(productId: string): boolean {
+    return this.expandedRecipeIds().has(productId);
+  }
+
+  formatQuantity(val: number): string {
+    if (val === null || val === undefined || isNaN(val)) return '0';
+    return Number(val.toFixed(2)).toLocaleString('es-MX');
+  }
+
+  // --- Dynamic Recipe Unit Helpers ---
+  getAvailableUnitsForItem(item: RecipeItem): string[] {
+    if (!item.ingredientId) return item.recipeUnit ? [item.recipeUnit] : ['-'];
+
+    const ing = this.ingredients().find(i => i.id === item.ingredientId);
+    if (!ing || !ing.unitOfMeasure) {
+      return item.recipeUnit ? [item.recipeUnit] : ['-'];
+    }
+
+    const rawUnit = ing.unitOfMeasure.trim();
+    const lowerUnit = rawUnit.toLowerCase();
+    let units: string[] = [rawUnit];
+
+    if (['l', 'lt', 'litro', 'litros'].includes(lowerUnit)) {
+      const mainL = ['l', 'lt'].includes(rawUnit) ? rawUnit : 'L';
+      units = [mainL, 'ml'];
+    } else if (['kg', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(lowerUnit)) {
+      const mainKg = rawUnit === 'kg' ? 'kg' : 'KG';
+      units = [mainKg, 'g'];
+    }
+
+    if (item.recipeUnit && !units.includes(item.recipeUnit)) {
+      units.push(item.recipeUnit);
+    }
+
+    return units;
+  }
+
+  getRecipeBreakdown(prod: Product) {
+    if (!prod.recipeItems || prod.recipeItems.length === 0) return [];
+    const currentStock = prod.stock ?? 0;
+    const ingredientsMap = new Map(this.ingredients().map(i => [i.id, i]));
+
+    const items = prod.recipeItems.map(item => {
+      const ing = ingredientsMap.get(item.ingredientId);
+      const ingStock = ing?.stock ?? 0;
+      const baseUnit = ing?.unitOfMeasure || 'unidades';
+      const name = item.ingredientName || ing?.name || 'Ingrediente';
+      const recipeUnit = item.recipeUnit || baseUnit;
+
+      // Unit conversion between baseUnit (ingredient stock) and recipeUnit (recipe usage)
+      let availableStockInRecipeUnit = ingStock;
+      const baseLower = baseUnit.trim().toLowerCase();
+      const recipeLower = recipeUnit.trim().toLowerCase();
+
+      if (['kg', 'kilo', 'kilos'].includes(baseLower) && recipeLower === 'g') {
+        availableStockInRecipeUnit = ingStock * 1000;
+      } else if (baseLower === 'g' && ['kg', 'kilo', 'kilos'].includes(recipeLower)) {
+        availableStockInRecipeUnit = ingStock / 1000;
+      } else if (['l', 'lt', 'litro', 'litros'].includes(baseLower) && recipeLower === 'ml') {
+        availableStockInRecipeUnit = ingStock * 1000;
+      } else if (baseLower === 'ml' && ['l', 'lt', 'litro', 'litros'].includes(recipeLower)) {
+        availableStockInRecipeUnit = ingStock / 1000;
+      }
+
+      const requiredTotal = item.quantity * currentStock;
+      const potentialPortions = item.quantity > 0 ? Math.floor(availableStockInRecipeUnit / item.quantity) : Infinity;
+
+      return {
+        ingredientId: item.ingredientId,
+        name,
+        unitOfMeasure: recipeUnit,
+        quantityPerUnit: item.quantity,
+        requiredTotal,
+        availableStock: availableStockInRecipeUnit,
+        potentialPortions
+      };
+    });
+
+    const validPotentials = items.map(i => i.potentialPortions).filter(p => Number.isFinite(p));
+    const minPotential = validPotentials.length > 0 ? Math.min(...validPotentials) : Infinity;
+
+    return items.map(item => ({
+      ...item,
+      isBottleneck: item.potentialPortions === minPotential && minPotential !== Infinity
+    }));
+  }
+}
