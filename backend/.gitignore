@@ -32,6 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 *.sql
+# Las migraciones de Flyway si van al repo: sin ellas no se puede armar la base.
+!src/main/resources/db/migration/*.sql
 auditoria.md
 .env
 .env.*

@@ -4,7 +4,7 @@ package com.omnirest.omnirest_backend.services;
  * Deja un telefono mexicano en una sola forma, para poder compararlo.
  *
  * El mismo celular se escribe de varias maneras y todas circulan a la vez:
- * WhatsApp entrega "5219531403282", la gente teclea "+52 953 140 3282" y a
+ * WhatsApp entrega "5215512345678", la gente teclea "+52 55 1234 5678" y a
  * veces solo los diez digitos. Si se comparan tal cual, la misma persona queda
  * registrada dos veces y los reportes se parten.
  *

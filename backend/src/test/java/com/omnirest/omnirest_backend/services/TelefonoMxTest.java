@@ -11,36 +11,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Este caso ya se coló una vez: el mismo repartidor quedó registrado dos veces,
- * una como 529531403282 y otra como 5219531403282, y su reporte salió partido.
+ * una como 525512345678 y otra como 5215512345678, y su reporte salió partido.
  */
 class TelefonoMxTest {
 
     @ParameterizedTest(name = "{0} es el mismo número")
     @ValueSource(strings = {
-            "5219531403282",      // como lo entrega WhatsApp
-            "529531403282",       // con pais, sin el 1
-            "+52 953 140 3282",   // como lo teclea la gente
-            "9531403282",         // solo los diez dígitos
-            "(953) 140-3282",
-            "+521-953-140-3282"
+            "5215512345678",      // como lo entrega WhatsApp
+            "525512345678",       // con pais, sin el 1
+            "+52 55 1234 5678",   // como lo teclea la gente
+            "5512345678",         // solo los diez dígitos
+            "(55) 1234-5678",
+            "+521-55-1234-5678"
     })
     @DisplayName("Todas las formas de escribirlo dan el mismo número")
     void formasEquivalentes(String escrito) {
-        assertEquals("529531403282", TelefonoMx.canonico(escrito));
+        assertEquals("525512345678", TelefonoMx.canonico(escrito));
     }
 
     @Test
     @DisplayName("Dos escrituras distintas del mismo celular se reconocen")
     void mismoNumero() {
-        assertTrue(TelefonoMx.mismoNumero("5219531403282", "+52 953 140 3282"));
-        assertTrue(TelefonoMx.mismoNumero("9531403282", "529531403282"));
+        assertTrue(TelefonoMx.mismoNumero("5215512345678", "+52 55 1234 5678"));
+        assertTrue(TelefonoMx.mismoNumero("5512345678", "525512345678"));
     }
 
     @Test
     @DisplayName("Números distintos no se confunden")
     void numerosDistintos() {
-        assertFalse(TelefonoMx.mismoNumero("5219531403282", "5219531403283"));
-        assertFalse(TelefonoMx.mismoNumero("9531403282", "9511115555"));
+        assertFalse(TelefonoMx.mismoNumero("5215512345678", "5215512345679"));
+        assertFalse(TelefonoMx.mismoNumero("5512345678", "9511115555"));
     }
 
     @Test
