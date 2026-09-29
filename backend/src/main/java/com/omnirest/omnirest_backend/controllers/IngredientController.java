@@ -32,6 +32,7 @@ public class IngredientController {
     public ResponseEntity<List<IngredientDTO>> getIngredients(
             @RequestParam(required = false) UUID branchId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (branchId != null) securityValidationService.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(ingredientService.getIngredients(userDetails, branchId));
     }
 
@@ -41,6 +42,7 @@ public class IngredientController {
             @PathVariable UUID id,
             @RequestParam(required = false) UUID branchId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (branchId != null) securityValidationService.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(ingredientService.getIngredientById(id, userDetails, branchId));
     }
 
@@ -69,9 +71,8 @@ public class IngredientController {
             @RequestBody Map<String, Object> payload,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         securityValidationService.validateUserAccessToBranch(branchId);
-        BigDecimal newStock = extractStock(payload);
-        inventoryService.setAbsoluteStock(id, branchId, newStock, true);
-        return ResponseEntity.ok(ingredientService.getIngredientById(id, userDetails, branchId));
+        // updateStock comprueba que el ingrediente sea del restaurante de quien ajusta.
+        return ResponseEntity.ok(ingredientService.updateStock(id, branchId, extractStock(payload), userDetails));
     }
 
     @DeleteMapping("/{id}")

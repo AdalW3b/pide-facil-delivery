@@ -1,3 +1,4 @@
+import { UNIDADES_DE_INVENTARIO, cantidadLegible, convertirUnidad, unidadCanonica, unidadesCompatibles } from '../../shared/utils/unidades';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -700,6 +701,20 @@ import {
                 />
               </div>
 
+              <div class="inline-flex p-1 bg-slate-950/60 border border-slate-800 rounded-xl shrink-0" role="group" aria-label="Filtrar ingredientes">
+                <button type="button" (click)="filtroExistencias.set('todos')" [attr.aria-pressed]="filtroExistencias() === 'todos'"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                  [class]="filtroExistencias() === 'todos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'">
+                  Todos
+                </button>
+                <button type="button" (click)="filtroExistencias.set('sin')" [attr.aria-pressed]="filtroExistencias() === 'sin'"
+                  [disabled]="!activeBranchId()"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  [class]="filtroExistencias() === 'sin' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'">
+                  Sin existencias · {{ sinExistencias() }}
+                </button>
+              </div>
+
               <button
                 (click)="showCreateIngredientModal()"
                 class="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 cursor-pointer shrink-0"
@@ -756,12 +771,12 @@ import {
                             Selecciona una sucursal para ver stock
                           </span>
                         } @else if (ing.stock > 0) {
-                          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
-                            {{ ing.stock }} {{ ing.unitOfMeasure }}
+                          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm tabular-nums">
+                            {{ cantidadLegible(ing.stock, ing.unitOfMeasure) }}
                           </span>
                         } @else {
                           <span class="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-                            {{ ing.stock }} {{ ing.unitOfMeasure }} (Sin Stock)
+                            Sin existencias
                           </span>
                         }
                       </td>
@@ -1052,12 +1067,9 @@ import {
                 [(ngModel)]="ingredientForm.unitOfMeasure"
                 class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
               >
-                <option value="g" class="bg-slate-950 text-white">Gramos (g)</option>
-                <option value="ml" class="bg-slate-950 text-white">Mililitros (ml)</option>
-                <option value="pz" class="bg-slate-950 text-white">Piezas (pz)</option>
-                <option value="kg" class="bg-slate-950 text-white">Kilogramos (kg)</option>
-                <option value="l" class="bg-slate-950 text-white">Litros (l)</option>
-                <option value="oz" class="bg-slate-950 text-white">Onzas (oz)</option>
+                @for (u of unidadesDeInventario; track u.valor) {
+                  <option [value]="u.valor" class="bg-slate-950 text-white">{{ u.nombre }}</option>
+                }
               </select>
             </div>
           </div>
@@ -1111,13 +1123,13 @@ import {
               <div class="flex justify-between items-center text-xs">
                 <span class="text-slate-400">Stock Actual Registrado:</span>
                 <span class="font-bold text-indigo-300">
-                  {{ adjustStockItem()?.stock ?? 0 }} {{ adjustStockItem()?.unitOfMeasure || 'unidades' }}
+                  {{ cantidadLegible(adjustStockItem()?.stock ?? 0, adjustStockItem()?.unitOfMeasure || '') }}
                 </span>
               </div>
 
               <div>
                 <label for="new-stock-input" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Nuevo Stock Físico (Cantidad Real)
+                  Cantidad real ({{ adjustStockItem()?.unitOfMeasure || 'unidades' }})
                 </label>
                 <input
                   id="new-stock-input"
@@ -1193,6 +1205,9 @@ export class CatalogComponent implements OnInit {
     return this.products().filter((p) => !fotos[p.id]).length;
   });
   readonly ingredientSearchQuery = signal<string>('');
+  readonly filtroExistencias = signal<'todos' | 'sin'>('todos');
+  readonly unidadesDeInventario = UNIDADES_DE_INVENTARIO;
+  readonly cantidadLegible = cantidadLegible;
   readonly viewMode = signal<'grid' | 'list'>('grid');
 
   // Expanded recipe breakdown product IDs
@@ -1329,8 +1344,13 @@ export class CatalogComponent implements OnInit {
     if (query) {
       list = list.filter(ing => ing.name.toLowerCase().includes(query));
     }
+    if (this.filtroExistencias() === 'sin') {
+      list = list.filter(ing => (ing.stock ?? 0) <= 0);
+    }
     return list.sort((a, b) => a.name.localeCompare(b.name));
   });
+
+  readonly sinExistencias = computed(() => this.ingredients().filter(i => i.stock !== null && i.stock !== undefined && i.stock <= 0).length);
 
   ngOnInit(): void {
     if (!this.isSuperAdmin()) {
@@ -1541,6 +1561,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error updating category', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo guardar la categoría.');
           this.categories.set(previousCats);
           this.isSyncing.set(false);
         }
@@ -1569,6 +1590,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error creating category', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo crear la categoría.');
           this.categories.update(list => list.filter(c => c.id !== tempId));
           if (this.selectedCategoryId() === tempId) {
             const first = this.categories()[0];
@@ -1731,6 +1753,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error updating product', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo guardar el producto.');
           this.products.set(previousProds);
           this.isSyncing.set(false);
         }
@@ -1761,6 +1784,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error creating product', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo crear el producto.');
           this.products.update(list => list.filter(p => p.id !== tempId));
           this.isSyncing.set(false);
         }
@@ -1840,6 +1864,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error updating ingredient', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo guardar el ingrediente.');
           this.ingredients.set(previousIngs);
           this.isSyncing.set(false);
         }
@@ -1863,6 +1888,7 @@ export class CatalogComponent implements OnInit {
         },
         error: (err) => {
           console.error('Error creating ingredient', err);
+          this.avisos.error(err.error?.error || err.error?.message || 'No se pudo crear el ingrediente.');
           this.ingredients.update(list => list.filter(i => i.id !== tempId));
           this.isSyncing.set(false);
         }
@@ -1923,6 +1949,10 @@ export class CatalogComponent implements OnInit {
     if (!item || !branchId) return;
 
     const newStock = Number(this.adjustStockValue());
+    if (!Number.isFinite(newStock) || newStock < 0) {
+      this.avisos.error('Escribe una cantidad de cero o más.');
+      return;
+    }
     this.isSyncing.set(true);
 
     const endpoint = item.type === 'PRODUCT'
@@ -1940,6 +1970,7 @@ export class CatalogComponent implements OnInit {
       },
       error: (err) => {
         console.error('Error adjusting stock via PATCH endpoint:', err);
+        this.avisos.error(err.error?.error || err.error?.message || 'No se pudieron guardar las existencias.');
         this.isSyncing.set(false);
       }
     });
@@ -1969,30 +2000,12 @@ export class CatalogComponent implements OnInit {
 
   // --- Dynamic Recipe Unit Helpers ---
   getAvailableUnitsForItem(item: RecipeItem): string[] {
-    if (!item.ingredientId) return item.recipeUnit ? [item.recipeUnit] : ['-'];
-
-    const ing = this.ingredients().find(i => i.id === item.ingredientId);
-    if (!ing || !ing.unitOfMeasure) {
-      return item.recipeUnit ? [item.recipeUnit] : ['-'];
-    }
-
-    const rawUnit = ing.unitOfMeasure.trim();
-    const lowerUnit = rawUnit.toLowerCase();
-    let units: string[] = [rawUnit];
-
-    if (['l', 'lt', 'litro', 'litros'].includes(lowerUnit)) {
-      const mainL = ['l', 'lt'].includes(rawUnit) ? rawUnit : 'L';
-      units = [mainL, 'ml'];
-    } else if (['kg', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(lowerUnit)) {
-      const mainKg = rawUnit === 'kg' ? 'kg' : 'KG';
-      units = [mainKg, 'g'];
-    }
-
-    if (item.recipeUnit && !units.includes(item.recipeUnit)) {
-      units.push(item.recipeUnit);
-    }
-
-    return units;
+    const ing = item.ingredientId ? this.ingredients().find(i => i.id === item.ingredientId) : undefined;
+    const unidades = unidadesCompatibles(ing?.unitOfMeasure);
+    // Una receta vieja puede traer otra unidad: se muestra para no perderla.
+    const actual = unidadCanonica(item.recipeUnit);
+    if (actual && !unidades.includes(actual)) unidades.push(actual);
+    return unidades.length ? unidades : ['-'];
   }
 
   getRecipeBreakdown(prod: Product) {
@@ -2007,20 +2020,8 @@ export class CatalogComponent implements OnInit {
       const name = item.ingredientName || ing?.name || 'Ingrediente';
       const recipeUnit = item.recipeUnit || baseUnit;
 
-      // Unit conversion between baseUnit (ingredient stock) and recipeUnit (recipe usage)
-      let availableStockInRecipeUnit = ingStock;
-      const baseLower = baseUnit.trim().toLowerCase();
-      const recipeLower = recipeUnit.trim().toLowerCase();
-
-      if (['kg', 'kilo', 'kilos'].includes(baseLower) && recipeLower === 'g') {
-        availableStockInRecipeUnit = ingStock * 1000;
-      } else if (baseLower === 'g' && ['kg', 'kilo', 'kilos'].includes(recipeLower)) {
-        availableStockInRecipeUnit = ingStock / 1000;
-      } else if (['l', 'lt', 'litro', 'litros'].includes(baseLower) && recipeLower === 'ml') {
-        availableStockInRecipeUnit = ingStock * 1000;
-      } else if (baseLower === 'ml' && ['l', 'lt', 'litro', 'litros'].includes(recipeLower)) {
-        availableStockInRecipeUnit = ingStock / 1000;
-      }
+      // Existencias del ingrediente expresadas en la unidad de la receta (kg → g).
+      const availableStockInRecipeUnit = convertirUnidad(ingStock, baseUnit, recipeUnit);
 
       const requiredTotal = item.quantity * currentStock;
       const potentialPortions = item.quantity > 0 ? Math.floor(availableStockInRecipeUnit / item.quantity) : Infinity;

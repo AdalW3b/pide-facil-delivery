@@ -30,6 +30,7 @@ public class IngredientService {
     private final RestaurantRepository restaurantRepository;
     private final BranchIngredientStockRepository branchIngredientStockRepository;
     private final BranchRepository branchRepository;
+    private final com.omnirest.omnirest_backend.repositories.RecipeItemRepository recipeItemRepository;
 
     public List<IngredientDTO> getIngredients(CustomUserDetails user, UUID branchId) {
         UUID restaurantId = user.restaurantId();
@@ -46,8 +47,12 @@ public class IngredientService {
                     .orElse(user.restaurantId());
         }
 
+        // Existencias de la sucursal en una sola consulta (antes era una por ingrediente).
+        java.util.Map<UUID, BigDecimal> existencias = branchId == null ? java.util.Map.of()
+                : branchIngredientStockRepository.findByBranchId(branchId).stream()
+                        .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
         return ingredientRepository.findByRestaurantId(restaurantId).stream()
-                .map(i -> mapToDTO(i, branchId))
+                .map(i -> toDTO(i, branchId == null ? null : existencias.getOrDefault(i.getId(), BigDecimal.ZERO)))
                 .collect(Collectors.toList());
     }
 
@@ -67,8 +72,8 @@ public class IngredientService {
 
         Ingredient ingredient = Ingredient.builder()
                 .restaurant(restaurant)
-                .name(dto.name())
-                .unitOfMeasure(dto.unitOfMeasure())
+                .name(nombreValido(dto.name()))
+                .unitOfMeasure(unidadValida(dto.unitOfMeasure()))
                 .active(dto.active() != null ? dto.active() : true)
                 .build();
 
@@ -82,8 +87,16 @@ public class IngredientService {
 
         validateRestaurantOwnership(user, ingredient.getRestaurant().getId());
 
-        ingredient.setName(dto.name());
-        ingredient.setUnitOfMeasure(dto.unitOfMeasure());
+        ingredient.setName(nombreValido(dto.name()));
+        String unidadNueva = unidadValida(dto.unitOfMeasure());
+        String unidadActual = Unidades.canonica(ingredient.getUnitOfMeasure());
+        if (!unidadNueva.equals(unidadActual) && enUso(ingredient)) {
+            // Cambiar de kg a g haría que "25" pasara de 25 kg a 25 g, y las recetas
+            // y adicionales ya escritos quedarían en otra escala.
+            throw new IllegalArgumentException("No se puede cambiar la unidad de " + ingredient.getName()
+                    + " porque ya tiene existencias o se usa en recetas. Crea un ingrediente nuevo con la unidad que necesitas.");
+        }
+        ingredient.setUnitOfMeasure(unidadNueva);
         if (dto.active() != null) {
             ingredient.setActive(dto.active());
         }
@@ -110,7 +123,10 @@ public class IngredientService {
                         .stock(BigDecimal.ZERO)
                         .build());
 
-        stockEntry.setStock(stock != null ? stock : BigDecimal.ZERO);
+        if (stock == null || stock.signum() < 0) {
+            throw new IllegalArgumentException("Las existencias no pueden ser negativas.");
+        }
+        stockEntry.setStock(stock);
         branchIngredientStockRepository.save(stockEntry);
 
         return mapToDTO(ingredient, branchId);
@@ -123,6 +139,27 @@ public class IngredientService {
 
         validateRestaurantOwnership(user, ingredient.getRestaurant().getId());
         ingredientRepository.delete(ingredient);
+    }
+
+    private String nombreValido(String nombre) {
+        if (nombre == null || nombre.isBlank()) {
+            throw new IllegalArgumentException("Escribe el nombre del ingrediente.");
+        }
+        return nombre.trim();
+    }
+
+    /** "Kilos" se guarda como "kg": una sola forma de escribir cada unidad. */
+    private String unidadValida(String unidad) {
+        String canonica = Unidades.canonica(unidad);
+        if (canonica == null) {
+            throw new IllegalArgumentException("Elige en qué unidad se lleva el ingrediente.");
+        }
+        return canonica;
+    }
+
+    private boolean enUso(Ingredient ingredient) {
+        return recipeItemRepository.countByIngredientId(ingredient.getId()) > 0
+                || branchIngredientStockRepository.existsByIngredientIdAndStockNot(ingredient.getId(), BigDecimal.ZERO);
     }
 
     private void validateRestaurantOwnership(CustomUserDetails user, UUID resourceRestaurantId) {
@@ -139,7 +176,10 @@ public class IngredientService {
                     .map(BranchIngredientStock::getStock)
                     .orElse(BigDecimal.ZERO);
         }
+        return toDTO(ingredient, currentStock);
+    }
 
+    private IngredientDTO toDTO(Ingredient ingredient, BigDecimal currentStock) {
         return new IngredientDTO(
                 ingredient.getId(),
                 ingredient.getRestaurant().getId(),

@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,21 +22,21 @@ public class InventoryService {
     private final IngredientRepository ingredientRepository;
     private final ProductRepository productRepository;
 
-    private BigDecimal normalizeQuantity(BigDecimal recipeQty, String recipeUnit, String ingredientUnit) {
-        if (recipeQty == null) return BigDecimal.ZERO;
-        if (recipeUnit == null || ingredientUnit == null) return recipeQty;
-        String rU = recipeUnit.trim().toLowerCase();
-        String iU = ingredientUnit.trim().toLowerCase();
-
-        // De mililitros a Litros
-        if (rU.equals("ml") && (iU.equals("l") || iU.equals("lt") || iU.equals("litro") || iU.equals("litros"))) {
-            return recipeQty.divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
+    /**
+     * Lo que gasta un platillo de un ingrediente, en la unidad en que se lleva
+     * el inventario: la receta dice 250 g y la carne se lleva en kg -> 0.25.
+     * La receta se guarda tal como se escribio; esta es la unica conversion.
+     */
+    static BigDecimal consumoPorPlatillo(RecipeItem receta) {
+        Ingredient ingrediente = receta.getIngredient();
+        String unidadInventario = ingrediente != null ? ingrediente.getUnitOfMeasure() : null;
+        try {
+            return Unidades.convertir(receta.getQuantity(), receta.getRecipeUnit(), unidadInventario);
+        } catch (IllegalArgumentException e) {
+            // Receta vieja con unidades que no se pueden convertir (p. ej. g contra pieza):
+            // se descuenta la cantidad tal cual, como antes, para no frenar la venta.
+            return receta.getQuantity() != null ? receta.getQuantity() : BigDecimal.ZERO;
         }
-        // De gramos a Kilos
-        if (rU.equals("g") && (iU.equals("kg") || iU.equals("kilo") || iU.equals("kilos"))) {
-            return recipeQty.divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
-        }
-        return recipeQty;
     }
 
     @Transactional
@@ -104,12 +103,7 @@ public class InventoryService {
 
             for (RecipeItem recipe : recipeItems) {
                 Ingredient ingredient = recipe.getIngredient();
-                BigDecimal normalizedQty = normalizeQuantity(
-                        recipe.getQuantity(),
-                        recipe.getRecipeUnit(),
-                        ingredient != null ? ingredient.getUnitOfMeasure() : null
-                );
-                BigDecimal cantidadNecesaria = normalizedQty.multiply(BigDecimal.valueOf(quantitySold));
+                BigDecimal cantidadNecesaria = consumoPorPlatillo(recipe).multiply(BigDecimal.valueOf(quantitySold));
 
                 int updatedRows = branchIngredientStockRepository.subtractStockAtomic(branchId, ingredient.getId(), cantidadNecesaria);
                 if (updatedRows == 0) {
@@ -177,12 +171,7 @@ public class InventoryService {
 
             for (RecipeItem recipe : recipeItems) {
                 Ingredient ingredient = recipe.getIngredient();
-                BigDecimal normalizedQty = normalizeQuantity(
-                        recipe.getQuantity(),
-                        recipe.getRecipeUnit(),
-                        ingredient != null ? ingredient.getUnitOfMeasure() : null
-                );
-                BigDecimal cantidadARestaurar = normalizedQty.multiply(BigDecimal.valueOf(quantityRestored));
+                BigDecimal cantidadARestaurar = consumoPorPlatillo(recipe).multiply(BigDecimal.valueOf(quantityRestored));
 
                 int updated = branchIngredientStockRepository.addStockAtomic(branchId, ingredient.getId(), cantidadARestaurar);
                 if (updated == 0) {

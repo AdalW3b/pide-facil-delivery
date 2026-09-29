@@ -31,6 +31,7 @@ public class ProductController {
     public ResponseEntity<List<ProductResponseDTO>> getProducts(
             @RequestParam(required = false) UUID branchId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (branchId != null) securityValidationService.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(productService.getProducts(userDetails, branchId));
     }
 
@@ -68,9 +69,8 @@ public class ProductController {
             @RequestBody Map<String, Object> payload,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         securityValidationService.validateUserAccessToBranch(branchId);
-        Integer newStock = extractStock(payload);
-        inventoryService.setAbsoluteStock(id, branchId, newStock, false);
-        return ResponseEntity.ok(productService.getProductById(id, userDetails, branchId));
+        // updateStock comprueba que el producto sea del restaurante de quien ajusta.
+        return ResponseEntity.ok(productService.updateStock(id, branchId, extractStock(payload), userDetails));
     }
 
     @DeleteMapping("/{id}")

@@ -11,4 +11,7 @@ import java.util.UUID;
 public interface RecipeItemRepository extends JpaRepository<RecipeItem, UUID> {
     List<RecipeItem> findByProductId(UUID productId);
     void deleteByProductId(UUID productId);
+
+    /** Cuántos renglones de receta usan el ingrediente. */
+    long countByIngredientId(UUID ingredientId);
 }

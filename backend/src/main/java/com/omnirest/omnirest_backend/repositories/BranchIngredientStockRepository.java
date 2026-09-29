@@ -17,6 +17,12 @@ import java.util.UUID;
 public interface BranchIngredientStockRepository extends JpaRepository<BranchIngredientStock, BranchIngredientStockKey> {
     Optional<BranchIngredientStock> findByBranchIdAndIngredientId(UUID branchId, UUID ingredientId);
 
+    /** Todas las existencias de una sucursal: para listar sin una consulta por ingrediente. */
+    java.util.List<BranchIngredientStock> findByBranchId(UUID branchId);
+
+    /** Alguna sucursal tiene existencias (distintas de cero) de este ingrediente. */
+    boolean existsByIngredientIdAndStockNot(UUID ingredientId, BigDecimal stock);
+
     @Modifying
     @Transactional
     @Query("UPDATE BranchIngredientStock b SET b.stock = b.stock - :quantity WHERE b.ingredient.id = :ingredientId AND b.branch.id = :branchId AND b.stock >= :quantity")

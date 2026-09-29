@@ -32,25 +32,6 @@ public class ProductService {
     private final BranchRepository branchRepository;
     private final RestaurantRepository restaurantRepository;
 
-    private BigDecimal normalizeQuantity(BigDecimal recipeQty, String recipeUnit, String ingredientUnit) {
-        if (recipeQty == null)
-            return BigDecimal.ZERO;
-        if (recipeUnit == null || ingredientUnit == null)
-            return recipeQty;
-        String rU = recipeUnit.trim().toLowerCase();
-        String iU = ingredientUnit.trim().toLowerCase();
-
-        // De mililitros a Litros
-        if (rU.equals("ml") && (iU.equals("l") || iU.equals("lt") || iU.equals("litro") || iU.equals("litros"))) {
-            return recipeQty.divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
-        }
-        // De gramos a Kilos
-        if (rU.equals("g") && (iU.equals("kg") || iU.equals("kilo") || iU.equals("kilos"))) {
-            return recipeQty.divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
-        }
-        return recipeQty;
-    }
-
     public List<ProductResponseDTO> getProducts(CustomUserDetails user, UUID branchId) {
         UUID restaurantId = user.restaurantId();
 
@@ -65,8 +46,9 @@ public class ProductService {
                     .findFirst()
                     .orElse(user.restaurantId());
         }
+        java.util.Map<UUID, BigDecimal> existencias = existenciasDe(branchId);
         return productRepository.findByCategoryRestaurantId(restaurantId).stream()
-                .map(p -> mapToResponse(p, branchId))
+                .map(p -> mapToResponse(p, branchId, existencias))
                 .collect(Collectors.toList());
     }
 
@@ -100,24 +82,7 @@ public class ProductService {
 
         if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
             for (RecipeItemDTO itemDto : dto.recipeItems()) {
-                Ingredient ingredient = ingredientRepository.findById(itemDto.ingredientId())
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Ingrediente no encontrado con id: " + itemDto.ingredientId()));
-
-                BigDecimal qty = itemDto.quantity() != null ? itemDto.quantity() : itemDto.requiredPerUnit();
-                String rUnit = itemDto.recipeUnit() != null && !itemDto.recipeUnit().isBlank()
-                        ? itemDto.recipeUnit()
-                        : ingredient.getUnitOfMeasure();
-
-                BigDecimal normalizedQty = normalizeQuantity(qty, rUnit, ingredient.getUnitOfMeasure());
-
-                RecipeItem recipeItem = RecipeItem.builder()
-                        .product(product)
-                        .ingredient(ingredient)
-                        .quantity(normalizedQty)
-                        .recipeUnit(rUnit)
-                        .build();
-                product.getRecipeItems().add(recipeItem);
+                product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
             }
         }
 
@@ -160,24 +125,7 @@ public class ProductService {
         if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
             product.getRecipeItems().clear();
             for (RecipeItemDTO itemDto : dto.recipeItems()) {
-                Ingredient ingredient = ingredientRepository.findById(itemDto.ingredientId())
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Ingrediente no encontrado con id: " + itemDto.ingredientId()));
-
-                BigDecimal qty = itemDto.quantity() != null ? itemDto.quantity() : itemDto.requiredPerUnit();
-                String rUnit = itemDto.recipeUnit() != null && !itemDto.recipeUnit().isBlank()
-                        ? itemDto.recipeUnit()
-                        : ingredient.getUnitOfMeasure();
-
-                BigDecimal normalizedQty = normalizeQuantity(qty, rUnit, ingredient.getUnitOfMeasure());
-
-                RecipeItem recipeItem = RecipeItem.builder()
-                        .product(product)
-                        .ingredient(ingredient)
-                        .quantity(normalizedQty)
-                        .recipeUnit(rUnit)
-                        .build();
-                product.getRecipeItems().add(recipeItem);
+                product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
             }
         } else {
             product.getRecipeItems().clear();
@@ -207,7 +155,10 @@ public class ProductService {
                         .stock(0)
                         .build());
 
-        stockEntry.setStock(stock != null ? stock : 0);
+        if (stock == null || stock < 0) {
+            throw new IllegalArgumentException("Las existencias no pueden ser negativas.");
+        }
+        stockEntry.setStock(stock);
         branchProductStockRepository.save(stockEntry);
 
         return mapToResponse(product, branchId);
@@ -222,13 +173,62 @@ public class ProductService {
         productRepository.delete(product);
     }
 
+    private UUID restauranteDe(Product product) {
+        return product.getCategory().getRestaurant().getId();
+    }
+
+    /**
+     * Un renglon de receta tal como lo escribio el usuario: "250 g" se guarda
+     * como 250 y g. La conversion a la unidad del inventario (kg) se hace una
+     * sola vez, al descontar (InventoryService.consumoPorPlatillo).
+     */
+    private RecipeItem renglonDeReceta(Product product, RecipeItemDTO itemDto, UUID restaurantId) {
+        Ingredient ingredient = ingredientRepository.findById(itemDto.ingredientId())
+                .orElseThrow(() -> new IllegalArgumentException("Ese ingrediente ya no existe."));
+        if (ingredient.getRestaurant() == null || !ingredient.getRestaurant().getId().equals(restaurantId)) {
+            throw new IllegalArgumentException("El ingrediente " + ingredient.getName() + " no es de este restaurante.");
+        }
+
+        BigDecimal cantidad = itemDto.quantity() != null ? itemDto.quantity() : itemDto.requiredPerUnit();
+        if (cantidad == null || cantidad.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Escribe cuánto lleva de " + ingredient.getName() + ".");
+        }
+
+        String unidadInventario = Unidades.canonica(ingredient.getUnitOfMeasure());
+        String unidadReceta = itemDto.recipeUnit() != null && !itemDto.recipeUnit().isBlank()
+                ? Unidades.canonica(itemDto.recipeUnit())
+                : unidadInventario;
+        if (!Unidades.compatibles(unidadReceta, unidadInventario)) {
+            throw new IllegalArgumentException(ingredient.getName() + " se lleva en " + unidadInventario
+                    + ": la receta no puede usar " + unidadReceta + ".");
+        }
+
+        return RecipeItem.builder()
+                .product(product)
+                .ingredient(ingredient)
+                .quantity(cantidad)
+                .recipeUnit(unidadReceta)
+                .build();
+    }
+
     private void validateRestaurantOwnership(CustomUserDetails user, UUID resourceRestaurantId) {
         if (user.restaurantId() == null || !user.restaurantId().equals(resourceRestaurantId)) {
             throw new AccessDeniedException("User does not have access to this restaurant's products");
         }
     }
 
+    /** Existencias de todos los ingredientes de la sucursal, en una consulta. */
+    private java.util.Map<UUID, BigDecimal> existenciasDe(UUID branchId) {
+        if (branchId == null) return java.util.Map.of();
+        return branchIngredientStockRepository.findByBranchId(branchId).stream()
+                .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
+    }
+
     private ProductResponseDTO mapToResponse(Product product, UUID branchId) {
+        return mapToResponse(product, branchId, existenciasDe(branchId));
+    }
+
+    private ProductResponseDTO mapToResponse(Product product, UUID branchId, java.util.Map<UUID, BigDecimal> existencias) {
         Integer currentStock = null;
         List<RecipeItemDTO> recipeItemDTOs = null;
 
@@ -242,16 +242,10 @@ public class ProductService {
 
                 if (branchId != null) {
                     for (RecipeItem item : items) {
-                        BigDecimal normalizedQty = normalizeQuantity(
-                                item.getQuantity(),
-                                item.getRecipeUnit(),
-                                item.getIngredient() != null ? item.getIngredient().getUnitOfMeasure() : null);
+                        BigDecimal normalizedQty = InventoryService.consumoPorPlatillo(item);
 
                         if (normalizedQty != null && normalizedQty.compareTo(BigDecimal.ZERO) > 0) {
-                            BigDecimal stock = branchIngredientStockRepository
-                                    .findByBranchIdAndIngredientId(branchId, item.getIngredient().getId())
-                                    .map(BranchIngredientStock::getStock)
-                                    .orElse(BigDecimal.ZERO);
+                            BigDecimal stock = existencias.getOrDefault(item.getIngredient().getId(), BigDecimal.ZERO);
 
                             int possible = stock.divide(normalizedQty, 0, RoundingMode.DOWN).intValue();
                             if (possible < maxPortions) {
@@ -272,16 +266,10 @@ public class ProductService {
                 recipeItemDTOs = items.stream()
                         .map(item -> {
                             BigDecimal reqPerUnit = item.getQuantity();
-                            BigDecimal normalizedQty = normalizeQuantity(
-                                    item.getQuantity(),
-                                    item.getRecipeUnit(),
-                                    item.getIngredient() != null ? item.getIngredient().getUnitOfMeasure() : null);
+                            BigDecimal normalizedQty = InventoryService.consumoPorPlatillo(item);
 
                             BigDecimal availStock = branchId != null
-                                    ? branchIngredientStockRepository
-                                            .findByBranchIdAndIngredientId(branchId, item.getIngredient().getId())
-                                            .map(BranchIngredientStock::getStock)
-                                            .orElse(BigDecimal.ZERO)
+                                    ? existencias.getOrDefault(item.getIngredient().getId(), BigDecimal.ZERO)
                                     : null;
 
                             BigDecimal totalReqForMax = (branchId != null && normalizedQty != null)

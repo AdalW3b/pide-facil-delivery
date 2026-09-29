@@ -135,8 +135,8 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("createProduct with recipe normalizes units (ml to L)")
-    void createProduct_RecipeProduct_NormalizesUnits() {
+    @DisplayName("La receta se guarda como se escribe: 250 ml, no 0.25")
+    void createProduct_RecipeProduct_GuardaLaCantidadComoSeEscribe() {
         Ingredient ingredient = Ingredient.builder()
                 .id(UUID.randomUUID())
                 .name("Leche")
@@ -184,7 +184,8 @@ class ProductServiceTest {
         verify(productRepository).save(argThat(p -> {
             return p.getRecipeItems() != null &&
                    p.getRecipeItems().size() == 1 &&
-                   p.getRecipeItems().get(0).getQuantity().compareTo(new BigDecimal("0.2500")) == 0;
+                   p.getRecipeItems().get(0).getQuantity().compareTo(new BigDecimal("250")) == 0 &&
+                   "ml".equals(p.getRecipeItems().get(0).getRecipeUnit());
         }));
     }
 

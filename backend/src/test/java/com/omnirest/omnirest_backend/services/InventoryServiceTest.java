@@ -108,9 +108,9 @@ class InventoryServiceTest {
         inventoryService.checkAndDeductStock(recipeProduct, branchId, 2);
 
         verify(branchIngredientStockRepository, times(1))
-                .subtractStockAtomic(eq(branchId), eq(carne.getId()), eq(new BigDecimal("0.4000")));
+                .subtractStockAtomic(eq(branchId), eq(carne.getId()), argThat(v -> v.compareTo(new BigDecimal("0.4")) == 0));
         verify(branchIngredientStockRepository, times(1))
-                .subtractStockAtomic(eq(branchId), eq(queso.getId()), eq(new BigDecimal("0.1000")));
+                .subtractStockAtomic(eq(branchId), eq(queso.getId()), argThat(v -> v.compareTo(new BigDecimal("0.1")) == 0));
         verifyNoInteractions(branchProductStockRepository);
     }
 

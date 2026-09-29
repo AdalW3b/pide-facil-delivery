@@ -44,6 +44,10 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # Al recorrer una lista (productos -> categoria, receta -> ingrediente),
+        # Hibernate trae lo relacionado en lotes de hasta 50 en vez de una
+        # consulta por elemento. Con la base remota cada consulta cuesta.
+        default_batch_fetch_size: 50
 
 jwt:
   secret: ${JWT_SECRET}
