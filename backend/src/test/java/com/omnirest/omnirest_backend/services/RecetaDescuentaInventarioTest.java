@@ -42,12 +42,15 @@ class RecetaDescuentaInventarioTest {
     private ProductService productService() {
         return new ProductService(productRepository, categoryRepository, ingredientRepository,
                 mock(RecipeItemRepository.class), mock(BranchProductStockRepository.class), stockRepository,
-                mock(BranchRepository.class), mock(RestaurantRepository.class), mock(ComboItemRepository.class));
+                mock(BranchRepository.class), mock(RestaurantRepository.class), mock(ComboItemRepository.class),
+                mock(InventoryService.class), mock(AgotadosService.class));
     }
 
     private InventoryService inventoryService() {
         return new InventoryService(stockRepository, mock(BranchProductStockRepository.class),
-                mock(RecipeItemRepository.class), mock(BranchRepository.class), ingredientRepository, productRepository);
+                mock(RecipeItemRepository.class), mock(BranchRepository.class), ingredientRepository, productRepository,
+                mock(MovimientoInventarioRepository.class), mock(ProductoAgotadoRepository.class),
+                mock(org.springframework.messaging.simp.SimpMessagingTemplate.class));
     }
 
     private CustomUserDetails usuario() {

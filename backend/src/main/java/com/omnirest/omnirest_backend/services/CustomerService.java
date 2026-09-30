@@ -26,6 +26,8 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class CustomerService {
 
+    private final AgotadosService agotadosService;
+
     private final CustomerRepository customerRepository;
     private final BranchRepository branchRepository;
     private final ProductRepository productRepository;
@@ -91,12 +93,15 @@ public class CustomerService {
         UUID restaurantId = branch.getRestaurant().getId();
 
         List<Product> activeProducts = productRepository.findByCategoryRestaurantIdAndActiveTrue(restaurantId);
+        // Lo que se acabo hoy no se le ofrece al cliente por WhatsApp.
+        java.util.Set<UUID> agotados = agotadosService.agotados(branchId, activeProducts);
         List<com.omnirest.omnirest_backend.domain.entities.GrupoAdicional> grupos =
                 adicionalesService.gruposActivos(restaurantId);
 
         Map<String, List<Product>> grouped = activeProducts.stream()
                 .filter(p -> p.getCategory() != null && p.getCategory().getActive())
                 .filter(com.omnirest.omnirest_backend.services.Combos::vigenteHoy)
+                .filter(p -> !agotados.contains(p.getId()))
                 .collect(Collectors.groupingBy(p -> p.getCategory().getName()));
 
         return grouped.entrySet().stream()

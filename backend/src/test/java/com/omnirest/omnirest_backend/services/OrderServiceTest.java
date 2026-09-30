@@ -320,7 +320,8 @@ class OrderServiceTest {
         assertNotNull(order.getClosedAt());
         assertEquals(TableStatus.AVAILABLE, table.getStatus());
 
-        verify(inventoryService).devolverLinea(item, branchId);
+        // Estaba en preparacion: se devuelve y queda como merma.
+        verify(inventoryService).devolverLinea(item, branchId, true, "cuenta cancelada");
         verify(orderItemRepository).saveAll(anyList());
         verify(tableRepository).save(table);
         verify(messagingTemplate, atLeastOnce()).convertAndSend(contains("/kitchen"), any(Object.class));

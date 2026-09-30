@@ -230,6 +230,39 @@ public class CuentaPublicaService {
     }
 
     /**
+     * El repartidor entra con el codigo que le llego por WhatsApp, sin
+     * contrasena: es como toma entregas desde el enlace del grupo. Si es su
+     * primera vez queda registrado. El codigo prueba que el numero es suyo;
+     * antes bastaba con escribir el numero de otro para mover sus entregas.
+     */
+    @Transactional
+    public CuentaResponseDTO entrarRepartidorConCodigo(UUID branchId, String telefonoCrudo, String codigo, String nombre) {
+        Branch branch = buscarSucursal(branchId);
+        UUID restaurantId = branch.getRestaurant().getId();
+        String telefono = TelefonoMx.exigirValido(telefonoCrudo, "tu WhatsApp");
+
+        consumirCodigo(restaurantId, TipoCuenta.REPARTIDOR, telefono, codigo);
+
+        Driver repartidor = driverRepository.findByRestaurantIdAndPhoneNumber(restaurantId, telefono)
+                .orElseGet(() -> Driver.builder()
+                        .restaurant(branch.getRestaurant())
+                        .phoneNumber(telefono)
+                        .nombre("Repartidor")
+                        .build());
+        if (Boolean.FALSE.equals(repartidor.getActivo())) {
+            throw new IllegalStateException("Tu acceso como repartidor está desactivado. Habla con el restaurante.");
+        }
+        if (nombre != null && !nombre.isBlank()) {
+            repartidor.setNombre(nombre.trim());
+        }
+        repartidor.setUltimoAcceso(LocalDateTime.now());
+        driverRepository.save(repartidor);
+
+        log.info("Repartidor {} entró con código en el restaurante {}", telefono, restaurantId);
+        return comoRespuesta(repartidor, restaurantId);
+    }
+
+    /**
      * Cambia la contrasena de quien olvido la suya. Pide codigo otra vez: es el
      * mismo problema que en el alta, comprobar que el telefono es suyo.
      */

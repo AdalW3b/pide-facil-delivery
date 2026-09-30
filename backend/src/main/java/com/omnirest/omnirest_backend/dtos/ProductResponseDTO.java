@@ -27,5 +27,9 @@ public record ProductResponseDTO(
     /** "martes y jueves, del 1 oct al 31 oct"; null si se vende siempre. */
     String vigencia,
     /** Si hoy se puede vender (fecha de Mexico). */
-    Boolean vigenteHoy
+    Boolean vigenteHoy,
+    /** No se puede pedir hoy: se marco "se acabó" o ya no alcanza (modo Bloquear). */
+    Boolean agotado,
+    /** Se marco "se acabó" a mano hoy. */
+    Boolean agotadoHoy
 ) {}

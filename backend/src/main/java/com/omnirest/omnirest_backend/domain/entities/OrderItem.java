@@ -59,6 +59,13 @@ public class OrderItem {
     @EqualsAndHashCode.Exclude
     private java.util.List<OrderItemAdicional> adicionales = new java.util.ArrayList<>();
 
+    /** Lo que desconto del inventario (receta, producto o platillos del combo). */
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private java.util.List<OrderItemConsumo> consumos = new java.util.ArrayList<>();
+
     /** Si la linea es un combo: los platillos que llevaba al venderse. */
     @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @org.hibernate.annotations.Fetch(org.hibernate.annotations.FetchMode.SUBSELECT)

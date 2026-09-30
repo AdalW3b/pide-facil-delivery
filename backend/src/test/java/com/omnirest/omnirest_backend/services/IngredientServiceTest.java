@@ -26,6 +26,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
 class IngredientServiceTest {
@@ -41,6 +42,15 @@ class IngredientServiceTest {
 
     @Mock
     private BranchRepository branchRepository;
+
+    @Mock
+    private com.omnirest.omnirest_backend.repositories.RecipeItemRepository recipeItemRepository;
+
+    @Mock
+    private InventoryService inventoryService;
+
+    @Mock
+    private com.omnirest.omnirest_backend.repositories.MovimientoInventarioRepository movimientoRepository;
 
     @InjectMocks
     private IngredientService ingredientService;
@@ -123,7 +133,10 @@ class IngredientServiceTest {
         IngredientDTO response = ingredientService.updateStock(ingredient.getId(), branchId, new BigDecimal("15.50"), user);
 
         assertNotNull(response);
-        verify(branchIngredientStockRepository).save(any());
+        // El ajuste pasa por el inventario, que deja el movimiento en el historial.
+        verify(inventoryService).fijarIngrediente(eq(branchId), eq(ingredient),
+                argThat(v -> v.compareTo(new BigDecimal("15.50")) == 0),
+                eq(com.omnirest.omnirest_backend.domain.enums.TipoMovimiento.AJUSTE), anyString());
     }
 
     @Test

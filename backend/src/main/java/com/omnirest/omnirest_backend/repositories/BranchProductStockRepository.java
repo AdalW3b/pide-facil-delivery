@@ -16,6 +16,12 @@ import java.util.UUID;
 public interface BranchProductStockRepository extends JpaRepository<BranchProductStock, BranchProductStockKey> {
     Optional<BranchProductStock> findByBranchIdAndProductId(UUID branchId, UUID productId);
 
+    java.util.List<BranchProductStock> findByBranchId(UUID branchId);
+
+    /** La existencia tal como esta en la base, sin pasar por la cache de la sesion. */
+    @Query("SELECT b.stock FROM BranchProductStock b WHERE b.branch.id = :branchId AND b.product.id = :productId")
+    Optional<Integer> saldo(@Param("branchId") UUID branchId, @Param("productId") UUID productId);
+
     @Modifying
     @Transactional
     @Query("UPDATE BranchProductStock b SET b.stock = b.stock - :quantity WHERE b.product.id = :productId AND b.branch.id = :branchId AND b.stock >= :quantity")

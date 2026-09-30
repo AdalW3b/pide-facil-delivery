@@ -36,6 +36,7 @@ public class CarritoBotService {
     private final BranchRepository branchRepository;
     private final OrderService orderService;
     private final AdicionalesService adicionalesService;
+    private final AgotadosService agotadosService;
 
     public CarritoBotDTO ver(UUID branchId, String telefonoCrudo) {
         return carritoVigente(branchId, TelefonoMx.canonico(telefonoCrudo))
@@ -65,6 +66,10 @@ public class CarritoBotService {
             producto = orderService.encontrarProducto(restaurantId, dto.product_name());
             if (producto == null) {
                 noEncontrados.add(dto.product_name());
+                continue;
+            }
+            if (agotadosService.estaAgotado(branchId, producto)) {
+                avisos.add(producto.getName() + " se acabó por hoy.");
                 continue;
             }
             if (Combos.esCombo(producto) && !Combos.vigenteHoy(producto)) {

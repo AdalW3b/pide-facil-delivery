@@ -43,6 +43,7 @@ class CombosTest {
     private final BranchIngredientStockRepository ingredientes = mock(BranchIngredientStockRepository.class);
     private final BranchProductStockRepository existencias = mock(BranchProductStockRepository.class);
     private final ComboItemRepository comboItemRepository = mock(ComboItemRepository.class);
+    private final IngredientRepository ingredientRepository = mock(IngredientRepository.class);
 
     @BeforeEach
     void menu() {
@@ -54,6 +55,7 @@ class CombosTest {
                 .category(categoria).active(true).trackStock(true).build();
 
         when(categoryRepository.findById(categoria.getId())).thenReturn(Optional.of(categoria));
+        when(ingredientRepository.findById(carne.getId())).thenReturn(Optional.of(carne));
         when(productRepository.findById(taco.getId())).thenReturn(Optional.of(taco));
         when(productRepository.findById(refresco.getId())).thenReturn(Optional.of(refresco));
         when(productRepository.save(any(Product.class))).thenAnswer(i -> {
@@ -66,12 +68,15 @@ class CombosTest {
     private ProductService productService() {
         return new ProductService(productRepository, categoryRepository, mock(IngredientRepository.class),
                 mock(RecipeItemRepository.class), existencias, ingredientes,
-                mock(BranchRepository.class), mock(RestaurantRepository.class), comboItemRepository);
+                mock(BranchRepository.class), mock(RestaurantRepository.class), comboItemRepository,
+                mock(InventoryService.class), mock(AgotadosService.class));
     }
 
     private InventoryService inventoryService() {
         return new InventoryService(ingredientes, existencias, mock(RecipeItemRepository.class),
-                mock(BranchRepository.class), mock(IngredientRepository.class), productRepository);
+                mock(BranchRepository.class), ingredientRepository, productRepository,
+                mock(MovimientoInventarioRepository.class), mock(ProductoAgotadoRepository.class),
+                mock(org.springframework.messaging.simp.SimpMessagingTemplate.class));
     }
 
     private CustomUserDetails usuario() {

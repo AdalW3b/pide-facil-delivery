@@ -77,6 +77,7 @@ public class DeliveryService {
     private final WhatsappIntegrationService whatsappIntegrationService;
     private final ColaWhatsapp colaWhatsapp;
     private final SimpMessagingTemplate messagingTemplate;
+    private final AgotadosService agotadosService;
 
     /** Desde donde se sirve el sitio del cliente y del repartidor. */
     @org.springframework.beans.factory.annotation.Value("${omnirest.url-publica:http://localhost:4200}")
@@ -123,9 +124,10 @@ public class DeliveryService {
         List<com.omnirest.omnirest_backend.domain.entities.GrupoAdicional> grupos =
                 adicionalesService.gruposActivos(branch.getRestaurant().getId());
         java.util.Map<UUID, LocalDateTime> fotos = fotosService.versiones(branch.getRestaurant().getId());
+        List<Product> activos = productRepository.findByCategoryRestaurantIdAndActiveTrue(branch.getRestaurant().getId());
+        java.util.Set<UUID> agotados = agotadosService.agotados(branchId, activos);
 
-        return productRepository
-                .findByCategoryRestaurantIdAndActiveTrue(branch.getRestaurant().getId()).stream()
+        return activos.stream()
                 .filter(p -> p.getCategory() != null && Boolean.TRUE.equals(p.getCategory().getActive()))
                 .filter(Combos::vigenteHoy)
                 .collect(Collectors.groupingBy(Product::getCategory, LinkedHashMap::new, Collectors.toList()))
@@ -140,7 +142,8 @@ public class DeliveryService {
                                         adicionalesService.gruposDelMenu(p, grupos),
                                         FotosService.url(p.getId(), fotos.get(p.getId()), "mini"),
                                         FotosService.url(p.getId(), fotos.get(p.getId()), "grande"),
-                                        Combos.incluye(p)))
+                                        Combos.incluye(p),
+                                        agotados.contains(p.getId())))
                                 .toList()))
                 .sorted(Comparator.comparing(MenuPublicoCategoriaDTO::nombre, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -295,6 +298,26 @@ public class DeliveryService {
                 envio.distanciaKm(),
                 order.getMinutosEstimados(),
                 cambio(request.pagaCon(), total));
+    }
+
+    /** Pedidos sin confirmar que puede tener un mismo telefono a la vez. */
+    private static final int PENDIENTES_POR_TELEFONO = 3;
+
+    /**
+     * Frena al que manda pedido tras pedido con el mismo numero antes de que el
+     * restaurante confirme el primero. Solo para el menu en linea: el pedido
+     * por telefono lo captura el propio encargado.
+     */
+    @Transactional(readOnly = true)
+    public void exigirSinDemasiadosPendientes(UUID branchId, String telefonoCrudo) {
+        String telefono = TelefonoMx.canonico(telefonoCrudo);
+        if (telefono.isEmpty()) return; // La validacion del numero la hace crearPedido.
+        long pendientes = orderRepository.countByBranchIdAndCustomerPhoneNumberAndDeliveryStatusAndCreatedAtAfter(
+                branchId, telefono, DeliveryStatus.NUEVO, LocalDateTime.now().minusHours(2));
+        if (pendientes >= PENDIENTES_POR_TELEFONO) {
+            throw new IllegalStateException("Ya tienes " + pendientes
+                    + " pedidos esperando confirmación. Espera a que el restaurante los confirme o llámanos.");
+        }
     }
 
     /**
@@ -571,8 +594,9 @@ public class DeliveryService {
             if (item.getKitchenStatus() == KitchenStatus.CANCELLED) {
                 continue;
             }
-            inventoryService.devolverLinea(item, order.getBranch().getId());
-            inventoryService.devolverAdicionales(item, order.getBranch().getId());
+            boolean yaPreparado = item.getKitchenStatus() != KitchenStatus.PENDING;
+            inventoryService.devolverLinea(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
+            inventoryService.devolverAdicionales(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
             item.setKitchenStatus(KitchenStatus.CANCELLED);
             orderItemRepository.save(item);
         }
@@ -969,6 +993,16 @@ public class DeliveryService {
     }
 
     private void guardarDireccion(Customer customer, CrearPedidoDomicilioRequestDTO request) {
+        // Pedir otra vez a la misma casa no debe llenar la lista de copias: si
+        // ya tiene una con el mismo texto o a menos de ~30 m, no se guarda.
+        boolean yaEsta = customerAddressRepository
+                .findByCustomerIdAndActivaTrueOrderByEsPrincipalDescCreadaEnDesc(customer.getId()).stream()
+                .anyMatch(a -> (a.getDireccion() != null
+                        && a.getDireccion().trim().equalsIgnoreCase(request.direccion().trim()))
+                        || (a.getLatitud() != null && a.getLongitud() != null
+                        && a.getLatitud().subtract(request.latitud()).abs().doubleValue() < 0.0003
+                        && a.getLongitud().subtract(request.longitud()).abs().doubleValue() < 0.0003));
+        if (yaEsta) return;
         customerAddressRepository.save(CustomerAddress.builder()
                 .customer(customer)
                 .alias(request.aliasDireccion())

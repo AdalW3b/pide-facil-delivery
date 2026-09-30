@@ -10,6 +10,8 @@ import java.util.List;
  * necesita para entregar: no expone datos del negocio ni de otros pedidos.
  */
 public record EntregaRepartidorDTO(
+        /** La sucursal del pedido: con ella la pantalla pide el codigo y guarda la sesion. */
+        java.util.UUID branchId,
         String token,
         DeliveryStatus estado,
         /** True si nadie la ha tomado y sigue disponible. */

@@ -334,7 +334,7 @@ interface Columna {
                       <td class="py-2 pr-4 text-right text-slate-400">{{ r.kmTotales.toFixed(1) }}</td>
                       <td class="py-2 pr-4 text-right font-bold text-amber-400">{{ r.aPagar | pesos }}</td>
                       <td class="py-2 pr-4 text-right text-emerald-400">{{ r.cobrado | pesos }}</td>
-                      <td class="py-2 pr-4 text-right text-slate-300">{{ (r.propinas ?? 0) | pesos }}</td>
+                      <td class="py-2 pr-4 text-right text-slate-300">{{ r.propinas | pesos }}</td>
                       <td class="py-2 text-right text-slate-400 text-xs">{{ soloHora(r.ultimaEntrega) }}</td>
                     </tr>
                   }

@@ -52,6 +52,9 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
   expiration: 14400000 # 4 horas
+  # Clientes y repartidores: su acceso solo alcanza su propia ficha, y pedirles
+  # un codigo cada 4 horas a media jornada de reparto no tiene sentido.
+  expiration-cuenta: 2592000000 # 30 dias
 
 bot:
   secret: ${BOT_SECRET}

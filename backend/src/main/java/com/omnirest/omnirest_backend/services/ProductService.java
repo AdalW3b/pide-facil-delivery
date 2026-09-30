@@ -32,6 +32,8 @@ public class ProductService {
     private final BranchRepository branchRepository;
     private final RestaurantRepository restaurantRepository;
     private final ComboItemRepository comboItemRepository;
+    private final InventoryService inventoryService;
+    private final AgotadosService agotadosService;
 
     public List<ProductResponseDTO> getProducts(CustomUserDetails user, UUID branchId) {
         UUID restaurantId = user.restaurantId();
@@ -48,8 +50,12 @@ public class ProductService {
                     .orElse(user.restaurantId());
         }
         java.util.Map<UUID, BigDecimal> existencias = existenciasDe(branchId);
-        return productRepository.findByCategoryRestaurantId(restaurantId).stream()
-                .map(p -> mapToResponse(p, branchId, existencias))
+        List<Product> productos = productRepository.findByCategoryRestaurantId(restaurantId);
+        java.util.Set<UUID> manuales = branchId != null ? agotadosService.manuales(branchId) : java.util.Set.of();
+        java.util.Set<UUID> agotados = branchId != null ? agotadosService.agotados(branchId, productos) : java.util.Set.of();
+        return productos.stream()
+                .map(p -> conAgotado(mapToResponse(p, branchId, existencias), agotados.contains(p.getId()),
+                        manuales.contains(p.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -155,23 +161,13 @@ public class ProductService {
 
         validateRestaurantOwnership(user, product.getCategory().getRestaurant().getId());
 
-        Branch branch = branchRepository.findById(branchId)
+        branchRepository.findById(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Branch not found: " + branchId));
-
-        BranchProductStock stockEntry = branchProductStockRepository
-                .findByBranchIdAndProductId(branchId, id)
-                .orElseGet(() -> BranchProductStock.builder()
-                        .id(new BranchProductStockKey(branchId, id))
-                        .branch(branch)
-                        .product(product)
-                        .stock(0)
-                        .build());
-
         if (stock == null || stock < 0) {
             throw new IllegalArgumentException("Las existencias no pueden ser negativas.");
         }
-        stockEntry.setStock(stock);
-        branchProductStockRepository.save(stockEntry);
+        inventoryService.fijarProducto(branchId, product, stock,
+                com.omnirest.omnirest_backend.domain.enums.TipoMovimiento.AJUSTE, "Ajuste desde el panel");
 
         return mapToResponse(product, branchId);
     }
@@ -252,6 +248,13 @@ public class ProductService {
         combo.setPromoDesde(dto.promoDesde());
         combo.setPromoHasta(dto.promoHasta());
         combo.setPromoDias(Combos.diasParaGuardar(dto.promoDias()));
+    }
+
+    private static ProductResponseDTO conAgotado(ProductResponseDTO r, boolean agotado, boolean aMano) {
+        return new ProductResponseDTO(r.id(), r.categoryId(), r.categoryName(), r.name(), r.price(), r.description(),
+                r.active(), r.trackStock(), r.stock(), r.isRecipe(), r.recipeItems(), r.isCombo(), r.comboItems(),
+                r.precioNormal(), r.promoDesde(), r.promoHasta(), r.promoDias(), r.vigencia(), r.vigenteHoy(),
+                agotado, aMano);
     }
 
     private UUID restauranteDe(Product product) {
@@ -459,6 +462,8 @@ public class ProductService {
                 product.getPromoHasta(),
                 Combos.dias(product.getPromoDias()).stream().map(java.time.DayOfWeek::getValue).toList(),
                 Combos.textoVigencia(product),
-                Combos.vigenteHoy(product));
+                Combos.vigenteHoy(product),
+                false,
+                false);
     }
 }

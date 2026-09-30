@@ -10,6 +10,7 @@ import com.omnirest.omnirest_backend.dtos.CambiarEstadoEntregaDTO;
 import com.omnirest.omnirest_backend.dtos.EntregaRepartidorDTO;
 import com.omnirest.omnirest_backend.dtos.ReporteRepartidorDTO;
 import com.omnirest.omnirest_backend.dtos.TomarEntregaDTO;
+import com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal;
 import com.omnirest.omnirest_backend.repositories.BranchDeliverySettingsRepository;
 import com.omnirest.omnirest_backend.repositories.DriverRepository;
 import com.omnirest.omnirest_backend.repositories.OrderItemRepository;
@@ -46,10 +47,15 @@ public class RepartidorService {
     private final BranchDeliverySettingsRepository deliverySettingsRepository;
     private final DeliveryService deliveryService;
 
-    /** Lo que ve quien abre el enlace, identificandose o no con su telefono. */
+    /**
+     * Lo que ve quien abre el enlace. "Es mia" solo con su sesion: con el
+     * telefono escrito en la URL cualquiera podia hacerse pasar por el
+     * repartidor y ver los datos del cliente.
+     */
     @Transactional(readOnly = true)
-    public EntregaRepartidorDTO verEntrega(String token, String phoneNumber) {
-        return aDto(buscarPedido(token), normalizar(phoneNumber));
+    public EntregaRepartidorDTO verEntrega(String token, CuentaPublicaPrincipal cuenta) {
+        Order order = buscarPedido(token);
+        return aDto(order, idDeSesion(order, cuenta));
     }
 
     /**
@@ -57,9 +63,10 @@ public class RepartidorService {
      * el numero desde el que la tomo.
      */
     @Transactional
-    public EntregaRepartidorDTO tomarEntrega(String token, TomarEntregaDTO peticion) {
+    public EntregaRepartidorDTO tomarEntrega(String token, TomarEntregaDTO peticion, CuentaPublicaPrincipal cuenta) {
         Order order = buscarPedido(token);
-        String telefono = TelefonoMx.exigirValido(peticion.phoneNumber(), "tu WhatsApp");
+        Driver quien = exigirSesion(order, cuenta);
+        String telefono = normalizar(quien.getPhoneNumber());
 
         DeliveryStatus estado = order.getDeliveryStatus();
         if (estado == null || estado.esFinal()) {
@@ -76,10 +83,11 @@ public class RepartidorService {
             if (!telefono.equals(normalizar(yaAsignado.getPhoneNumber()))) {
                 throw new IllegalStateException("Esta entrega ya la tomó " + yaAsignado.getNombre() + ".");
             }
-            return aDto(order, telefono);
+            return aDto(order, quien.getId());
         }
 
-        Driver repartidor = registrarOBuscar(order, telefono, peticion.nombre(), peticion.vehiculo());
+        Driver repartidor = actualizarDatos(quien, peticion != null ? peticion.nombre() : null,
+                peticion != null ? peticion.vehiculo() : null);
 
         order.setDriver(repartidor);
         order.setAsignadoEn(LocalDateTime.now());
@@ -94,7 +102,7 @@ public class RepartidorService {
         // recoge—, no porque alguien haya apretado un boton antes de tiempo.
         deliveryService.publicarTableroDe(order.getBranch().getId());
 
-        return aDto(order, telefono);
+        return aDto(order, repartidor.getId());
     }
 
     /**
@@ -102,9 +110,9 @@ public class RepartidorService {
      * en que el pedido pasa a EN_CAMINO, y hasta que esta empacado.
      */
     @Transactional
-    public EntregaRepartidorDTO marcarEnCamino(String token, String phoneNumber) {
+    public EntregaRepartidorDTO marcarEnCamino(String token, CuentaPublicaPrincipal cuenta) {
         Order order = buscarPedido(token);
-        Driver repartidor = exigirQueSeaSuya(order, phoneNumber);
+        Driver repartidor = exigirQueSeaSuya(order, cuenta);
 
         if (order.getDeliveryStatus() != DeliveryStatus.LISTO) {
             throw new IllegalStateException(
@@ -117,15 +125,15 @@ public class RepartidorService {
                 order.getBranch().getId(), order.getId(),
                 new CambiarEstadoEntregaDTO(DeliveryStatus.EN_CAMINO, null));
 
-        return aDto(buscarPedido(token), normalizar(phoneNumber));
+        return aDto(buscarPedido(token), repartidor.getId());
     }
 
     /** El repartidor cierra su entrega desde el mismo enlace. */
     @Transactional
-    public EntregaRepartidorDTO marcarEntregado(String token, String phoneNumber) {
+    public EntregaRepartidorDTO marcarEntregado(String token, CuentaPublicaPrincipal cuenta) {
         Order order = buscarPedido(token);
 
-        Driver repartidor = exigirQueSeaSuya(order, phoneNumber);
+        Driver repartidor = exigirQueSeaSuya(order, cuenta);
 
         if (order.getDeliveryStatus() == DeliveryStatus.CONFIRMADO) {
             throw new IllegalStateException(
@@ -139,7 +147,7 @@ public class RepartidorService {
                 order.getBranch().getId(), order.getId(),
                 new CambiarEstadoEntregaDTO(DeliveryStatus.ENTREGADO, null));
 
-        return aDto(buscarPedido(token), normalizar(phoneNumber));
+        return aDto(buscarPedido(token), repartidor.getId());
     }
 
     /**
@@ -148,15 +156,15 @@ public class RepartidorService {
      * decide es el restaurante. La entrega vuelve a quedar disponible.
      */
     @Transactional
-    public EntregaRepartidorDTO soltarEntrega(String token, String phoneNumber) {
+    public EntregaRepartidorDTO soltarEntrega(String token, CuentaPublicaPrincipal cuenta) {
         Order order = buscarPedido(token);
-        Driver repartidor = exigirQueSeaSuya(order, phoneNumber);
+        Driver repartidor = exigirQueSeaSuya(order, cuenta);
         if (order.getDeliveryStatus() == DeliveryStatus.EN_CAMINO) {
             throw new IllegalStateException("Ya vas en camino: si no puedes entregarla, llama al restaurante.");
         }
         deliveryService.quitarRepartidor(order);
         log.info("Entrega {} soltada por {}", token, repartidor.getNombre());
-        return aDto(buscarPedido(token), normalizar(phoneNumber));
+        return aDto(buscarPedido(token), repartidor.getId());
     }
 
     /**
@@ -164,12 +172,13 @@ public class RepartidorService {
      * la entrega. El enlace circula en un grupo, asi que cualquiera podria
      * abrirlo y mover un pedido que no lleva.
      */
-    private Driver exigirQueSeaSuya(Order order, String phoneNumber) {
+    private Driver exigirQueSeaSuya(Order order, CuentaPublicaPrincipal cuenta) {
+        Driver quien = exigirSesion(order, cuenta);
         Driver repartidor = order.getDriver();
         if (repartidor == null) {
             throw new IllegalStateException("Esta entrega todavía no la ha tomado nadie.");
         }
-        if (!normalizar(phoneNumber).equals(normalizar(repartidor.getPhoneNumber()))) {
+        if (!repartidor.getId().equals(quien.getId())) {
             throw new IllegalStateException("Esta entrega la lleva " + repartidor.getNombre() + ".");
         }
         if (order.getDeliveryStatus() != null && order.getDeliveryStatus().esFinal()) {
@@ -206,17 +215,34 @@ public class RepartidorService {
     // Apoyos
     // ------------------------------------------------------------------
 
-    private Driver registrarOBuscar(Order order, String telefono, String nombre, String vehiculo) {
-        var restaurante = order.getBranch().getRestaurant();
+    /**
+     * El repartidor de la sesion, del mismo restaurante que la entrega. Sin
+     * sesion (o de otro negocio) se responde 401: la pantalla pide el codigo.
+     */
+    private Driver exigirSesion(Order order, CuentaPublicaPrincipal cuenta) {
+        java.util.UUID id = idDeSesion(order, cuenta);
+        if (id == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED,
+                    "Confirma tu número con el código que te mandamos por WhatsApp.");
+        }
+        Driver repartidor = driverRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.UNAUTHORIZED, "Vuelve a confirmar tu número."));
+        if (Boolean.FALSE.equals(repartidor.getActivo())) {
+            throw new IllegalStateException("Tu acceso como repartidor está desactivado. Habla con el restaurante.");
+        }
+        return repartidor;
+    }
 
-        Driver repartidor = driverRepository
-                .findByRestaurantIdAndPhoneNumber(restaurante.getId(), telefono)
-                .orElseGet(() -> Driver.builder()
-                        .restaurant(restaurante)
-                        .phoneNumber(telefono)
-                        .nombre("Repartidor")
-                        .build());
+    /** El id del repartidor de la sesion si es de este restaurante; null si no hay. */
+    private java.util.UUID idDeSesion(Order order, CuentaPublicaPrincipal cuenta) {
+        if (cuenta == null || !cuenta.esRepartidor() || cuenta.cuentaId() == null) return null;
+        if (!order.getBranch().getRestaurant().getId().equals(cuenta.restaurantId())) return null;
+        return cuenta.cuentaId();
+    }
 
+    private Driver actualizarDatos(Driver repartidor, String nombre, String vehiculo) {
         if (Boolean.FALSE.equals(repartidor.getActivo())) {
             throw new IllegalStateException("Tu acceso como repartidor está desactivado. Habla con el restaurante.");
         }
@@ -246,6 +272,12 @@ public class RepartidorService {
                 order.getDistanciaKm());
     }
 
+    /** La sucursal de la entrega, para pedir y comprobar el codigo del repartidor. */
+    @Transactional(readOnly = true)
+    public java.util.UUID sucursalDe(String token) {
+        return buscarPedido(token).getBranch().getId();
+    }
+
     private Order buscarPedido(String token) {
         return orderRepository.findByTokenSeguimiento(token)
                 .orElseThrow(() -> new IllegalArgumentException("No encontramos esta entrega. Revisa el enlace."));
@@ -260,11 +292,9 @@ public class RepartidorService {
         return TelefonoMx.canonico(telefono);
     }
 
-    private EntregaRepartidorDTO aDto(Order order, String telefonoConsulta) {
+    private EntregaRepartidorDTO aDto(Order order, java.util.UUID idConsulta) {
         Driver repartidor = order.getDriver();
-        boolean esMia = repartidor != null
-                && !telefonoConsulta.isEmpty()
-                && telefonoConsulta.equals(normalizar(repartidor.getPhoneNumber()));
+        boolean esMia = repartidor != null && idConsulta != null && idConsulta.equals(repartidor.getId());
 
         List<String> platillos = orderItemRepository.findByOrderId(order.getId()).stream()
                 .filter(i -> i.getKitchenStatus() != KitchenStatus.CANCELLED)
@@ -290,6 +320,7 @@ public class RepartidorService {
         boolean paraDecidir = disponible || esMia;
 
         return new EntregaRepartidorDTO(
+                order.getBranch().getId(),
                 order.getTokenSeguimiento(),
                 order.getDeliveryStatus(),
                 disponible,

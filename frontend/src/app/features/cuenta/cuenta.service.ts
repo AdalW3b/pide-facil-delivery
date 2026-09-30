@@ -48,6 +48,15 @@ export interface EntregaHistorial {
   entregadoEn: string | null;
 }
 
+export interface DireccionGuardada {
+  id: string;
+  alias: string | null;
+  direccion: string;
+  referencias: string | null;
+  latitud: number;
+  longitud: number;
+}
+
 const CLAVE_SESION = 'pidefacil.cuenta';
 
 /**
@@ -123,6 +132,24 @@ export class CuentaService {
       `${this.api}/public/branches/${s.branchId}/cuenta/entregas`,
       { headers: this.cabeceras() }
     );
+  }
+
+  /** Sus direcciones guardadas en el restaurante de esa sucursal. */
+  misDirecciones(branchId: string): Observable<DireccionGuardada[]> {
+    return this.http.get<DireccionGuardada[]>(`${this.api}/public/branches/${branchId}/cuenta/direcciones`, {
+      headers: this.cabeceras(),
+    });
+  }
+
+  borrarDireccion(branchId: string, id: string): Observable<void> {
+    return this.http.delete<void>(`${this.api}/public/branches/${branchId}/cuenta/direcciones/${id}`, {
+      headers: this.cabeceras(),
+    });
+  }
+
+  /** Guarda la sesión que abrió el repartidor con su código desde el enlace de una entrega. */
+  guardarSesion(sesion: Omit<Sesion, 'branchId'>, branchId: string): void {
+    this.guardar({ ...sesion, branchId });
   }
 
   cerrarSesion(): void {

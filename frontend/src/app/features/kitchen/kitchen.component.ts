@@ -1,3 +1,4 @@
+import { AgotadosCocinaComponent } from './agotados-cocina.component';
 import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
@@ -43,7 +44,7 @@ export interface KitchenTicketDTO {
 @Component({
   selector: 'app-kitchen',
   standalone: true,
-  imports: [TituloPaginaComponent, EstadoEnVivoComponent, 
+  imports: [AgotadosCocinaComponent, TituloPaginaComponent, EstadoEnVivoComponent, 
     LucideChefHat,
     LucideTriangleAlert,
     LucideClock,
@@ -72,6 +73,9 @@ export interface KitchenTicketDTO {
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
+          <!-- Se acabó un platillo: deja de ofrecerse hoy -->
+          <app-agotados-cocina [branchId]="activeBranchId()" />
+
           <!-- Sonido de comandas nuevas: se recuerda en este equipo -->
           @if (sonidoQuerido()) {
             <button

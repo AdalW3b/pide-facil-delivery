@@ -31,6 +31,8 @@ public class IngredientService {
     private final BranchIngredientStockRepository branchIngredientStockRepository;
     private final BranchRepository branchRepository;
     private final com.omnirest.omnirest_backend.repositories.RecipeItemRepository recipeItemRepository;
+    private final InventoryService inventoryService;
+    private final com.omnirest.omnirest_backend.repositories.MovimientoInventarioRepository movimientoRepository;
 
     public List<IngredientDTO> getIngredients(CustomUserDetails user, UUID branchId) {
         UUID restaurantId = user.restaurantId();
@@ -51,8 +53,11 @@ public class IngredientService {
         java.util.Map<UUID, BigDecimal> existencias = branchId == null ? java.util.Map.of()
                 : branchIngredientStockRepository.findByBranchId(branchId).stream()
                         .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
+        java.util.Map<UUID, Integer> usos = recipeItemRepository.usosPorIngrediente(restaurantId).stream()
+                .collect(Collectors.toMap(f -> (UUID) f[0], f -> ((Number) f[1]).intValue()));
         return ingredientRepository.findByRestaurantId(restaurantId).stream()
-                .map(i -> toDTO(i, branchId == null ? null : existencias.getOrDefault(i.getId(), BigDecimal.ZERO)))
+                .map(i -> toDTO(i, branchId == null ? null : existencias.getOrDefault(i.getId(), BigDecimal.ZERO),
+                        usos.getOrDefault(i.getId(), 0)))
                 .collect(Collectors.toList());
     }
 
@@ -75,6 +80,7 @@ public class IngredientService {
                 .name(nombreValido(dto.name()))
                 .unitOfMeasure(unidadValida(dto.unitOfMeasure()))
                 .active(dto.active() != null ? dto.active() : true)
+                .minimo(minimoValido(dto.minimo()))
                 .build();
 
         return mapToDTO(ingredientRepository.save(ingredient), null);
@@ -100,6 +106,7 @@ public class IngredientService {
         if (dto.active() != null) {
             ingredient.setActive(dto.active());
         }
+        ingredient.setMinimo(minimoValido(dto.minimo()));
 
         return mapToDTO(ingredientRepository.save(ingredient), null);
     }
@@ -111,23 +118,13 @@ public class IngredientService {
 
         validateRestaurantOwnership(user, ingredient.getRestaurant().getId());
 
-        Branch branch = branchRepository.findById(branchId)
+        branchRepository.findById(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Sucursal no encontrada: " + branchId));
-
-        BranchIngredientStock stockEntry = branchIngredientStockRepository
-                .findByBranchIdAndIngredientId(branchId, id)
-                .orElseGet(() -> BranchIngredientStock.builder()
-                        .id(new BranchIngredientStockKey(branchId, id))
-                        .branch(branch)
-                        .ingredient(ingredient)
-                        .stock(BigDecimal.ZERO)
-                        .build());
-
         if (stock == null || stock.signum() < 0) {
             throw new IllegalArgumentException("Las existencias no pueden ser negativas.");
         }
-        stockEntry.setStock(stock);
-        branchIngredientStockRepository.save(stockEntry);
+        inventoryService.fijarIngrediente(branchId, ingredient, stock,
+                com.omnirest.omnirest_backend.domain.enums.TipoMovimiento.AJUSTE, "Ajuste desde el panel");
 
         return mapToDTO(ingredient, branchId);
     }
@@ -138,7 +135,31 @@ public class IngredientService {
                 .orElseThrow(() -> new IllegalArgumentException("Ingrediente no encontrado: " + id));
 
         validateRestaurantOwnership(user, ingredient.getRestaurant().getId());
+
+        // Borrarlo lo quitaba en silencio de todas las recetas y existencias. Si
+        // se usa o ya tiene historia, se desactiva: deja de ofrecerse en el
+        // editor de recetas, pero las recetas y el historial se conservan.
+        long enRecetas = recipeItemRepository.countByIngredientId(id);
+        long enAdicionales = ingredientRepository.adicionalesQueLoUsan(id);
+        if (enRecetas > 0 || enAdicionales > 0) {
+            throw new IllegalStateException(ingredient.getName() + " se usa en "
+                    + (enRecetas > 0 ? enRecetas + (enRecetas == 1 ? " platillo" : " platillos") : "")
+                    + (enRecetas > 0 && enAdicionales > 0 ? " y " : "")
+                    + (enAdicionales > 0 ? enAdicionales + (enAdicionales == 1 ? " adicional" : " adicionales") : "")
+                    + ". Desactívalo para que deje de ofrecerse sin romper esas recetas.");
+        }
+        if (movimientoRepository.existsByIngredientId(id)
+                || branchIngredientStockRepository.existsByIngredientIdAndStockNot(id, BigDecimal.ZERO)) {
+            throw new IllegalStateException(ingredient.getName()
+                    + " ya tiene existencias o historial. Desactívalo en lugar de borrarlo.");
+        }
         ingredientRepository.delete(ingredient);
+    }
+
+    private static BigDecimal minimoValido(BigDecimal minimo) {
+        if (minimo == null || minimo.signum() == 0) return null;
+        if (minimo.signum() < 0) throw new IllegalArgumentException("El mínimo no puede ser negativo.");
+        return minimo;
     }
 
     private String nombreValido(String nombre) {
@@ -176,16 +197,18 @@ public class IngredientService {
                     .map(BranchIngredientStock::getStock)
                     .orElse(BigDecimal.ZERO);
         }
-        return toDTO(ingredient, currentStock);
+        return toDTO(ingredient, currentStock, (int) recipeItemRepository.countByIngredientId(ingredient.getId()));
     }
 
-    private IngredientDTO toDTO(Ingredient ingredient, BigDecimal currentStock) {
+    private IngredientDTO toDTO(Ingredient ingredient, BigDecimal currentStock, Integer usos) {
         return new IngredientDTO(
                 ingredient.getId(),
                 ingredient.getRestaurant().getId(),
                 ingredient.getName(),
                 ingredient.getUnitOfMeasure(),
                 currentStock,
-                ingredient.getActive());
+                ingredient.getActive(),
+                ingredient.getMinimo(),
+                usos);
     }
 }

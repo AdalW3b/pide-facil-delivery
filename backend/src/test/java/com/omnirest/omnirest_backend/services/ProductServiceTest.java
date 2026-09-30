@@ -52,6 +52,15 @@ class ProductServiceTest {
     @Mock
     private RestaurantRepository restaurantRepository;
 
+    @Mock
+    private ComboItemRepository comboItemRepository;
+
+    @Mock
+    private InventoryService inventoryService;
+
+    @Mock
+    private AgotadosService agotadosService;
+
     @InjectMocks
     private ProductService productService;
 

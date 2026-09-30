@@ -13,6 +13,9 @@ import { environment } from '../../../environments/environment';
 import { Restaurant, Branch } from '../admin-core/models/admin.model';
 import { Category, Product, Ingredient, RecipeItem } from './models/catalog.model';
 import { AdicionalesAdminComponent } from './adicionales-admin.component';
+import { MovimientoInventarioComponent, ObjetivoInventario } from './movimiento-inventario.component';
+import { HistorialInventarioComponent } from './historial-inventario.component';
+import { ControlInventarioComponent } from './control-inventario.component';
 import { comprimirImagen } from '../../shared/utils/imagen';
 import { 
   LucidePlus, 
@@ -57,7 +60,10 @@ import {
     LucideChevronDown,
     LucideChevronUp,
     LucideLayers,
-    AdicionalesAdminComponent
+    AdicionalesAdminComponent,
+    MovimientoInventarioComponent,
+    HistorialInventarioComponent,
+    ControlInventarioComponent
   ],
   template: `
     <div class="space-y-6 select-none">
@@ -401,6 +407,16 @@ import {
 
                           <!-- Recipe & Inventory Badges (Requirement 4) -->
                           <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                            @if (activeBranchId() && prod.active) {
+                              <button type="button" (click)="alternarAgotado(prod)"
+                                class="px-2 py-0.5 rounded-md border text-[11px] font-bold cursor-pointer"
+                                [class]="prod.agotadoHoy ? 'bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25' : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'"
+                                [title]="prod.agotadoHoy ? 'Volver a ofrecerlo hoy' : 'Deja de ofrecerse hoy en el menú, el bot y con los meseros'">
+                                {{ prod.agotadoHoy ? 'Se acabó hoy · Ya hay' : 'Se acabó' }}
+                              </button>
+                            } @else if (prod.agotado) {
+                              <span class="px-2 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] font-bold">Agotado</span>
+                            }
                             @if (prod.isCombo) {
                               <span class="px-2 py-0.5 rounded-md bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
                                 <svg lucidePackage class="w-3 h-3"></svg> Combo
@@ -731,14 +747,15 @@ import {
       <!-- TAB 2: INGREDIENTS (MATERIA PRIMA) MANAGEMENT -->
       @if (activeTab() === 'ingredients') {
         <div class="bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-md p-6 animate-fadeIn space-y-6">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
+          <div class="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
             <div>
               <span class="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">Inventario de Materia Prima</span>
               <h2 class="text-xl font-bold text-white mt-0.5">Ingredientes y Stock en Sucursal</h2>
+              <p class="text-xs text-slate-400 mt-1">Registra lo que llega, lo que se tira y lo que cuentas: cada cambio queda en el historial.</p>
             </div>
             
-            <div class="flex items-center gap-3">
-              <div class="relative w-full sm:w-60">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="relative w-full sm:w-60 shrink-0">
                 <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
                   <svg lucideSearch class="w-4 h-4"></svg>
                 </div>
@@ -757,6 +774,12 @@ import {
                   [class]="filtroExistencias() === 'todos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'">
                   Todos
                 </button>
+                <button type="button" (click)="filtroExistencias.set('bajo')" [attr.aria-pressed]="filtroExistencias() === 'bajo'"
+                  [disabled]="!activeBranchId()"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  [class]="filtroExistencias() === 'bajo' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'">
+                  Bajo mínimo · {{ bajoMinimo() }}
+                </button>
                 <button type="button" (click)="filtroExistencias.set('sin')" [attr.aria-pressed]="filtroExistencias() === 'sin'"
                   [disabled]="!activeBranchId()"
                   class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
@@ -764,6 +787,11 @@ import {
                   Sin existencias · {{ sinExistencias() }}
                 </button>
               </div>
+
+              <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer shrink-0">
+                <input type="checkbox" [checked]="verDesactivados()" (change)="verDesactivados.set($any($event.target).checked)" class="accent-indigo-500" />
+                Ver desactivados
+              </label>
 
               <button
                 (click)="showCreateIngredientModal()"
@@ -774,6 +802,8 @@ import {
               </button>
             </div>
           </div>
+
+          <app-control-inventario [branchId]="activeBranchId()" />
 
           <!-- Ingredients Table -->
           <div class="overflow-x-auto border border-slate-800/80 rounded-2xl bg-slate-955/30">
@@ -807,7 +837,14 @@ import {
                           <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                             <svg lucideBoxes class="w-4 h-4"></svg>
                           </div>
-                          <span>{{ ing.name }}</span>
+                          <span class="min-w-0">
+                            <span class="block" [class.text-slate-500]="ing.active === false">{{ ing.name }}</span>
+                            <span class="block text-[11px] font-normal text-slate-500">
+                              @if (ing.active === false) { <span class="text-amber-400">Desactivado · </span> }
+                              {{ ing.usos ? 'En ' + ing.usos + (ing.usos === 1 ? ' platillo' : ' platillos') : 'Sin recetas' }}
+                              @if (ing.minimo) { · mín. {{ cantidadLegible(ing.minimo, ing.unitOfMeasure) }} }
+                            </span>
+                          </span>
                         </div>
                       </td>
                       <td class="py-4 px-5 font-mono text-slate-300">
@@ -819,6 +856,14 @@ import {
                         @if (!activeBranchId() || ing.stock === null || ing.stock === undefined) {
                           <span class="text-slate-400 text-xs italic">
                             Selecciona una sucursal para ver stock
+                          </span>
+                        } @else if (ing.stock < 0) {
+                          <span class="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm tabular-nums" title="Se vendió más de lo registrado: haz un conteo">
+                            {{ cantidadLegible(ing.stock, ing.unitOfMeasure) }} · negativo
+                          </span>
+                        } @else if (ing.stock > 0 && ing.minimo && ing.stock < ing.minimo) {
+                          <span class="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm tabular-nums">
+                            {{ cantidadLegible(ing.stock, ing.unitOfMeasure) }} · queda poco
                           </span>
                         } @else if (ing.stock > 0) {
                           <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm tabular-nums">
@@ -835,10 +880,24 @@ import {
                           <button
                             (click)="openAdjustStockModal('INGREDIENT', ing)"
                             class="px-2.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
-                            title="Ajustar Inventario"
+                            title="Entrada, merma o conteo"
                           >
                             <svg lucideBoxes class="w-3.5 h-3.5"></svg>
-                            <span>Ajustar Stock</span>
+                            <span>Movimiento</span>
+                          </button>
+                          <button
+                            (click)="verHistorial(ing)"
+                            [disabled]="!activeBranchId()"
+                            class="px-2.5 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40"
+                          >
+                            Historial
+                          </button>
+                          <button
+                            (click)="alternarActivo(ing)"
+                            class="px-2.5 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer"
+                            [title]="ing.active === false ? 'Volver a ofrecerlo en las recetas' : 'Dejar de ofrecerlo en las recetas; conserva su historial'"
+                          >
+                            {{ ing.active === false ? 'Activar' : 'Desactivar' }}
                           </button>
 
                           <button aria-label="Editar"
@@ -1141,7 +1200,7 @@ import {
                             class="flex-1 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500 cursor-pointer min-w-0"
                           >
                             <option value="" disabled class="bg-slate-950 text-slate-400">Selecciona ingrediente</option>
-                            @for (ing of ingredients(); track ing.id) {
+                            @for (ing of ingredientesParaReceta(item.ingredientId); track ing.id) {
                               <option [value]="ing.id" class="bg-slate-950 text-white">
                                 {{ ing.name }} ({{ ing.unitOfMeasure }})
                               </option>
@@ -1256,6 +1315,16 @@ import {
                 }
               </select>
             </div>
+
+            <div>
+              <label for="ing-minimo" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Mínimo ({{ ingredientForm.unitOfMeasure }})
+              </label>
+              <input id="ing-minimo" type="number" min="0" step="any" placeholder="Opcional"
+                [(ngModel)]="ingredientForm.minimo"
+                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500" />
+              <p class="text-[11px] text-slate-500 mt-1.5">Cuando quede menos, se marca "queda poco" y avisamos al gerente.</p>
+            </div>
           </div>
 
           <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
@@ -1277,73 +1346,15 @@ import {
       </div>
     }
 
-    <!-- Quick Stock Adjustment Modal (Ajuste de Inventario Físico) -->
-    @if (isAdjustStockModalOpen()) {
-      <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-        <div (click)="closeAdjustStockModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+    <!-- Entrada, merma o conteo -->
+    @if (movimientoDe(); as o) {
+      <app-movimiento-inventario [branchId]="activeBranchId()!" [objetivo]="o"
+        (cerrar)="movimientoDe.set(null)" (guardado)="alRegistrarMovimiento($event)" />
+    }
 
-        <div class="w-full max-w-md bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col">
-          <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/80 shrink-0">
-            <div class="flex items-center gap-2">
-              <svg lucideBoxes class="w-5 h-5 text-sky-400"></svg>
-              <h3 class="text-base font-bold text-white">Ajustar Inventario</h3>
-            </div>
-            <button aria-label="Cerrar"
-              (click)="closeAdjustStockModal()"
-              class="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <svg lucideX class="w-5 h-5"></svg>
-            </button>
-          </div>
-
-          <div class="p-6 space-y-4">
-            <div>
-              <span class="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">Elemento</span>
-              <h4 class="text-lg font-bold text-white mt-0.5">{{ adjustStockItem()?.name }}</h4>
-              <p class="text-xs text-slate-400 mt-1">Ajustando existencias físicas en la sucursal actual</p>
-            </div>
-
-            <div class="p-4 rounded-xl bg-slate-955 border border-slate-800 space-y-3">
-              <div class="flex justify-between items-center text-xs">
-                <span class="text-slate-400">Stock Actual Registrado:</span>
-                <span class="font-bold text-indigo-300">
-                  {{ cantidadLegible(adjustStockItem()?.stock ?? 0, adjustStockItem()?.unitOfMeasure || '') }}
-                </span>
-              </div>
-
-              <div>
-                <label for="new-stock-input" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Cantidad real ({{ adjustStockItem()?.unitOfMeasure || 'unidades' }})
-                </label>
-                <input
-                  id="new-stock-input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  [ngModel]="adjustStockValue()"
-                  (ngModelChange)="adjustStockValue.set($event)"
-                  class="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-4 text-base font-bold text-white placeholder-slate-600 outline-none focus:border-sky-500 transition-colors"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
-            <button
-              (click)="closeAdjustStockModal()"
-              class="px-4 py-2 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              (click)="saveStockAdjustment()"
-              class="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-sky-600/15 cursor-pointer"
-            >
-              Guardar Ajuste
-            </button>
-          </div>
-        </div>
-      </div>
+    <!-- Historial de un ingrediente -->
+    @if (historialDe(); as o) {
+      <app-historial-inventario [branchId]="activeBranchId()!" [objetivo]="o" (cerrar)="historialDe.set(null)" />
     }
   `,
   styles: [`
@@ -1389,7 +1400,11 @@ export class CatalogComponent implements OnInit {
     return this.products().filter((p) => !fotos[p.id]).length;
   });
   readonly ingredientSearchQuery = signal<string>('');
-  readonly filtroExistencias = signal<'todos' | 'sin'>('todos');
+  readonly filtroExistencias = signal<'todos' | 'bajo' | 'sin'>('todos');
+  readonly verDesactivados = signal(false);
+  /** El ingrediente o producto al que se le registra un movimiento, y el del historial. */
+  readonly movimientoDe = signal<ObjetivoInventario | null>(null);
+  readonly historialDe = signal<ObjetivoInventario | null>(null);
   readonly unidadesDeInventario = UNIDADES_DE_INVENTARIO;
   readonly cantidadLegible = cantidadLegible;
   readonly viewMode = signal<'grid' | 'list'>('grid');
@@ -1500,10 +1515,14 @@ export class CatalogComponent implements OnInit {
     id: string;
     name: string;
     unitOfMeasure: string;
+    minimo: number | null;
+    active: boolean;
   } = {
     id: '',
     name: '',
-    unitOfMeasure: 'g'
+    unitOfMeasure: 'g',
+    minimo: null,
+    active: true,
   };
 
   // Stock Adjustment local state
@@ -1550,11 +1569,27 @@ export class CatalogComponent implements OnInit {
     if (query) {
       list = list.filter(ing => ing.name.toLowerCase().includes(query));
     }
+    if (!this.verDesactivados()) {
+      list = list.filter(ing => ing.active !== false);
+    }
     if (this.filtroExistencias() === 'sin') {
       list = list.filter(ing => (ing.stock ?? 0) <= 0);
+    } else if (this.filtroExistencias() === 'bajo') {
+      list = list.filter(ing => this.estaBajoMinimo(ing));
     }
     return list.sort((a, b) => a.name.localeCompare(b.name));
   });
+
+  readonly bajoMinimo = computed(() => this.ingredients().filter(i => i.active !== false && this.estaBajoMinimo(i)).length);
+
+  private estaBajoMinimo(i: Ingredient): boolean {
+    return i.stock !== null && i.stock !== undefined && !!i.minimo && i.stock < i.minimo;
+  }
+
+  /** En el editor de recetas solo los activos, más el que ya tenga ese renglón. */
+  ingredientesParaReceta(actual: string): Ingredient[] {
+    return this.ingredients().filter(i => i.active !== false || i.id === actual);
+  }
 
   readonly sinExistencias = computed(() => this.ingredients().filter(i => i.stock !== null && i.stock !== undefined && i.stock <= 0).length);
 
@@ -2144,7 +2179,9 @@ export class CatalogComponent implements OnInit {
     this.ingredientForm = {
       id: '',
       name: '',
-      unitOfMeasure: 'g'
+      unitOfMeasure: 'g',
+      minimo: null,
+      active: true,
     };
     this.isIngredientModalOpen.set(true);
   }
@@ -2153,7 +2190,9 @@ export class CatalogComponent implements OnInit {
     this.ingredientForm = {
       id: ing.id,
       name: ing.name,
-      unitOfMeasure: ing.unitOfMeasure
+      unitOfMeasure: ing.unitOfMeasure,
+      minimo: ing.minimo ?? null,
+      active: ing.active !== false,
     };
     this.isIngredientModalOpen.set(true);
   }
@@ -2172,14 +2211,15 @@ export class CatalogComponent implements OnInit {
     this.isSyncing.set(true);
     this.isIngredientModalOpen.set(false);
 
-    const payload = { name, unitOfMeasure, branchId };
+    const minimo = this.ingredientForm.minimo !== null && `${this.ingredientForm.minimo}` !== '' ? Number(this.ingredientForm.minimo) : null;
+    const payload = { name, unitOfMeasure, branchId, minimo, active: this.ingredientForm.active };
 
     if (this.ingredientForm.id) {
       const ingId = this.ingredientForm.id;
       const previousIngs = [...this.ingredients()];
 
       this.ingredients.update(list =>
-        list.map(i => i.id === ingId ? { ...i, name, unitOfMeasure } : i)
+        list.map(i => i.id === ingId ? { ...i, name, unitOfMeasure, minimo } : i)
       );
 
       this.http.put<Ingredient>(`${environment.apiUrl}/ingredients/${ingId}`, payload).subscribe({
@@ -2223,7 +2263,19 @@ export class CatalogComponent implements OnInit {
   }
 
   async deleteIngredientPrompt(id: string): Promise<void> {
-    if (!(await this.avisos.confirmar({ titulo: '¿Eliminar el ingrediente?', mensaje: 'Se quita también de las recetas que lo usan.', confirmar: 'Eliminar ingrediente', peligro: true }))) return;
+    const ing = this.ingredients().find(i => i.id === id);
+    if (ing?.usos) {
+      // Borrarlo rompería sus recetas: se ofrece desactivarlo.
+      if (await this.avisos.confirmar({
+        titulo: `${ing.name} se usa en ${ing.usos} ${ing.usos === 1 ? 'platillo' : 'platillos'}`,
+        mensaje: 'No se puede borrar sin romper esas recetas. ¿Lo desactivas? Deja de ofrecerse en el editor de recetas y conserva su historial.',
+        confirmar: 'Desactivar',
+      })) {
+        this.alternarActivo(ing);
+      }
+      return;
+    }
+    if (!(await this.avisos.confirmar({ titulo: '¿Eliminar el ingrediente?', mensaje: 'No se usa en ninguna receta. Si ya tiene existencias o historial, te propondremos desactivarlo.', confirmar: 'Eliminar ingrediente', peligro: true }))) return;
 
     this.isSyncing.set(true);
     const previousIngs = [...this.ingredients()];
@@ -2251,16 +2303,53 @@ export class CatalogComponent implements OnInit {
       return;
     }
 
-    const currentStock = item.stock ?? 0;
-    this.adjustStockItem.set({
-      type,
+    this.movimientoDe.set({
+      tipo: type === 'PRODUCT' ? 'PRODUCTO' : 'INGREDIENTE',
       id: item.id,
-      name: item.name,
-      unitOfMeasure: item.unitOfMeasure,
-      stock: currentStock
+      nombre: item.name,
+      unidad: type === 'PRODUCT' ? 'pieza' : (item.unitOfMeasure ?? ''),
+      stock: Number(item.stock ?? 0),
     });
-    this.adjustStockValue.set(currentStock);
-    this.isAdjustStockModalOpen.set(true);
+  }
+
+  /** "Se acabó" por hoy en la sucursal elegida, o "ya hay" para volver a ofrecerlo. */
+  alternarAgotado(prod: Product): void {
+    const branchId = this.activeBranchId();
+    if (!branchId) return;
+    const url = `${environment.apiUrl}/branches/${branchId}/products/${prod.id}/agotado`;
+    const peticion = prod.agotadoHoy ? this.http.delete(url) : this.http.post(url, {});
+    peticion.subscribe({
+      next: () => {
+        this.avisos.exito(prod.agotadoHoy ? `${prod.name} vuelve a ofrecerse.` : `${prod.name} ya no se ofrece por hoy.`);
+        this.reloadAll();
+      },
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo cambiar.'),
+    });
+  }
+
+  alRegistrarMovimiento(mensaje: string): void {
+    this.movimientoDe.set(null);
+    this.avisos.exito(mensaje);
+    this.reloadAll();
+  }
+
+  verHistorial(ing: Ingredient): void {
+    if (!this.activeBranchId()) return;
+    this.historialDe.set({ tipo: 'INGREDIENTE', id: ing.id, nombre: ing.name, unidad: ing.unitOfMeasure, stock: Number(ing.stock ?? 0) });
+  }
+
+  /** Desactivar en vez de borrar: deja de ofrecerse en recetas y conserva su historial. */
+  alternarActivo(ing: Ingredient): void {
+    const active = ing.active === false;
+    this.http.put<Ingredient>(`${environment.apiUrl}/ingredients/${ing.id}`, {
+      name: ing.name, unitOfMeasure: ing.unitOfMeasure, minimo: ing.minimo ?? null, active,
+    }).subscribe({
+      next: () => {
+        this.avisos.exito(active ? `${ing.name} vuelve a ofrecerse en las recetas.` : `${ing.name} quedó desactivado.`);
+        this.loadIngredients();
+      },
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo cambiar.'),
+    });
   }
 
   closeAdjustStockModal(): void {

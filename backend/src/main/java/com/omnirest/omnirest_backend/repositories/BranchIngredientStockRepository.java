@@ -20,6 +20,10 @@ public interface BranchIngredientStockRepository extends JpaRepository<BranchIng
     /** Todas las existencias de una sucursal: para listar sin una consulta por ingrediente. */
     java.util.List<BranchIngredientStock> findByBranchId(UUID branchId);
 
+    /** La existencia tal como esta en la base, sin pasar por la cache de la sesion. */
+    @Query("SELECT b.stock FROM BranchIngredientStock b WHERE b.branch.id = :branchId AND b.ingredient.id = :ingredientId")
+    java.util.Optional<BigDecimal> saldo(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId);
+
     /** Alguna sucursal tiene existencias (distintas de cero) de este ingrediente. */
     boolean existsByIngredientIdAndStockNot(UUID ingredientId, BigDecimal stock);
 

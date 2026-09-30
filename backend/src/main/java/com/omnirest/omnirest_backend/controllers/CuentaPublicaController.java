@@ -84,6 +84,25 @@ public class CuentaPublicaController {
         return ResponseEntity.ok(historialService.pedidosDelCliente(cuenta));
     }
 
+    /** Las direcciones guardadas del cliente, para pedir sin volver a marcar el pin. */
+    @GetMapping("/direcciones")
+    @PreAuthorize("hasAuthority('CUENTA_CLIENTE')")
+    public ResponseEntity<List<?>> misDirecciones(
+            @PathVariable UUID branchId,
+            @AuthenticationPrincipal CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(historialService.direccionesDelCliente(branchId, cuenta));
+    }
+
+    @DeleteMapping("/direcciones/{direccionId}")
+    @PreAuthorize("hasAuthority('CUENTA_CLIENTE')")
+    public ResponseEntity<Void> borrarDireccion(
+            @PathVariable UUID branchId,
+            @PathVariable UUID direccionId,
+            @AuthenticationPrincipal CuentaPublicaPrincipal cuenta) {
+        historialService.borrarDireccion(cuenta, direccionId);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Las entregas del repartidor que tiene la sesion abierta. */
     @GetMapping("/entregas")
     @PreAuthorize("hasAuthority('CUENTA_REPARTIDOR')")

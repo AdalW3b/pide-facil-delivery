@@ -39,6 +39,15 @@ class InventoryServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private com.omnirest.omnirest_backend.repositories.MovimientoInventarioRepository movimientoRepository;
+
+    @Mock
+    private com.omnirest.omnirest_backend.repositories.ProductoAgotadoRepository agotadoRepository;
+
+    @Mock
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+
     @InjectMocks
     private InventoryService inventoryService;
 
@@ -117,6 +126,9 @@ class InventoryServiceTest {
     @Test
     @DisplayName("checkAndDeductStock throws IllegalStateException when subtractStockAtomic returns 0 (insufficient stock)")
     void checkAndDeductStock_RecipeProduct_InsufficientStock_ThrowsIllegalStateException() {
+        // En modo Bloquear, lo que no alcanza no se vende.
+        when(branchRepository.findById(branchId)).thenReturn(java.util.Optional.of(Branch.builder().id(branchId)
+                .controlInventario(com.omnirest.omnirest_backend.domain.enums.ControlInventario.BLOQUEAR).build()));
         when(branchIngredientStockRepository.subtractStockAtomic(eq(branchId), eq(carne.getId()), any(BigDecimal.class)))
                 .thenReturn(0);
 
@@ -139,5 +151,22 @@ class InventoryServiceTest {
         verify(branchProductStockRepository, times(1))
                 .subtractStockAtomic(eq(branchId), eq(directProduct.getId()), eq(3));
         verifyNoInteractions(branchIngredientStockRepository);
+    }
+
+    @Test
+    @DisplayName("En modo Avisar vende aunque falte: queda en negativo, deja movimiento y avisa")
+    void modoAvisarVendeYDejaNegativo() {
+        when(branchIngredientStockRepository.subtractStockAtomic(eq(branchId), any(), any(BigDecimal.class))).thenReturn(0);
+        when(branchIngredientStockRepository.addStockAtomic(eq(branchId), any(), any(BigDecimal.class))).thenReturn(1);
+        when(branchIngredientStockRepository.saldo(branchId, carne.getId())).thenReturn(java.util.Optional.of(new BigDecimal("-0.2")));
+        when(branchIngredientStockRepository.saldo(branchId, queso.getId())).thenReturn(java.util.Optional.of(new BigDecimal("-0.05")));
+
+        inventoryService.checkAndDeductStock(recipeProduct, branchId, 1);
+
+        verify(branchIngredientStockRepository).addStockAtomic(eq(branchId), eq(carne.getId()),
+                argThat(v -> v.compareTo(new BigDecimal("-0.2")) == 0));
+        verify(movimientoRepository, times(2)).save(argThat(m -> m.getTipo() == com.omnirest.omnirest_backend.domain.enums.TipoMovimiento.VENTA
+                && m.getSaldo().signum() < 0));
+        verify(messagingTemplate, atLeastOnce()).convertAndSend(contains("/alerts"), any(Object.class));
     }
 }

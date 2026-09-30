@@ -65,4 +65,11 @@ public class Branch {
 
     @Column(name = "bot_tone", length = 600)
     private String botTone;
+
+    /** Que pasa cuando una venta necesita mas de lo que hay. Ver ControlInventario. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "control_inventario", nullable = false, length = 10)
+    @Builder.Default
+    private com.omnirest.omnirest_backend.domain.enums.ControlInventario controlInventario =
+            com.omnirest.omnirest_backend.domain.enums.ControlInventario.AVISAR;
 }

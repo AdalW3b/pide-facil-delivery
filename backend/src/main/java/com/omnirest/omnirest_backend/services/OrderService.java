@@ -706,8 +706,10 @@ public class OrderService {
         orderItemRepository.save(item);
 
         if (status == KitchenStatus.CANCELLED && previousStatus != KitchenStatus.CANCELLED) {
-            inventoryService.devolverLinea(item, item.getOrder().getBranch().getId());
-            inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId());
+            // Si cocina ya lo habia empezado, la comida se tiro: queda como merma.
+            boolean yaPreparado = previousStatus != null && previousStatus != KitchenStatus.PENDING;
+            inventoryService.devolverLinea(item, item.getOrder().getBranch().getId(), yaPreparado, "cancelado en cocina");
+            inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId(), yaPreparado, "cancelado en cocina");
             descontarDelTotal(item);
             triggerWhatsappItemCancelNotification(item);
         }
@@ -976,9 +978,10 @@ public class OrderService {
         if (items != null && !items.isEmpty()) {
             for (OrderItem item : items) {
                 if (item.getKitchenStatus() != KitchenStatus.CANCELLED) {
+                    boolean yaPreparado = item.getKitchenStatus() != KitchenStatus.PENDING;
                     item.setKitchenStatus(KitchenStatus.CANCELLED);
-                    inventoryService.devolverLinea(item, item.getOrder().getBranch().getId());
-                    inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId());
+                    inventoryService.devolverLinea(item, item.getOrder().getBranch().getId(), yaPreparado, "cuenta cancelada");
+                    inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId(), yaPreparado, "cuenta cancelada");
                 }
             }
             orderItemRepository.saveAll(items);

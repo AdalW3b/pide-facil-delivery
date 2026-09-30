@@ -41,6 +41,8 @@ export interface Product {
   comboItems?: { productId: string; cantidad: number; nombre: string }[] | null;
   /** false = combo fuera de sus días de promoción: hoy no se vende. */
   vigenteHoy?: boolean;
+  /** Se acabó hoy en esta sucursal. */
+  agotado?: boolean;
 }
 
 /** Grupo de adicionales de un platillo, tal como lo da el menú público. */
@@ -231,8 +233,8 @@ export interface GrupoAdicional {
                           >
                             <option value="">Selecciona un producto</option>
                             @for (prod of productsList(); track prod.id) {
-                              <option [value]="prod.id">
-                                {{ prod.isCombo ? 'Combo · ' : '' }}{{ prod.name }} - {{ prod.price | pesos }}
+                              <option [value]="prod.id" [disabled]="prod.agotado">
+                                {{ prod.isCombo ? 'Combo · ' : '' }}{{ prod.name }} - {{ prod.price | pesos }}{{ prod.agotado ? ' (se acabó)' : '' }}
                               </option>
                             }
                           </select>
@@ -734,7 +736,9 @@ export class OrderPanelComponent implements OnChanges {
 
     // Load active products list if empty
     if (this.productsList().length === 0) {
-      this.http.get<Product[]>(`${environment.apiUrl}/products`).subscribe({
+      // Con la sucursal, para saber qué se acabó hoy en ella.
+      const sucursal = this.table?.branchId ? `?branchId=${this.table.branchId}` : '';
+      this.http.get<Product[]>(`${environment.apiUrl}/products${sucursal}`).subscribe({
         next: (prods) => {
           // Solo lo activo, y los combos solo en los días de su promoción.
           const activeOnly = prods.filter((p) => p.active !== false && p.vigenteHoy !== false);

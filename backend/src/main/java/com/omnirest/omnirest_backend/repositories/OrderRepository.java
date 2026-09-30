@@ -30,6 +30,11 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     List<Order> findByDriverIdOrderByCreatedAtDesc(UUID driverId);
 
     Optional<Order> findByBranchIdAndTableTableNumberAndStatus(UUID branchId, Integer tableNumber, OrderStatus status);
+    /** Pedidos de ese telefono que siguen esperando que el restaurante los confirme. */
+    long countByBranchIdAndCustomerPhoneNumberAndDeliveryStatusAndCreatedAtAfter(
+            UUID branchId, String phoneNumber, com.omnirest.omnirest_backend.domain.enums.DeliveryStatus deliveryStatus,
+            java.time.LocalDateTime desde);
+
     Optional<Order> findByBranchIdAndCustomerPhoneNumberAndStatus(UUID branchId, String phoneNumber, OrderStatus status);
 
     /**

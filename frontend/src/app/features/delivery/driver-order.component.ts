@@ -11,7 +11,7 @@ import {
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { CuentaService } from '../cuenta/cuenta.service';
+import { CuentaService, Sesion } from '../cuenta/cuenta.service';
 import { Subscription, timer } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { DeliveryStatus } from './models/delivery.model';
@@ -28,6 +28,7 @@ import {
 } from '@lucide/angular';
 
 interface EntregaRepartidor {
+  branchId: string;
   token: string;
   estado: DeliveryStatus;
   disponible: boolean;
@@ -242,25 +243,44 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
 
             }
 
-            <!-- Registro / acciones -->
-            @if (e.disponible) {
+            <!-- Quién es: con su sesión, o con un código que le llega por WhatsApp -->
+            @if (e.disponible || !tieneSesion()) {
               <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <h2 class="text-sm font-bold">Tomar esta entrega</h2>
-                <p class="text-xs text-slate-400">
-                  Con tu WhatsApp queda a tu nombre. Solo te lo pedimos la primera vez.
-                </p>
-
-                <div>
-                  <label for="dr-tel" class="block text-xs text-slate-400 mb-1.5">Tu WhatsApp</label>
-                  <input id="dr-tel" type="tel" inputmode="tel" [ngModel]="telefono()" (ngModelChange)="telefono.set($event)"
-                    placeholder="5215512345678"
-                    class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
-                </div>
-                <div>
-                  <label for="dr-nom" class="block text-xs text-slate-400 mb-1.5">Tu nombre</label>
-                  <input id="dr-nom" type="text" [ngModel]="nombre()" (ngModelChange)="nombre.set($event)"
-                    class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500" />
-                </div>
+                @if (tieneSesion()) {
+                  <h2 class="text-sm font-bold">Tomar esta entrega</h2>
+                  <p class="text-xs text-slate-400">
+                    Quedará a nombre de <strong class="text-slate-200">{{ sesionNombre() }}</strong>.
+                    <button (click)="cambiarDeCuenta()" class="text-indigo-400 hover:text-indigo-300 underline underline-offset-2 cursor-pointer">¿No eres tú?</button>
+                  </p>
+                } @else {
+                  <h2 class="text-sm font-bold">{{ e.disponible ? 'Tomar esta entrega' : '¿Es tu entrega? Confirma que eres tú' }}</h2>
+                  <p class="text-xs text-slate-400">
+                    Te mandamos un código a tu WhatsApp para confirmar que el número es tuyo. Solo la primera vez en este teléfono.
+                  </p>
+                  @if (fase() === 'datos') {
+                    <div>
+                      <label for="dr-tel" class="block text-xs text-slate-400 mb-1.5">Tu WhatsApp</label>
+                      <input id="dr-tel" type="tel" inputmode="tel" autocomplete="tel" [ngModel]="telefono()" (ngModelChange)="telefono.set($event)"
+                        placeholder="951 123 4567"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
+                    </div>
+                    <div>
+                      <label for="dr-nom" class="block text-xs text-slate-400 mb-1.5">Tu nombre</label>
+                      <input id="dr-nom" type="text" autocomplete="name" [ngModel]="nombre()" (ngModelChange)="nombre.set($event)"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500" />
+                    </div>
+                  } @else {
+                    <div>
+                      <label for="dr-cod" class="block text-xs text-slate-400 mb-1.5">Código que te llegó a {{ telefono() }}</label>
+                      <input id="dr-cod" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+                        [ngModel]="codigo()" (ngModelChange)="codigo.set($event)"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 tracking-[0.5em] text-center text-lg tabular-nums" />
+                    </div>
+                    <p class="text-xs text-slate-500">
+                      ¿No llegó? <button (click)="fase.set('datos')" class="text-indigo-400 hover:text-indigo-300 underline underline-offset-2 cursor-pointer">Corregir el número o pedir otro</button>
+                    </p>
+                  }
+                }
               </section>
             }
           }
@@ -279,10 +299,20 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
                 <p class="text-xs text-rose-400 text-center">{{ errorAccion() }}</p>
               }
 
-              @if (e.disponible) {
+              @if (!tieneSesion() && (e.disponible || !e.esMia)) {
+                @if (fase() === 'datos') {
+                  <button (click)="pedirCodigo()" [disabled]="!puedePedirCodigo() || enviando()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-4 font-bold transition-colors cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed">
+                    {{ enviando() ? 'Enviando...' : 'Mandarme el código' }}
+                  </button>
+                } @else {
+                  <button (click)="confirmarCodigo()" [disabled]="codigo().trim().length < 6 || enviando()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-4 font-bold transition-colors cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed">
+                    {{ enviando() ? 'Confirmando...' : (e.disponible ? 'Confirmar y tomar la entrega' : 'Confirmar') }}
+                  </button>
+                }
+              } @else if (e.disponible) {
                 <button
                   (click)="tomar()"
-                  [disabled]="!puedeTomar() || enviando()"
+                  [disabled]="enviando()"
                   class="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-4 font-bold transition-colors cursor-pointer disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
                 >
                   {{ enviando() ? 'Tomando...' : 'Tomar entrega' }}
@@ -360,6 +390,9 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
   readonly telefono = signal('');
   readonly nombre = signal('');
   readonly confirmandoSoltar = signal(false);
+  /** Sin sesión: primero su número, luego el código que le llega. */
+  readonly fase = signal<'datos' | 'codigo'>('datos');
+  readonly codigo = signal('');
 
   /**
    * Mientras el repartidor espera a que empaquen, la pantalla se consulta
@@ -381,9 +414,10 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
   })();
 
   readonly tieneSesion = computed(() => this.cuenta.esRepartidor());
+  readonly sesionNombre = computed(() => this.cuenta.sesion()?.nombre ?? '');
   readonly sucursalDeLaSesion = computed(() => this.cuenta.sesion()?.branchId ?? '');
 
-  readonly puedeTomar = computed(
+  readonly puedePedirCodigo = computed(
     () => this.telefono().replace(/\D/g, '').length >= 10 && this.nombre().trim().length > 1
   );
 
@@ -461,17 +495,74 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
     return `https://www.google.com/maps/dir/?api=1&destination=${e.latitud},${e.longitud}`;
   }
 
+  /** Le manda por WhatsApp el código para confirmar que el número es suyo. */
+  pedirCodigo(): void {
+    if (!this.puedePedirCodigo() || this.enviando()) return;
+    this.enviando.set(true);
+    this.errorAccion.set(null);
+    this.http
+      .post<{ message: string }>(`${this.api}/public/delivery/${this.token()}/codigo`, { phoneNumber: this.telefono().trim() })
+      .subscribe({
+        next: () => {
+          this.enviando.set(false);
+          this.guardarRepartidor();
+          this.codigo.set('');
+          this.fase.set('codigo');
+        },
+        error: (err) => {
+          this.enviando.set(false);
+          this.errorAccion.set(err.error?.error || err.error?.message || 'No pudimos mandar el código.');
+        },
+      });
+  }
+
+  /** Confirma el código, guarda su sesión y, si la entrega está libre, la toma. */
+  confirmarCodigo(): void {
+    const e = this.entrega();
+    if (!e || this.enviando()) return;
+    this.enviando.set(true);
+    this.errorAccion.set(null);
+    this.http
+      .post<Omit<Sesion, 'branchId'>>(`${this.api}/public/delivery/${this.token()}/verificar`, {
+        phoneNumber: this.telefono().trim(),
+        codigo: this.codigo().trim(),
+        nombre: this.nombre().trim(),
+      })
+      .subscribe({
+        next: (sesion) => {
+          this.enviando.set(false);
+          this.cuenta.guardarSesion(sesion, e.branchId);
+          this.fase.set('datos');
+          if (e.disponible) {
+            this.tomar();
+          } else {
+            this.cargar();
+          }
+        },
+        error: (err) => {
+          this.enviando.set(false);
+          this.errorAccion.set(err.error?.error || 'El código no coincide.');
+        },
+      });
+  }
+
+  /** Otra persona usa este teléfono: se cierra la sesión y se pide su número. */
+  cambiarDeCuenta(): void {
+    this.cuenta.cerrarSesion();
+    this.telefono.set('');
+    this.nombre.set('');
+    this.fase.set('datos');
+    this.cargar();
+  }
+
   tomar(): void {
-    if (!this.puedeTomar() || this.enviando()) return;
+    if (this.enviando()) return;
 
     this.enviando.set(true);
     this.errorAccion.set(null);
 
     this.http
-      .post<EntregaRepartidor>(`${this.api}/public/delivery/${this.token()}/tomar`, {
-        phoneNumber: this.telefono().trim(),
-        nombre: this.nombre().trim(),
-      })
+      .post<EntregaRepartidor>(`${this.api}/public/delivery/${this.token()}/tomar`, {}, { headers: this.cuenta.cabeceras() })
       .subscribe({
         next: (e) => {
           this.enviando.set(false);
@@ -481,6 +572,7 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.enviando.set(false);
+          if (this.sesionVencida(err)) return;
           this.errorAccion.set(err.error?.error || 'No se pudo tomar la entrega.');
           // Si alguien se adelantó, hay que ver el estado real.
           this.cargar();
@@ -511,9 +603,7 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
     this.errorAccion.set(null);
 
     this.http
-      .post<EntregaRepartidor>(`${this.api}/public/delivery/${this.token()}/${paso}`, {
-        phoneNumber: this.telefono().trim(),
-      })
+      .post<EntregaRepartidor>(`${this.api}/public/delivery/${this.token()}/${paso}`, {}, { headers: this.cuenta.cabeceras() })
       .subscribe({
         next: (e) => {
           this.enviando.set(false);
@@ -522,6 +612,7 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.enviando.set(false);
+          if (this.sesionVencida(err)) return;
           this.errorAccion.set(err.error?.error || 'No se pudo guardar el cambio.');
         },
       });
@@ -544,10 +635,9 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
     if (!enSilencio) {
       this.cargando.set(true);
     }
-    const tel = this.telefono().trim();
-    const url = `${this.api}/public/delivery/${this.token()}` + (tel ? `?telefono=${encodeURIComponent(tel)}` : '');
+    const url = `${this.api}/public/delivery/${this.token()}`;
 
-    this.http.get<EntregaRepartidor>(url).subscribe({
+    this.http.get<EntregaRepartidor>(url, { headers: this.cuenta.cabeceras() }).subscribe({
       next: (e) => {
         const antes = this.entrega();
         this.entrega.set(e);
@@ -568,6 +658,19 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
         this.error.set(err.error?.error || 'No encontramos esta entrega.');
       },
     });
+  }
+
+  /**
+   * La sesión venció o no es de este restaurante: se cierra y se le pide el
+   * código otra vez, en vez de dejarlo con un error que no entiende.
+   */
+  private sesionVencida(err: { status?: number }): boolean {
+    if (err.status !== 401) return false;
+    this.cuenta.cerrarSesion();
+    this.fase.set('datos');
+    this.errorAccion.set('Confirma tu número otra vez con el código de WhatsApp.');
+    this.cargar(true);
+    return true;
   }
 
   /** Vibra y suena, porque el teléfono va en el bolsillo. */

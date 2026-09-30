@@ -35,4 +35,8 @@ public class Ingredient {
 
     @Builder.Default
     private Boolean active = true;
+
+    /** Por debajo de esto se avisa que queda poco. Null = sin alerta. */
+    @Column(precision = 12, scale = 3)
+    private BigDecimal minimo;
 }

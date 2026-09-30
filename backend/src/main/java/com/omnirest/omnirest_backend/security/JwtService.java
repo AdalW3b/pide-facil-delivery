@@ -28,6 +28,9 @@ public class JwtService {
     @Value("${jwt.expiration}")
     private long expiration;
 
+    @Value("${jwt.expiration-cuenta:2592000000}")
+    private long expiracionCuenta;
+
     private final RestaurantRepository restaurantRepository;
 
     public String generateToken(CustomUserDetails userDetails) {
@@ -66,7 +69,7 @@ public class JwtService {
         claims.put("restaurantId", restaurantId != null ? restaurantId.toString() : null);
         claims.put("telefono", telefono);
 
-        return createToken(claims, cuentaId.toString());
+        return createToken(claims, cuentaId.toString(), expiracionCuenta);
     }
 
     /** El tipo de cuenta del token, o null si es de un empleado. */
@@ -80,11 +83,15 @@ public class JwtService {
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
+        return createToken(claims, subject, expiration);
+    }
+
+    private String createToken(Map<String, Object> claims, String subject, long vigenciaMs) {
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(new Date(System.currentTimeMillis() + vigenciaMs))
                 .signWith(getSigningKey())
                 .compact();
     }

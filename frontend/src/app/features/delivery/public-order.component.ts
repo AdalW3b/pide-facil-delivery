@@ -11,7 +11,7 @@ import {
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { CuentaService } from '../cuenta/cuenta.service';
+import { CuentaService, DireccionGuardada } from '../cuenta/cuenta.service';
 import { environment } from '../../../environments/environment';
 import {
   LucideMapPin,
@@ -53,6 +53,8 @@ interface MenuItem {
   foto?: string | null;
   /** Si es combo, lo que trae: ["4 × Taco al pastor", "2 × Refresco"]. */
   incluye?: string[];
+  /** Se acabó por hoy: se ve, pero no se puede pedir. */
+  agotado?: boolean;
 }
 
 interface MenuCategoria {
@@ -328,7 +330,7 @@ interface PedidoCreado {
                 <h2 class="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3">{{ cat.nombre }}</h2>
                 <ul class="space-y-2">
                   @for (item of cat.items; track item.id) {
-                    <li class="bg-white border border-stone-200 rounded-xl p-3 flex items-start gap-3">
+                    <li class="bg-white border border-stone-200 rounded-xl p-3 flex items-start gap-3" [class.opacity-50]="item.agotado">
                       <!-- Tocar el platillo abre su ficha: ahí se eligen los
                            adicionales y se le escribe a la cocina. -->
                       <button
@@ -339,6 +341,9 @@ interface PedidoCreado {
                       >
                         <p class="font-semibold text-sm">
                           {{ item.nombre }}
+                          @if (item.agotado) {
+                            <span class="ml-1 align-middle text-[11px] font-bold uppercase tracking-wide text-stone-600 bg-stone-200 px-1.5 py-0.5 rounded">Agotado hoy</span>
+                          }
                           @if (item.incluye?.length) {
                             <span class="ml-1 align-middle text-[11px] font-bold uppercase tracking-wide text-orange-800 bg-orange-100 px-1.5 py-0.5 rounded">Combo</span>
                           }
@@ -371,7 +376,7 @@ interface PedidoCreado {
                             </span>
                           }
                           <button
-                            (click)="alTocarMas(item)"
+                            (click)="alTocarMas(item)" [hidden]="item.agotado"
                             class="absolute -bottom-2 -right-2 w-9 h-9 rounded-full bg-orange-600 text-white flex items-center justify-center hover:bg-orange-700 shadow-md ring-2 ring-white cursor-pointer"
                             [attr.aria-label]="'Agregar un ' + item.nombre"
                           >
@@ -393,7 +398,7 @@ interface PedidoCreado {
                           <span class="min-w-5 text-center font-bold text-sm tabular-nums">{{ cantidadDe(item.id) }}</span>
                         }
                         <button
-                          (click)="alTocarMas(item)"
+                          (click)="alTocarMas(item)" [hidden]="item.agotado"
                           class="w-8 h-8 rounded-full bg-orange-600 text-white flex items-center justify-center hover:bg-orange-700 cursor-pointer"
                           [attr.aria-label]="'Agregar un ' + item.nombre"
                         >
@@ -474,11 +479,32 @@ interface PedidoCreado {
                   </div>
                 </div>
 
+                @if (direccionesGuardadas().length > 0) {
+                  <div>
+                    <p class="text-xs font-semibold text-stone-600 mb-1.5">Tus direcciones</p>
+                    <div class="flex flex-wrap gap-2" role="group" aria-label="Direcciones guardadas">
+                      @for (d of direccionesGuardadas(); track d.id) {
+                        <button type="button" (click)="elegirDireccion(d)" [attr.aria-pressed]="direccionElegida() === d.id"
+                          class="max-w-full px-3 py-1.5 rounded-full border text-xs text-left cursor-pointer truncate"
+                          [class]="direccionElegida() === d.id ? 'bg-orange-600 border-orange-600 text-white' : 'bg-white border-stone-300 text-stone-700 hover:border-orange-400'">
+                          {{ d.alias || d.direccion }}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+
                 <div>
                   <label for="po-dir" class="block text-xs font-semibold text-stone-600 mb-1">Dirección</label>
-                  <input id="po-dir" type="text" [ngModel]="direccion()" (ngModelChange)="direccion.set($event)" name="direccion" autocomplete="street-address"
+                  <input id="po-dir" type="text" [ngModel]="direccion()" (ngModelChange)="direccion.set($event); direccionElegida.set(null)" name="direccion" autocomplete="street-address"
                     placeholder="Calle, número, colonia"
                     class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-500" />
+                  @if (cuenta.esCliente() && direccionElegida() === null) {
+                    <label class="flex items-center gap-2 text-xs text-stone-600 mt-2 cursor-pointer">
+                      <input type="checkbox" [ngModel]="guardarDireccion()" (ngModelChange)="guardarDireccion.set($event)" name="guardarDir" class="accent-orange-600" />
+                      Guardar esta dirección para mis próximos pedidos
+                    </label>
+                  }
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -788,7 +814,7 @@ export class PublicOrderComponent implements OnInit {
   readonly masPedidos = signal<string[]>([]);
   readonly destacados = computed(() => {
     const porId = new Map(this.menu().flatMap((c) => c.items).map((i) => [i.id, i]));
-    return this.masPedidos().map((id) => porId.get(id)).filter((i): i is MenuItem => !!i);
+    return this.masPedidos().map((id) => porId.get(id)).filter((i): i is MenuItem => !!i && !i.agotado);
   });
   /** La ficha abierta, o null si no hay ninguna. */
   readonly ficha = signal<Ficha | null>(null);
@@ -829,6 +855,10 @@ export class PublicOrderComponent implements OnInit {
   readonly notas = signal('');
   readonly enlaceMaps = signal('');
   readonly pagaCon = signal<number | null>(null);
+  /** Direcciones de su cuenta, si entró como cliente. */
+  readonly direccionesGuardadas = signal<DireccionGuardada[]>([]);
+  readonly direccionElegida = signal<string | null>(null);
+  readonly guardarDireccion = signal(true);
 
   readonly latitud = signal<number | null>(null);
   readonly longitud = signal<number | null>(null);
@@ -854,6 +884,25 @@ export class PublicOrderComponent implements OnInit {
   })();
 
   readonly totalArticulos = computed(() => this.carrito().reduce((s, l) => s + l.cantidad, 0));
+
+  /** El carrito se guarda en el teléfono: recargar o volver más tarde no lo pierde. */
+  private carritoRestaurado = false;
+  private readonly guardarCarrito = effect(() => {
+    const lineas = this.carrito();
+    if (!this.carritoRestaurado || !this.branchId()) return;
+    try {
+      const clave = `pidefacil.carrito.${this.branchId()}`;
+      if (lineas.length === 0) {
+        localStorage.removeItem(clave);
+      } else {
+        localStorage.setItem(clave, JSON.stringify(lineas.map((l) => ({
+          itemId: l.item.id, cantidad: l.cantidad, adicionales: l.adicionales, instrucciones: l.instrucciones,
+        }))));
+      }
+    } catch {
+      // Sin almacenamiento el carrito solo dura la visita.
+    }
+  });
 
   private readonly revisarAlCambiarCarrito = effect(() => {
     this.totalArticulos();
@@ -940,6 +989,10 @@ export class PublicOrderComponent implements OnInit {
     if (sesion && sesion.tipo === 'CLIENTE') {
       this.telefono.set(sesion.telefono);
       this.nombre.set(sesion.nombre);
+      this.cuenta.misDirecciones(id).subscribe({
+        next: (lista) => this.direccionesGuardadas.set(lista),
+        error: () => this.direccionesGuardadas.set([]),
+      });
     }
 
     this.cargarMenu(id);
@@ -1040,6 +1093,7 @@ export class PublicOrderComponent implements OnInit {
    * rápido; uno con adicionales abre la ficha, porque hay algo que decidir.
    */
   alTocarMas(item: MenuItem): void {
+    if (item.agotado) return;
     if (item.grupos.length === 0) {
       this.sumarLinea(item, [], '', 1);
     } else {
@@ -1107,6 +1161,7 @@ export class PublicOrderComponent implements OnInit {
   // ------------------------------------------------------------------
 
   abrirFicha(item: MenuItem): void {
+    if (item.agotado) return;
     this.ficha.set({ item, elegidos: new Set(), instrucciones: '', cantidad: 1, editando: null });
   }
 
@@ -1243,6 +1298,38 @@ export class PublicOrderComponent implements OnInit {
     }
   }
 
+  /** Llena la dirección y el pin con una guardada: no hay que volver a marcarla. */
+  elegirDireccion(d: DireccionGuardada): void {
+    this.direccionElegida.set(d.id);
+    this.direccion.set(d.direccion);
+    this.referencias.set(d.referencias ?? '');
+    this.enlaceMaps.set('');
+    this.fijarPin(Number(d.latitud), Number(d.longitud));
+  }
+
+  /**
+   * Vuelve a armar el carrito guardado con el menú de hoy: lo que ya no está o
+   * cambió de adicionales se cae, y los precios son los actuales.
+   */
+  private restaurarCarrito(menu: MenuCategoria[]): void {
+    this.carritoRestaurado = true;
+    let guardado: { itemId: string; cantidad: number; adicionales: string[]; instrucciones: string }[] = [];
+    try {
+      guardado = JSON.parse(localStorage.getItem(`pidefacil.carrito.${this.branchId()}`) ?? '[]');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(guardado) || guardado.length === 0 || this.carrito().length > 0) return;
+    const items = new Map(menu.flatMap((c) => c.items).map((i) => [i.id, i]));
+    for (const g of guardado) {
+      const item = items.get(g.itemId);
+      if (!item || item.agotado || !(g.cantidad > 0)) continue;
+      const validos = new Set(item.grupos.flatMap((gr) => gr.opciones.map((o) => o.id)));
+      const adicionales = (g.adicionales ?? []).filter((a) => validos.has(a));
+      this.sumarLinea(item, adicionales, g.instrucciones ?? '', Math.min(99, g.cantidad));
+    }
+  }
+
   private fijarPin(lat: number, lon: number): void {
     this.latitud.set(lat);
     this.longitud.set(lon);
@@ -1316,12 +1403,19 @@ export class PublicOrderComponent implements OnInit {
         longitud: this.longitud(),
         notas: this.notas().trim() || null,
         pagaCon: this.pagaCon(),
+        guardarDireccion: this.cuenta.esCliente() && this.direccionElegida() === null && this.guardarDireccion(),
         items,
       })
       .subscribe({
         next: (p) => {
           this.enviando.set(false);
           this.pedidoCreado.set(p);
+          // Ya se pidio: si recarga, no debe volver a ver el mismo carrito.
+          try {
+            localStorage.removeItem(`pidefacil.carrito.${this.branchId()}`);
+          } catch {
+            /* sin almacenamiento no hay nada que borrar */
+          }
           if (typeof window !== 'undefined') {
             window.scrollTo({ top: 0 });
           }
@@ -1354,6 +1448,7 @@ export class PublicOrderComponent implements OnInit {
         // Por si responde un backend anterior a los adicionales, sin "grupos".
         this.menu.set(data.map((c) => ({ ...c, items: c.items.map((i) => ({ ...i, grupos: i.grupos ?? [] })) })));
         this.cargandoMenu.set(false);
+        this.restaurarCarrito(this.menu());
         // Lo más pedido es un extra: si falla, el menú sigue igual.
         this.http.get<string[]>(`${this.api}/public/branches/${branchId}/menu/mas-pedidos`).subscribe({
           next: (ids) => this.masPedidos.set(ids),

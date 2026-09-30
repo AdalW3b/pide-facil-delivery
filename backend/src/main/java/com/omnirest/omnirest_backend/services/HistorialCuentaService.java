@@ -29,6 +29,8 @@ public class HistorialCuentaService {
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final com.omnirest.omnirest_backend.repositories.CustomerAddressRepository direccionRepository;
+    private final com.omnirest.omnirest_backend.repositories.BranchRepository branchRepository;
 
     @Transactional(readOnly = true)
     public List<PedidoHistorialDTO> pedidosDelCliente(CuentaPublicaPrincipal cuenta) {
@@ -44,6 +46,39 @@ public class HistorialCuentaService {
         return orderRepository.findByDriverIdOrderByCreatedAtDesc(cuenta.cuentaId()).stream()
                 .map(this::aEntrega)
                 .toList();
+    }
+
+    /**
+     * Las direcciones guardadas del cliente, para elegirlas en el menu en linea
+     * en vez de volver a marcar el pin. Si abre el menu de otro restaurante,
+     * sus direcciones de aqui no aplican: lista vacia.
+     */
+    @Transactional(readOnly = true)
+    public List<com.omnirest.omnirest_backend.dtos.ClienteTelefonoDTO.Direccion> direccionesDelCliente(
+            java.util.UUID branchId, CuentaPublicaPrincipal cuenta) {
+        exigirCuenta(cuenta);
+        if (!esDelRestaurante(branchId, cuenta)) return List.of();
+        return direccionRepository.findByCustomerIdAndActivaTrueOrderByEsPrincipalDescCreadaEnDesc(cuenta.cuentaId())
+                .stream()
+                .map(a -> new com.omnirest.omnirest_backend.dtos.ClienteTelefonoDTO.Direccion(
+                        a.getId(), a.getAlias(), a.getDireccion(), a.getReferencias(), a.getLatitud(), a.getLongitud()))
+                .toList();
+    }
+
+    /** Quita una direccion guardada. Solo las suyas: se busca por su id de cuenta. */
+    @Transactional
+    public void borrarDireccion(CuentaPublicaPrincipal cuenta, java.util.UUID direccionId) {
+        exigirCuenta(cuenta);
+        var direccion = direccionRepository.findByIdAndCustomerId(direccionId, cuenta.cuentaId())
+                .orElseThrow(() -> new IllegalArgumentException("Esa dirección ya no existe."));
+        direccion.setActiva(false);
+        direccionRepository.save(direccion);
+    }
+
+    private boolean esDelRestaurante(java.util.UUID branchId, CuentaPublicaPrincipal cuenta) {
+        return branchRepository.findById(branchId)
+                .map(b -> b.getRestaurant().getId().equals(cuenta.restaurantId()))
+                .orElse(false);
     }
 
     private void exigirCuenta(CuentaPublicaPrincipal cuenta) {

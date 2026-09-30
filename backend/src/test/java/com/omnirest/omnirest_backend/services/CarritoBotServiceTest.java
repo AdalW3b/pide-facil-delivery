@@ -42,13 +42,14 @@ class CarritoBotServiceTest {
     private final BranchRepository branchRepository = mock(BranchRepository.class);
     private final OrderService orderService = mock(OrderService.class);
     private final AdicionalesService adicionalesService = mock(AdicionalesService.class);
+    private final AgotadosService agotadosService = mock(AgotadosService.class);
     private final AtomicReference<CarritoBot> guardado = new AtomicReference<>();
 
     private CarritoBotService servicio;
 
     @BeforeEach
     void setUp() {
-        servicio = new CarritoBotService(carritoRepository, branchRepository, orderService, adicionalesService);
+        servicio = new CarritoBotService(carritoRepository, branchRepository, orderService, adicionalesService, agotadosService);
         when(branchRepository.findById(branchId)).thenReturn(Optional.of(
                 Branch.builder().id(branchId).restaurant(restaurante).build()));
         when(orderService.encontrarProducto(eq(restaurante.getId()), argThat((String n) -> n != null && n.toLowerCase().contains("horchata")))).thenReturn(horchata);

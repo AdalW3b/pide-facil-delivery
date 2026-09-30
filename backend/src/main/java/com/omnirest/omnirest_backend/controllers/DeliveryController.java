@@ -46,6 +46,8 @@ public class DeliveryController {
     private final WhatsappIntegrationService whatsappIntegrationService;
     private final SecurityValidationService securityValidationService;
     private final com.omnirest.omnirest_backend.services.CuadreService cuadreService;
+    private final com.omnirest.omnirest_backend.security.FrenoDePedidos frenoDePedidos;
+    private final com.omnirest.omnirest_backend.services.CuentaPublicaService cuentaPublicaService;
 
     // ------------------------------------------------------------------
     // Menu web del cliente (publico)
@@ -135,8 +137,14 @@ public class DeliveryController {
     @PostMapping("/public/branches/{branchId}/delivery/orders")
     public ResponseEntity<PedidoDomicilioResponseDTO> crearPedido(
             @PathVariable UUID branchId,
-            @Valid @RequestBody CrearPedidoDomicilioRequestDTO request) {
+            @Valid @RequestBody CrearPedidoDomicilioRequestDTO request,
+            jakarta.servlet.http.HttpServletRequest http) {
+        // Menu publico: se frena a quien manda pedidos en serie.
+        String ip = http.getRemoteAddr();
+        frenoDePedidos.comprobar(ip);
+        deliveryService.exigirSinDemasiadosPendientes(branchId, request.phoneNumber());
         PedidoDomicilioResponseDTO pedido = deliveryService.crearPedido(branchId, request);
+        frenoDePedidos.registrar(ip);
         return ResponseEntity.status(HttpStatus.CREATED).body(pedido);
     }
 
@@ -151,43 +159,68 @@ public class DeliveryController {
     @GetMapping("/public/delivery/{token}")
     public ResponseEntity<EntregaRepartidorDTO> verEntrega(
             @PathVariable String token,
-            @RequestParam(required = false) String telefono) {
-        return ResponseEntity.ok(repartidorService.verEntrega(token, telefono));
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(repartidorService.verEntrega(token, cuenta));
+    }
+
+    /** Manda por WhatsApp el codigo con el que el repartidor confirma su numero. */
+    @PostMapping("/public/delivery/{token}/codigo")
+    public ResponseEntity<Map<String, String>> codigoRepartidor(
+            @PathVariable String token,
+            @RequestBody Map<String, String> payload) {
+        UUID branchId = repartidorService.sucursalDe(token);
+        cuentaPublicaService.solicitarCodigo(branchId,
+                com.omnirest.omnirest_backend.domain.enums.TipoCuenta.REPARTIDOR,
+                payload != null ? payload.get("phoneNumber") : null);
+        return ResponseEntity.ok(Map.of("message", "Te mandamos un código por WhatsApp."));
+    }
+
+    /** Confirma el codigo y abre su sesion de repartidor. */
+    @PostMapping("/public/delivery/{token}/verificar")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CuentaResponseDTO> verificarRepartidor(
+            @PathVariable String token,
+            @RequestBody Map<String, String> payload) {
+        UUID branchId = repartidorService.sucursalDe(token);
+        return ResponseEntity.ok(cuentaPublicaService.entrarRepartidorConCodigo(branchId,
+                payload.get("phoneNumber"), payload.get("codigo"), payload.get("nombre")));
     }
 
     /** Toma la entrega; si es su primera vez, queda registrado. */
     @PostMapping("/public/delivery/{token}/tomar")
     public ResponseEntity<EntregaRepartidorDTO> tomarEntrega(
             @PathVariable String token,
-            @Valid @RequestBody TomarEntregaDTO request) {
-        return ResponseEntity.ok(repartidorService.tomarEntrega(token, request));
+            @Valid @RequestBody(required = false) TomarEntregaDTO request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(repartidorService.tomarEntrega(token, request, cuenta));
     }
 
     /** El repartidor recogio el pedido y sale a la calle. */
     @PostMapping("/public/delivery/{token}/en-camino")
     public ResponseEntity<EntregaRepartidorDTO> marcarEnCamino(
             @PathVariable String token,
-            @RequestBody Map<String, String> payload) {
-        return ResponseEntity.ok(
-                repartidorService.marcarEnCamino(token, payload != null ? payload.get("phoneNumber") : null));
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(repartidorService.marcarEnCamino(token, cuenta));
     }
 
     /** El repartidor ya no puede llevarla: vuelve a quedar disponible. */
     @PostMapping("/public/delivery/{token}/soltar")
     public ResponseEntity<EntregaRepartidorDTO> soltarEntrega(
             @PathVariable String token,
-            @RequestBody Map<String, String> payload) {
-        return ResponseEntity.ok(
-                repartidorService.soltarEntrega(token, payload != null ? payload.get("phoneNumber") : null));
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(repartidorService.soltarEntrega(token, cuenta));
     }
 
     /** El repartidor cierra su entrega. */
     @PostMapping("/public/delivery/{token}/entregado")
     public ResponseEntity<EntregaRepartidorDTO> marcarEntregado(
             @PathVariable String token,
-            @RequestBody Map<String, String> payload) {
-        return ResponseEntity.ok(
-                repartidorService.marcarEntregado(token, payload != null ? payload.get("phoneNumber") : null));
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CuentaPublicaPrincipal cuenta) {
+        return ResponseEntity.ok(repartidorService.marcarEntregado(token, cuenta));
     }
 
     // ------------------------------------------------------------------
