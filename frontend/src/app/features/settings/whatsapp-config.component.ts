@@ -1,3 +1,4 @@
+import { AsistenteBotComponent } from './asistente-bot.component';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -49,6 +50,10 @@ interface WaStatusResponse {
   pairingCode: string | null;
   origin: string | null;
   companyId: string | null;
+  /** Explicación del backend, p. ej. cuando el número ya es de otra sucursal. */
+  message?: string | null;
+  /** Conectado, pero el número también está registrado en otra sucursal. */
+  warning?: string | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -56,7 +61,7 @@ interface WaStatusResponse {
 @Component({
   selector: 'app-whatsapp-config',
   standalone: true,
-  imports: [TituloPaginaComponent, 
+  imports: [TituloPaginaComponent, AsistenteBotComponent, 
     CommonModule,
     LucideBuilding,
     LucideMessageSquare,
@@ -231,6 +236,11 @@ interface WaStatusResponse {
                   <p class="text-xs text-slate-400 max-w-xs mx-auto">
                     Tu bot de Pide Facil está listo para recibir y enviar mensajes automáticos de WhatsApp.
                   </p>
+                  @if (avisoNumero()) {
+                    <p class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 max-w-sm mx-auto" role="alert">
+                      {{ avisoNumero() }}
+                    </p>
+                  }
                 </div>
                 <div class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-semibold">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -285,7 +295,7 @@ interface WaStatusResponse {
                   <svg lucideAlertTriangle class="w-8 h-8"></svg>
                 </div>
                 <div class="space-y-2">
-                  <h3 class="font-bold text-white">Error de conexión</h3>
+                  <h3 class="font-bold text-white">{{ numeroDuplicado() ? 'Este número ya se usa en otra sucursal' : 'Error de conexión' }}</h3>
                   <p class="text-xs text-slate-400 leading-relaxed">{{ errorMessage() }}</p>
                 </div>
                 <button
@@ -338,6 +348,9 @@ interface WaStatusResponse {
           </ol>
         </div>
       }
+
+      <!-- Nombre y personalidad del asistente de esta sucursal -->
+      <app-asistente-bot [branchId]="activeBranchId()" />
       }
 
     </div>
@@ -418,6 +431,9 @@ export class WhatsappConfigComponent implements OnInit, OnDestroy {
 
   /** Error message when status is 'error' */
   readonly errorMessage = signal<string | null>(null);
+  /** El teléfono ya estaba conectado en otra sucursal y el servicio lo rechazó. */
+  readonly numeroDuplicado = signal(false);
+  readonly avisoNumero = signal<string | null>(null);
 
   // ─── Computed Signals ─────────────────────────────────────────────────────
 
@@ -660,8 +676,19 @@ export class WhatsappConfigComponent implements OnInit, OnDestroy {
    */
   private applyRemoteStatus(res: WaStatusResponse): void {
     this.connectedNumber.set(res.number);
+    this.numeroDuplicado.set(false);
+    this.avisoNumero.set(res.warning ?? null);
 
     switch (res.status) {
+      case 'error_duplicate_number':
+        // Un número, una sucursal: el servicio desvinculó este intento.
+        this.numeroDuplicado.set(true);
+        this.connectedNumber.set(null);
+        this.uiStatus.set('error');
+        this.errorMessage.set(res.message || 'Ese WhatsApp ya está conectado en otra sucursal. Cada sucursal necesita su propio número.');
+        this.stopPolling();
+        break;
+
       case 'open':
         this.uiStatus.set('open');
         this.qrData.set(null);

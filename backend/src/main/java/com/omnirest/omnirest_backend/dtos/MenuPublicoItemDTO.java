@@ -15,5 +15,7 @@ public record MenuPublicoItemDTO(
         /** Ruta de la foto cuadrada para la lista; null si no tiene foto. */
         String miniatura,
         /** Ruta de la foto grande para la ficha; null si no tiene foto. */
-        String foto) {
+        String foto,
+        /** Si es combo, lo que trae: ["4 × Taco al pastor", "2 × Refresco"]. Vacio si no. */
+        List<String> incluye) {
 }

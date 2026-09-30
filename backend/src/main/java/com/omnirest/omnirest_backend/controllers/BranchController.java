@@ -120,10 +120,12 @@ public class BranchController {
                 "restaurante", branch.getRestaurant().getName()));
     }
 
+    /** Nombre y personalidad del asistente de WhatsApp de la sucursal. */
     @GetMapping("/{branchId}/bot-config")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER', 'WHATSAPP_READ', 'WHATSAPP_UPDATE')")
     public ResponseEntity<com.omnirest.omnirest_backend.dtos.BotConfigDTO> getBotConfig(
             @PathVariable UUID branchId) {
+        securityValidationService.validateUserAccessToBranch(branchId);
 
         com.omnirest.omnirest_backend.domain.entities.Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Sucursal no encontrada"));
@@ -133,19 +135,32 @@ public class BranchController {
                 branch.getBotTone() != null ? branch.getBotTone() : "Amable, servicial y conciso"));
     }
 
+    /**
+     * Cambia el nombre y la personalidad del asistente. Lo lee el flujo de n8n
+     * en cada mensaje, asi que el cambio aplica desde la siguiente respuesta.
+     */
     @PutMapping("/{branchId}/bot-config")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER', 'WHATSAPP_UPDATE')")
     public ResponseEntity<com.omnirest.omnirest_backend.dtos.BotConfigDTO> updateBotConfig(
             @PathVariable UUID branchId,
             @RequestBody com.omnirest.omnirest_backend.dtos.BotConfigDTO dto) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+
+        String nombre = dto == null || dto.botName() == null ? "" : dto.botName().trim();
+        String personalidad = dto == null || dto.botTone() == null ? "" : dto.botTone().trim();
+        if (nombre.isEmpty() || nombre.length() > 40) {
+            throw new IllegalArgumentException("El nombre del asistente debe tener entre 1 y 40 caracteres.");
+        }
+        if (personalidad.isEmpty() || personalidad.length() > 600) {
+            throw new IllegalArgumentException("Describe la personalidad en máximo 600 caracteres.");
+        }
 
         com.omnirest.omnirest_backend.domain.entities.Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Sucursal no encontrada"));
-
-        branch.setBotName(dto.botName());
-        branch.setBotTone(dto.botTone());
+        branch.setBotName(nombre);
+        branch.setBotTone(personalidad);
         branchRepository.save(branch);
 
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(new com.omnirest.omnirest_backend.dtos.BotConfigDTO(nombre, personalidad));
     }
 }

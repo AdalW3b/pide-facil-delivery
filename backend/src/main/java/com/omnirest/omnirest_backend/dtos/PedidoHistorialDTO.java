@@ -23,5 +23,6 @@ public record PedidoHistorialDTO(
         List<String> platillos,
         BigDecimal comida,
         BigDecimal envio,
+        BigDecimal propina,
         BigDecimal total) {
 }

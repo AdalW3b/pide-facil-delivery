@@ -1,3 +1,4 @@
+import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -66,6 +67,14 @@ interface Columna {
   template: `
     <div class="space-y-6 select-none min-h-screen bg-slate-950 text-slate-100 p-2 sm:p-4">
       <app-estado-en-vivo [branchId]="activeBranchId()" />
+      @if (sonidos.bloqueado()) {
+        <button
+          (click)="sonidos.desbloquear(); sonidos.tocar('domicilio')"
+          class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold cursor-pointer"
+        >
+          El navegador bloqueó el sonido. Toca aquí para oír los pedidos nuevos.
+        </button>
+      }
       @if (telefonoAbierto() && activeBranchId()) {
         <app-pedido-telefonico [branchId]="activeBranchId()!" (cerrar)="telefonoAbierto.set(false)" (creado)="alCrearPorTelefono($event)" />
       }
@@ -307,7 +316,8 @@ interface Columna {
                     <th class="pb-2 pr-4 font-semibold text-right">Entregas</th>
                     <th class="pb-2 pr-4 font-semibold text-right">Km</th>
                     <th class="pb-2 pr-4 font-semibold text-right">A pagar</th>
-                    <th class="pb-2 pr-4 font-semibold text-right">Cobró</th>
+                    <th class="pb-2 pr-4 font-semibold text-right">Cobró (para caja)</th>
+                    <th class="pb-2 pr-4 font-semibold text-right">Propinas (suyas)</th>
                     <th class="pb-2 font-semibold text-right">Última</th>
                   </tr>
                 </thead>
@@ -324,6 +334,7 @@ interface Columna {
                       <td class="py-2 pr-4 text-right text-slate-400">{{ r.kmTotales.toFixed(1) }}</td>
                       <td class="py-2 pr-4 text-right font-bold text-amber-400">{{ r.aPagar | pesos }}</td>
                       <td class="py-2 pr-4 text-right text-emerald-400">{{ r.cobrado | pesos }}</td>
+                      <td class="py-2 pr-4 text-right text-slate-300">{{ (r.propinas ?? 0) | pesos }}</td>
                       <td class="py-2 text-right text-slate-400 text-xs">{{ soloHora(r.ultimaEntrega) }}</td>
                     </tr>
                   }
@@ -447,6 +458,11 @@ interface Columna {
                     <div class="flex justify-between text-slate-400">
                       <span>Envío</span><span class="tabular-nums">{{ p.envioCobrado | pesos }}</span>
                     </div>
+                    @if (p.propina > 0) {
+                      <div class="flex justify-between text-slate-400">
+                        <span>Propina (del repartidor)</span><span class="tabular-nums">{{ p.propina | pesos }}</span>
+                      </div>
+                    }
                     <div class="flex justify-between font-bold text-white">
                       <span>Total</span><span class="tabular-nums">{{ p.total | pesos }}</span>
                     </div>
@@ -466,6 +482,12 @@ interface Columna {
                         La lleva <strong>{{ p.repartidorNombre }}</strong>
                         @if (p.pagoRepartidor !== null) {
                           <span class="text-slate-500">· se le pagan {{ p.pagoRepartidor | pesos }}</span>
+                        }
+                        @if (p.deliveryStatus !== 'ENTREGADO' && p.deliveryStatus !== 'CANCELADO') {
+                          <button (click)="liberar(p)" [disabled]="enviando().has(p.orderId)"
+                            class="ml-1 text-[11px] text-slate-500 hover:text-rose-300 underline underline-offset-2 cursor-pointer disabled:opacity-50">
+                            Quitárselo
+                          </button>
                         }
                       </span>
                     </p>
@@ -524,6 +546,9 @@ interface Columna {
 })
 export class DeliveryBoardComponent implements OnInit, OnDestroy {
   private readonly avisos = inject(AvisosService);
+  readonly sonidos = inject(SonidosService);
+  /** Pedidos que ya se vieron en esta sucursal: los que no estén aquí son nuevos y suenan. */
+  private conocidos: Set<string> | null = null;
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly webSocketService = inject(WebSocketService);
@@ -646,6 +671,7 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
       } else {
         this.desconectarWebSocket();
         this.pedidos.set([]);
+        this.conocidos = null;
         this.isLoading.set(false);
       }
     });
@@ -701,6 +727,34 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
    */
   sePuedePublicar(p: DeliveryOrder): boolean {
     return p.orderType !== 'PARA_LLEVAR' && !p.repartidorNombre && p.deliveryStatus !== 'NUEVO';
+  }
+
+  /** Le quita la entrega al repartidor para que la lleve otro. */
+  async liberar(p: DeliveryOrder): Promise<void> {
+    const branchId = this.activeBranchId();
+    if (!branchId) return;
+    const ok = await this.avisos.confirmar({
+      titulo: `¿Quitarle la entrega a ${p.repartidorNombre}?`,
+      mensaje: 'Le avisamos por WhatsApp y la entrega vuelve a quedar disponible. Si ya está empacada, se ofrece de nuevo en el grupo.',
+      confirmar: 'Quitársela',
+      peligro: true,
+    });
+    if (!ok) return;
+
+    this.marcarEnviando(p.orderId, true);
+    this.http
+      .post<DeliveryOrder>(`${environment.apiUrl}/branches/${branchId}/delivery/orders/${p.orderId}/liberar`, {})
+      .subscribe({
+        next: (actualizado) => {
+          this.marcarEnviando(p.orderId, false);
+          this.pedidos.update((lista) => lista.map((x) => (x.orderId === actualizado.orderId ? actualizado : x)));
+          this.avisar(true, `La entrega ${p.tokenSeguimiento} quedó sin repartidor.`);
+        },
+        error: (err) => {
+          this.marcarEnviando(p.orderId, false);
+          this.avisar(false, err.error?.error || 'No se pudo quitar el repartidor.');
+        },
+      });
   }
 
   /** Manda la entrega al grupo de repartidores, o la vuelve a ofrecer. */
@@ -811,7 +865,7 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
       .get<DeliveryOrder[]>(`${environment.apiUrl}/branches/${branchId}/delivery/orders`)
       .subscribe({
         next: (data) => {
-          this.pedidos.set(data);
+          this.recibirPedidos(data, silencioso);
           this.isLoading.set(false);
         },
         error: (err) => {
@@ -833,9 +887,20 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
     this.wsSubscription = this.webSocketService
       .subscribe<DeliveryOrder[]>(`/topic/branches/${branchId}/delivery`)
       .subscribe({
-        next: (lista) => this.pedidos.set(lista),
+        next: (lista) => this.recibirPedidos(lista, true),
         error: (err) => console.error('Error en la suscripción de reparto', err),
       });
+  }
+
+  /**
+   * Pone la lista y suena si llegó un pedido que no se había visto. La primera
+   * carga de una sucursal no suena: son los pedidos que ya estaban.
+   */
+  private recibirPedidos(lista: DeliveryOrder[], avisar: boolean): void {
+    const nuevos = this.conocidos ? lista.filter((p) => !this.conocidos!.has(p.orderId)) : [];
+    if (avisar && nuevos.length > 0) this.sonidos.tocar('domicilio');
+    this.conocidos = new Set([...(this.conocidos ?? []), ...lista.map((p) => p.orderId)]);
+    this.pedidos.set(lista);
   }
 
   private desconectarWebSocket(): void {
@@ -874,6 +939,7 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
     this.selectedRestaurantId.set((event.target as HTMLSelectElement).value);
     this.selectedBranchId.set('');
     this.pedidos.set([]);
+    this.conocidos = null;
   }
 
   onBranchChange(event: Event): void {

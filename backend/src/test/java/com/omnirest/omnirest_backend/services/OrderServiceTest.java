@@ -194,7 +194,7 @@ class OrderServiceTest {
 
         assertNotNull(response);
         assertEquals(new BigDecimal("250.00"), order.getTotalAmount());
-        verify(inventoryService).checkAndDeductStock(product, branchId, 2);
+        verify(inventoryService).venderLinea(argThat(i -> i.getProduct() == product && i.getQuantity() == 2), eq(branchId));
         verify(orderItemRepository).saveAll(anyList());
     }
 
@@ -320,7 +320,7 @@ class OrderServiceTest {
         assertNotNull(order.getClosedAt());
         assertEquals(TableStatus.AVAILABLE, table.getStatus());
 
-        verify(inventoryService).restoreStock(eq(product), eq(branchId), eq(1));
+        verify(inventoryService).devolverLinea(item, branchId);
         verify(orderItemRepository).saveAll(anyList());
         verify(tableRepository).save(table);
         verify(messagingTemplate, atLeastOnce()).convertAndSend(contains("/kitchen"), any(Object.class));

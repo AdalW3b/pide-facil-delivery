@@ -36,6 +36,7 @@ public class CustomerWebhookController {
     private final OrderService orderService;
     private final WhatsappMessageBufferService whatsappMessageBufferService;
     private final BranchRepository branchRepository;
+    private final com.omnirest.omnirest_backend.services.CarritoBotService carritoBotService;
 
     @PostMapping("/branches/{branchId}/customers/identify")
     public ResponseEntity<CustomerResponseDTO> identifyCustomer(
@@ -84,6 +85,62 @@ public class CustomerWebhookController {
             @PathVariable UUID branchId) {
         validateBot(botToken, branchId);
         return ResponseEntity.ok(customerService.getMenuForBranch(branchId));
+    }
+
+    // ------------------------------------------------------------------
+    // Carrito del bot: el pedido se arma en el sistema, no en la memoria de la IA
+    // ------------------------------------------------------------------
+
+    /** Lo que lleva el carrito, con un texto listo para el resumen al cliente. */
+    @GetMapping("/branches/{branchId}/carrito/{telefono}")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CarritoBotDTO> verCarrito(
+            @RequestHeader(value = "X-Bot-Token", required = false) String botToken,
+            @PathVariable UUID branchId,
+            @PathVariable String telefono) {
+        validateBot(botToken, branchId);
+        return ResponseEntity.ok(carritoBotService.ver(branchId, telefono));
+    }
+
+    /** Agrega platillos (por nombre, con adicionales). No manda nada a cocina. */
+    @PostMapping("/branches/{branchId}/carrito/{telefono}/items")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CarritoBotDTO> agregarAlCarrito(
+            @RequestHeader(value = "X-Bot-Token", required = false) String botToken,
+            @PathVariable UUID branchId,
+            @PathVariable String telefono,
+            @RequestBody com.omnirest.omnirest_backend.dtos.CarritoBotDTO.Agregar pedido) {
+        validateBot(botToken, branchId);
+        return ResponseEntity.ok(carritoBotService.agregar(branchId, telefono, pedido));
+    }
+
+    /** Quita un platillo (o algunas piezas de el). */
+    @PostMapping("/branches/{branchId}/carrito/{telefono}/quitar")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CarritoBotDTO> quitarDelCarrito(
+            @RequestHeader(value = "X-Bot-Token", required = false) String botToken,
+            @PathVariable UUID branchId,
+            @PathVariable String telefono,
+            @RequestBody com.omnirest.omnirest_backend.dtos.CarritoBotDTO.Quitar quitar) {
+        validateBot(botToken, branchId);
+        return ResponseEntity.ok(carritoBotService.quitar(branchId, telefono, quitar));
+    }
+
+    @DeleteMapping("/branches/{branchId}/carrito/{telefono}")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CarritoBotDTO> vaciarCarrito(
+            @RequestHeader(value = "X-Bot-Token", required = false) String botToken,
+            @PathVariable UUID branchId,
+            @PathVariable String telefono) {
+        validateBot(botToken, branchId);
+        return ResponseEntity.ok(carritoBotService.vaciar(branchId, telefono));
+    }
+
+    /** El cliente dijo que si: todo el carrito va a cocina y el carrito se vacia. */
+    @PostMapping("/branches/{branchId}/carrito/{telefono}/confirmar")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.CarritoBotDTO.Confirmacion> confirmarCarrito(
+            @RequestHeader(value = "X-Bot-Token", required = false) String botToken,
+            @PathVariable UUID branchId,
+            @PathVariable String telefono,
+            @RequestBody(required = false) com.omnirest.omnirest_backend.dtos.CarritoBotDTO.Confirmar datos) {
+        validateBot(botToken, branchId);
+        return ResponseEntity.ok(carritoBotService.confirmar(branchId, telefono, datos));
     }
 
     @PostMapping("/orders/items")

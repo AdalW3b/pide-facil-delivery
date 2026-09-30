@@ -63,6 +63,6 @@ public class Branch {
     @Column(name = "bot_name", length = 100)
     private String botName;
 
-    @Column(name = "bot_tone", length = 255)
+    @Column(name = "bot_tone", length = 600)
     private String botTone;
 }

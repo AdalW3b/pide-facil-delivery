@@ -32,6 +32,13 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     Optional<Order> findByBranchIdAndTableTableNumberAndStatus(UUID branchId, Integer tableNumber, OrderStatus status);
     Optional<Order> findByBranchIdAndCustomerPhoneNumberAndStatus(UUID branchId, String phoneNumber, OrderStatus status);
 
+    /**
+     * La cuenta abierta de un cliente en una mesa (no sus pedidos a domicilio
+     * o para llevar). La mas reciente, por si hubiera mas de una.
+     */
+    Optional<Order> findFirstByBranchIdAndCustomerPhoneNumberAndStatusAndOrderTypeOrderByCreatedAtDesc(
+            UUID branchId, String phoneNumber, OrderStatus status, com.omnirest.omnirest_backend.domain.enums.OrderType orderType);
+
     // Optimización para el KDS (Cocina) - Trae órdenes activas y todo su detalle.
     // Un pedido a domicilio entra a cocina solo despues de que la sucursal lo
     // acepta: mientras esta en NUEVO nadie se pone a cocinarlo, y si se rechaza
@@ -86,7 +93,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT new com.omnirest.omnirest_backend.dtos.CuadreDTOs$Pendiente(" +
            "  d.id, d.nombre, d.phoneNumber, count(o), " +
            "  coalesce(sum(o.totalAmount + coalesce(o.envioCobrado, 0)), 0), " +
-           "  coalesce(sum(o.pagoRepartidor), 0), min(o.entregadoEn), max(o.entregadoEn)) " +
+           "  coalesce(sum(o.pagoRepartidor), 0), coalesce(sum(o.propina), 0), min(o.entregadoEn), max(o.entregadoEn)) " +
            "FROM Order o JOIN o.driver d " +
            "WHERE o.branch.id = :branchId AND o.corteId IS NULL " +
            "AND o.deliveryStatus = com.omnirest.omnirest_backend.domain.enums.DeliveryStatus.ENTREGADO " +
@@ -118,6 +125,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
            "  coalesce(sum(o.distanciaKm), 0), " +
            "  coalesce(sum(o.pagoRepartidor), 0), " +
            "  coalesce(sum(o.totalAmount + coalesce(o.envioCobrado, 0)), 0), " +
+           "  coalesce(sum(o.propina), 0), " +
            "  max(o.entregadoEn)) " +
            "FROM Order o JOIN o.driver d " +
            "WHERE o.branch.id = :branchId " +

@@ -14,6 +14,8 @@ interface Pendiente {
   entregas: number;
   cobrado: number;
   pagoRepartidor: number;
+  /** Propinas de los clientes: el repartidor se las queda. */
+  propinas: number;
   primeraEntrega: string;
   ultimaEntrega: string;
 }
@@ -81,6 +83,12 @@ interface Corte {
                     <dd class="font-black text-indigo-200 tabular-nums">{{ esperado(p) | pesos }}</dd>
                   </div>
                 </dl>
+
+                @if (p.propinas > 0) {
+                  <p class="text-[11px] text-slate-400">
+                    Además cobró {{ p.propinas | pesos }} de propinas: son suyas y no entran a caja.
+                  </p>
+                }
 
                 <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
                   <input type="checkbox" [ngModel]="descontar(p.driverId)" (ngModelChange)="fijar(p.driverId, 'descontar', $event)" class="accent-indigo-500" />

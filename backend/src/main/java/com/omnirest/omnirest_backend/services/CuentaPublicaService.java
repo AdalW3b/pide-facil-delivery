@@ -89,11 +89,7 @@ public class CuentaPublicaService {
     @Transactional
     public void solicitarCodigo(UUID branchId, TipoCuenta tipo, String telefonoCrudo) {
         Branch branch = buscarSucursal(branchId);
-        String telefono = TelefonoMx.canonico(telefonoCrudo);
-
-        if (telefono.isEmpty()) {
-            throw new IllegalArgumentException("Escribe un número de WhatsApp válido.");
-        }
+        String telefono = TelefonoMx.exigirValido(telefonoCrudo, "tu WhatsApp");
 
         UUID restaurantId = branch.getRestaurant().getId();
         frenarAbuso(restaurantId, telefono);

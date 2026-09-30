@@ -1,3 +1,4 @@
+import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -457,6 +458,7 @@ import { environment } from '../../../environments/environment';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private readonly avisos = inject(AvisosService);
+  private readonly sonidos = inject(SonidosService);
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly tableService = inject(TableService);
@@ -1010,7 +1012,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           const isManager = this.authService.userRole() === 'BRANCH_MANAGER' || this.isSuperAdmin();
 
           if (isAssigned || isManager) {
-            new Audio('/bell.ogg').play().catch((e) => console.warn('Audio bloqueado', e));
+            this.sonidos.tocar('alerta');
 
             const alertId = Date.now();
             const alertItem = {

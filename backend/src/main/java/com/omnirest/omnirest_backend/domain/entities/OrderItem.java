@@ -59,18 +59,33 @@ public class OrderItem {
     @EqualsAndHashCode.Exclude
     private java.util.List<OrderItemAdicional> adicionales = new java.util.ArrayList<>();
 
+    /** Si la linea es un combo: los platillos que llevaba al venderse. */
+    @OneToMany(mappedBy = "orderItem", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @org.hibernate.annotations.Fetch(org.hibernate.annotations.FetchMode.SUBSELECT)
+    @Builder.Default
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private java.util.List<OrderItemComponente> componentes = new java.util.ArrayList<>();
+
     /**
-     * Los adicionales como los lee cocina, agrupados: "Tortilla: Harina",
-     * "Extras: Carne extra, Queso". Lista vacia si no lleva ninguno.
+     * Lo que se muestra debajo del platillo, en cocina, en la cuenta y al
+     * repartidor. Si es combo, primero lo que incluye: "Incluye: 4 × Taco al
+     * pastor, 2 × Refresco". Despues los adicionales, agrupados: "Tortilla:
+     * Harina", "Extras: Carne extra, Queso". Lista vacia si no lleva nada.
      */
     public java.util.List<String> adicionalesParaMostrar() {
-        if (adicionales == null || adicionales.isEmpty()) return java.util.List.of();
+        java.util.List<String> lineas = new java.util.ArrayList<>();
+        if (componentes != null && !componentes.isEmpty()) {
+            lineas.add("Incluye: " + componentes.stream()
+                    .map(c -> c.getCantidad() + " × " + c.getNombre())
+                    .collect(java.util.stream.Collectors.joining(", ")));
+        }
+        if (adicionales == null || adicionales.isEmpty()) return lineas;
         java.util.Map<String, java.util.List<String>> porGrupo = new java.util.LinkedHashMap<>();
         for (OrderItemAdicional a : adicionales) {
             porGrupo.computeIfAbsent(a.getGrupoNombre(), k -> new java.util.ArrayList<>()).add(a.getNombre());
         }
-        return porGrupo.entrySet().stream()
-                .map(e -> e.getKey() + ": " + String.join(", ", e.getValue()))
-                .toList();
+        porGrupo.forEach((grupo, nombres) -> lineas.add(grupo + ": " + String.join(", ", nombres)));
+        return lineas;
     }
 }

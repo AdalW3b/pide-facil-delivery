@@ -125,4 +125,13 @@ class CalculadoraEnvioTest {
         assertThrows(IllegalArgumentException.class,
                 () -> CalculadoraEnvio.calcular(new BigDecimal("-1"), tarifaDelEjemplo()));
     }
+
+    @Test
+    void pagoAlRepartidorEsFijoMasPorKm() {
+        // Sucursal prime: $12 fijo + $6 por km. 2.2 km = $25.20, lo mismo en el grupo y en el tablero.
+        assertEquals(new BigDecimal("25.20"),
+                CalculadoraEnvio.pagoRepartidor(new BigDecimal("12"), new BigDecimal("6"), new BigDecimal("2.2")));
+        assertEquals(new BigDecimal("12.00"),
+                CalculadoraEnvio.pagoRepartidor(new BigDecimal("12"), null, new BigDecimal("5")));
+    }
 }

@@ -172,6 +172,15 @@ public class DeliveryController {
                 repartidorService.marcarEnCamino(token, payload != null ? payload.get("phoneNumber") : null));
     }
 
+    /** El repartidor ya no puede llevarla: vuelve a quedar disponible. */
+    @PostMapping("/public/delivery/{token}/soltar")
+    public ResponseEntity<EntregaRepartidorDTO> soltarEntrega(
+            @PathVariable String token,
+            @RequestBody Map<String, String> payload) {
+        return ResponseEntity.ok(
+                repartidorService.soltarEntrega(token, payload != null ? payload.get("phoneNumber") : null));
+    }
+
     /** El repartidor cierra su entrega. */
     @PostMapping("/public/delivery/{token}/entregado")
     public ResponseEntity<EntregaRepartidorDTO> marcarEntregado(
@@ -209,6 +218,16 @@ public class DeliveryController {
             @Valid @RequestBody CambiarEstadoEntregaDTO request) {
         securityValidationService.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(deliveryService.cambiarEstado(branchId, orderId, request));
+    }
+
+    /** Le quita la entrega al repartidor que la tenia, para que la lleve otro. */
+    @PostMapping("/branches/{branchId}/delivery/orders/{orderId}/liberar")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'ORDERS_UPDATE')")
+    public ResponseEntity<PedidoDomicilioPanelDTO> liberarRepartidor(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(deliveryService.liberarRepartidor(branchId, orderId));
     }
 
     /** Manda la entrega al grupo de repartidores, o la vuelve a ofrecer. */

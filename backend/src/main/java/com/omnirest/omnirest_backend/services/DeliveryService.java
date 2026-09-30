@@ -127,6 +127,7 @@ public class DeliveryService {
         return productRepository
                 .findByCategoryRestaurantIdAndActiveTrue(branch.getRestaurant().getId()).stream()
                 .filter(p -> p.getCategory() != null && Boolean.TRUE.equals(p.getCategory().getActive()))
+                .filter(Combos::vigenteHoy)
                 .collect(Collectors.groupingBy(Product::getCategory, LinkedHashMap::new, Collectors.toList()))
                 .entrySet().stream()
                 .map(e -> new MenuPublicoCategoriaDTO(
@@ -138,7 +139,8 @@ public class DeliveryService {
                                         p.getId(), p.getName(), p.getPrice(), p.getDescription(),
                                         adicionalesService.gruposDelMenu(p, grupos),
                                         FotosService.url(p.getId(), fotos.get(p.getId()), "mini"),
-                                        FotosService.url(p.getId(), fotos.get(p.getId()), "grande")))
+                                        FotosService.url(p.getId(), fotos.get(p.getId()), "grande"),
+                                        Combos.incluye(p)))
                                 .toList()))
                 .sorted(Comparator.comparing(MenuPublicoCategoriaDTO::nombre, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -278,6 +280,7 @@ public class DeliveryService {
         BigDecimal envioCobrado = envio.pagaCliente();
         BigDecimal propina = request.propina() != null ? request.propina() : BigDecimal.ZERO;
         BigDecimal total = subtotal.add(envioCobrado).add(propina);
+        exigirQueAlcance(request.pagaCon(), total);
 
         log.info("Pedido a domicilio {} creado en sucursal {}: {} km, comida ${}, envio ${}",
                 order.getTokenSeguimiento(), branchId, envio.distanciaKm(), subtotal, envioCobrado);
@@ -319,8 +322,6 @@ public class DeliveryService {
                         + " no esta disponible en este momento.");
             }
 
-            inventoryService.checkAndDeductStock(product, branchId, linea.quantity());
-
             // El precio unitario ya lleva los adicionales: asi la cuenta, que se
             // recalcula como cantidad x precio unitario, no los pierde.
             OrderItem item = OrderItem.builder()
@@ -330,6 +331,7 @@ public class DeliveryService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(linea.specialInstructions())
                     .build();
+            inventoryService.venderLinea(item, branchId);
             adicionalesService.aplicarALinea(item,
                     adicionalesService.resolver(product, linea.adicionales(), grupos));
             inventoryService.descontarAdicionales(item, branchId);
@@ -435,6 +437,7 @@ public class DeliveryService {
 
         List<OrderItem> items = new ArrayList<>();
         BigDecimal subtotal = armarPlatillos(order, p.items(), restaurantId, branchId, items);
+        exigirQueAlcance(p.pagaCon(), subtotal);
         orderItemRepository.saveAll(items);
         order.setTotalAmount(subtotal);
         orderRepository.save(order);
@@ -568,9 +571,7 @@ public class DeliveryService {
             if (item.getKitchenStatus() == KitchenStatus.CANCELLED) {
                 continue;
             }
-            if (item.getProduct() != null && item.getQuantity() != null) {
-                inventoryService.restoreStock(item.getProduct(), order.getBranch().getId(), item.getQuantity());
-            }
+            inventoryService.devolverLinea(item, order.getBranch().getId());
             inventoryService.devolverAdicionales(item, order.getBranch().getId());
             item.setKitchenStatus(KitchenStatus.CANCELLED);
             orderItemRepository.save(item);
@@ -596,6 +597,45 @@ public class DeliveryService {
         // igual puede publicarlo a mano.
         colaWhatsapp.encolar(order.getBranch().getId(), config.getGrupoRepartidores().trim(),
                 mensajeParaGrupo(order, config), com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.GRUPO_REPARTIDORES, "grupo:" + order.getId());
+    }
+
+    /**
+     * El mostrador le quita la entrega al repartidor que la tenia (no llego,
+     * se equivoco de pedido). Vuelve a quedar disponible y, si ya esta
+     * empacada, se ofrece de nuevo en el grupo.
+     */
+    @Transactional
+    public PedidoDomicilioPanelDTO liberarRepartidor(UUID branchId, UUID orderId) {
+        Order order = orderRepository.findByIdAndBranchId(orderId, branchId)
+                .orElseThrow(() -> new IllegalArgumentException("Pedido no encontrado en esta sucursal."));
+        if (order.getDriver() == null) {
+            throw new IllegalStateException("Esta entrega no tiene repartidor.");
+        }
+        if (order.getDeliveryStatus() != null && order.getDeliveryStatus().esFinal()) {
+            throw new IllegalStateException("Este pedido ya está cerrado.");
+        }
+        avisarAlRepartidor(order, "↩️ *Te quitaron la entrega* — " + order.getTokenSeguimiento(),
+                "El restaurante la reasignó. Ya no tienes que llevarla.");
+        quitarRepartidor(order);
+        return aPanel(order);
+    }
+
+    /** Deja la entrega sin repartidor y la vuelve a ofrecer si ya esta empacada. */
+    @Transactional
+    public void quitarRepartidor(Order order) {
+        order.setDriver(null);
+        order.setAsignadoEn(null);
+        order.setPagoRepartidor(null);
+        if (order.getDeliveryStatus() == DeliveryStatus.EN_CAMINO) {
+            // Regresa a empacado: la comida volvio al mostrador o sigue ahi.
+            order.setDeliveryStatus(DeliveryStatus.LISTO);
+            order.setRecogidoEn(null);
+        }
+        orderRepository.save(order);
+        if (order.getDeliveryStatus() == DeliveryStatus.LISTO && order.getOrderType() == OrderType.DOMICILIO) {
+            publicarEnGrupoDeRepartidores(order, deliverySettingsRepository.findById(order.getBranch().getId()).orElse(null));
+        }
+        publicarTablero(order.getBranch().getId());
     }
 
     /**
@@ -673,8 +713,10 @@ public class DeliveryService {
     private String mensajeParaGrupo(Order order, BranchDeliverySettings config) {
         final String enlace = urlPublica.replaceAll("/+$", "") + "/repartidor/" + order.getTokenSeguimiento();
 
+        // Lo mismo que ve el repartidor al abrir el enlace: comida + envio + propina.
         BigDecimal aCobrar = (order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
-                .add(order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO);
+                .add(order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO)
+                .add(order.getPropina() != null ? order.getPropina() : BigDecimal.ZERO);
 
         // Se arma como lista de renglones y se une al final: asi el mensaje se
         // lee aqui igual que como llega al grupo.
@@ -689,8 +731,11 @@ public class DeliveryService {
             renglones.add("🛣️ " + order.getDistanciaKm() + " km");
         }
         renglones.add("💵 Cobrar $" + aCobrar);
-        if (config.getPagoRepartidorFijo() != null) {
-            renglones.add("🤝 Te pagamos desde $" + config.getPagoRepartidorFijo());
+        // El pago exacto de esta entrega, el mismo que ve el tablero. Antes decia
+        // "desde $12" (solo el fijo) y no cuadraba con lo que se le pagaba.
+        if (config.getPagoRepartidorFijo() != null || config.getPagoRepartidorKm() != null) {
+            renglones.add("🤝 Te pagamos $" + CalculadoraEnvio.pagoRepartidor(
+                    config.getPagoRepartidorFijo(), config.getPagoRepartidorKm(), order.getDistanciaKm()));
         }
         renglones.add("");
         renglones.add("👉 " + enlace);
@@ -905,8 +950,9 @@ public class DeliveryService {
      */
     private Customer buscarOCrearCliente(Branch branch, String phoneNumber, String nombre) {
         // Mismo numero que ya uso por WhatsApp: se reusa su ficha en vez de
-        // abrirle otra por haber pedido desde el menu web.
-        final String telefono = TelefonoMx.canonico(phoneNumber);
+        // abrirle otra por haber pedido desde el menu web. Un numero incompleto
+        // dejaba un cliente al que nunca le llegan los avisos del pedido.
+        final String telefono = TelefonoMx.exigirValido(phoneNumber, "tu WhatsApp");
 
         Customer customer = customerRepository
                 .findByRestaurantIdAndPhoneNumber(branch.getRestaurant().getId(), telefono)
@@ -931,6 +977,17 @@ public class DeliveryService {
                 .latitud(request.latitud())
                 .longitud(request.longitud())
                 .build());
+    }
+
+    /**
+     * "Pago con $100" en un pedido de $305 dejaba al repartidor sin saber que
+     * cobrar: se avisa antes de crear el pedido.
+     */
+    private static void exigirQueAlcance(BigDecimal pagaCon, BigDecimal total) {
+        if (pagaCon != null && pagaCon.signum() > 0 && pagaCon.compareTo(total) < 0) {
+            throw new IllegalArgumentException("Con $" + pagaCon.stripTrailingZeros().toPlainString()
+                    + " no alcanza: tu pedido suma $" + total + ". Corrige con cuánto pagas.");
+        }
     }
 
     /** Cuanto cambio hay que llevarle. Null si no dijo con cuanto paga. */

@@ -20,6 +20,18 @@ public final class CalculadoraEnvio {
     private CalculadoraEnvio() {
     }
 
+    /**
+     * Lo que el negocio le paga al repartidor por una entrega: fijo + por km.
+     * Es lo mismo que ve el grupo de repartidores, la pantalla del repartidor
+     * y el tablero del mostrador. null en los parametros cuenta como cero.
+     */
+    public static BigDecimal pagoRepartidor(BigDecimal fijo, BigDecimal porKm, BigDecimal distanciaKm) {
+        BigDecimal f = fijo != null ? fijo : BigDecimal.ZERO;
+        BigDecimal k = porKm != null ? porKm : BigDecimal.ZERO;
+        BigDecimal km = distanciaKm != null ? distanciaKm : BigDecimal.ZERO;
+        return f.add(k.multiply(km)).setScale(2, RoundingMode.HALF_UP);
+    }
+
     /** Parametros de la sucursal que intervienen en el calculo. */
     public record Tarifa(
             BigDecimal kmIncluidos,

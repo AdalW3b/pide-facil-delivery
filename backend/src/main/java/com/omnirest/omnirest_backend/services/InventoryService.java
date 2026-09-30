@@ -116,6 +116,61 @@ public class InventoryService {
     }
 
     /**
+     * Descuenta del inventario lo que gasta una linea del pedido. Un combo no
+     * tiene receta propia: gasta lo de sus platillos (4 combos con 2 tacos cada
+     * uno = 8 tacos). Esos platillos se congelan en la linea, para cocina y para
+     * devolver lo mismo si se cancela.
+     */
+    public void venderLinea(OrderItem item, UUID branchId) {
+        Product producto = item.getProduct();
+        int cantidad = item.getQuantity() != null ? item.getQuantity() : 0;
+        if (producto == null || cantidad <= 0) return;
+
+        if (!Combos.esCombo(producto)) {
+            checkAndDeductStock(producto, branchId, cantidad);
+            return;
+        }
+
+        Combos.validarVigente(producto);
+        if (producto.getComboItems() == null || producto.getComboItems().isEmpty()) {
+            throw new IllegalStateException("El combo " + producto.getName() + " no tiene platillos.");
+        }
+        for (ComboItem parte : producto.getComboItems()) {
+            if (!Boolean.TRUE.equals(parte.getProducto().getActive())) {
+                throw new IllegalStateException("El combo " + producto.getName() + " no está disponible: "
+                        + parte.getProducto().getName() + " está desactivado.");
+            }
+        }
+        for (ComboItem parte : producto.getComboItems()) {
+            Product platillo = parte.getProducto();
+            checkAndDeductStock(platillo, branchId, parte.getCantidad() * cantidad);
+            item.getComponentes().add(OrderItemComponente.builder()
+                    .orderItem(item)
+                    .productId(platillo.getId())
+                    .nombre(platillo.getName())
+                    .cantidad(parte.getCantidad())
+                    .build());
+        }
+    }
+
+    /**
+     * Devuelve al inventario lo que desconto venderLinea. Un combo devuelve los
+     * platillos congelados en la linea, no los que tenga hoy el combo.
+     */
+    public void devolverLinea(OrderItem item, UUID branchId) {
+        if (item == null || item.getProduct() == null || item.getQuantity() == null) return;
+        if (item.getComponentes() == null || item.getComponentes().isEmpty()) {
+            restoreStock(item.getProduct(), branchId, item.getQuantity());
+            return;
+        }
+        for (OrderItemComponente parte : item.getComponentes()) {
+            if (parte.getProductId() == null) continue; // El platillo ya se borro del catalogo.
+            productRepository.findById(parte.getProductId()).ifPresent(platillo ->
+                    restoreStock(platillo, branchId, parte.getCantidad() * item.getQuantity()));
+        }
+    }
+
+    /**
      * Descuenta lo que gastan los adicionales de una linea: "Carne extra" en
      * 2 platillos saca dos porciones de pastor. Usa lo congelado en la linea,
      * que es tambien lo que se devuelve si se cancela.

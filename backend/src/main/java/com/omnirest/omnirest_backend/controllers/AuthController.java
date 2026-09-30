@@ -50,6 +50,7 @@ public class AuthController {
         private final UserRepository userRepository;
         private final PasswordEncoder passwordEncoder;
         private final FrenoDeIntentos frenoDeIntentos;
+        private final com.omnirest.omnirest_backend.services.NumerosDeSucursal numerosDeSucursal;
 
         @PostMapping("/login")
         public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO request,
@@ -97,6 +98,8 @@ public class AuthController {
                         throw new ResponseStatusException(HttpStatus.CONFLICT,
                                         "El nombre de usuario '" + request.username() + "' ya está en uso.");
                 }
+                // Antes de cobrar o crear nada: el numero no puede ser de otra sucursal.
+                numerosDeSucursal.validarUnico(request.whatsappNumber(), null);
 
                 String stripeCustomerId = null;
                 String stripeSubscriptionId = null;
@@ -137,7 +140,7 @@ public class AuthController {
                                 .restaurant(restaurant)
                                 .name(request.branchName())
                                 .address(request.branchAddress())
-                                .whatsappNumber(request.whatsappNumber())
+                                .whatsappNumber(com.omnirest.omnirest_backend.services.NumerosDeSucursal.paraGuardar(request.whatsappNumber()))
                                 .build();
                 branch = branchRepository.save(branch);
 

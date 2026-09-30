@@ -82,5 +82,7 @@ export interface ReporteRepartidor {
   aPagar: number;
   /** Dinero que recibió de clientes y debe entregar en caja. */
   cobrado: number;
+  /** Propinas de los clientes: son del repartidor, no entran a caja. */
+  propinas: number;
   ultimaEntrega: string | null;
 }

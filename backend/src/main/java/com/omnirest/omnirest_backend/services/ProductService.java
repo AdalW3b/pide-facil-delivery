@@ -31,6 +31,7 @@ public class ProductService {
     private final BranchIngredientStockRepository branchIngredientStockRepository;
     private final BranchRepository branchRepository;
     private final RestaurantRepository restaurantRepository;
+    private final ComboItemRepository comboItemRepository;
 
     public List<ProductResponseDTO> getProducts(CustomUserDetails user, UUID branchId) {
         UUID restaurantId = user.restaurantId();
@@ -80,7 +81,9 @@ public class ProductService {
                 .recipeItems(new ArrayList<>())
                 .build();
 
-        if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
+        if (Boolean.TRUE.equals(dto.isCombo())) {
+            armarCombo(product, dto);
+        } else if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
             for (RecipeItemDTO itemDto : dto.recipeItems()) {
                 product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
             }
@@ -122,13 +125,22 @@ public class ProductService {
             product.setRecipeItems(new ArrayList<>());
         }
 
-        if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
-            product.getRecipeItems().clear();
-            for (RecipeItemDTO itemDto : dto.recipeItems()) {
-                product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
-            }
+        if (Boolean.TRUE.equals(dto.isCombo())) {
+            armarCombo(product, dto);
         } else {
-            product.getRecipeItems().clear();
+            product.setIsCombo(false);
+            product.getComboItems().clear();
+            product.setPromoDesde(null);
+            product.setPromoHasta(null);
+            product.setPromoDias(null);
+            if (Boolean.TRUE.equals(dto.isRecipe()) && dto.recipeItems() != null) {
+                product.getRecipeItems().clear();
+                for (RecipeItemDTO itemDto : dto.recipeItems()) {
+                    product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
+                }
+            } else {
+                product.getRecipeItems().clear();
+            }
         }
 
         Product savedProduct = productRepository.save(product);
@@ -170,7 +182,76 @@ public class ProductService {
                 .orElseThrow(() -> new IllegalArgumentException("Product not found"));
 
         validateRestaurantOwnership(user, product.getCategory().getRestaurant().getId());
+        List<String> combos = comboItemRepository.findByProductoId(id).stream()
+                .map(c -> c.getCombo().getName())
+                .distinct()
+                .toList();
+        if (!combos.isEmpty()) {
+            throw new IllegalArgumentException(product.getName() + " va en " + (combos.size() == 1 ? "el combo " : "los combos ")
+                    + String.join(", ", combos) + ". Quítalo del combo antes de eliminarlo, o solo desactívalo.");
+        }
         productRepository.delete(product);
+    }
+
+    /**
+     * Deja el producto como combo: sus platillos y su vigencia. Un combo no
+     * lleva receta ni existencias propias; gasta lo de sus platillos.
+     */
+    private void armarCombo(Product combo, ProductRequestDTO dto) {
+        UUID restaurantId = restauranteDe(combo);
+        if (dto.comboItems() == null || dto.comboItems().isEmpty()) {
+            throw new IllegalArgumentException("Agrega al menos un platillo al combo.");
+        }
+        if (dto.promoDesde() != null && dto.promoHasta() != null && dto.promoDesde().isAfter(dto.promoHasta())) {
+            throw new IllegalArgumentException("La promoción termina antes de empezar: revisa las fechas.");
+        }
+
+        // Mismo platillo dos veces = una sola linea con la cantidad sumada.
+        java.util.Map<UUID, Integer> cantidades = new java.util.LinkedHashMap<>();
+        for (com.omnirest.omnirest_backend.dtos.ComboItemDTO parte : dto.comboItems()) {
+            if (parte.productId() == null) {
+                throw new IllegalArgumentException("Elige el platillo de cada renglón del combo.");
+            }
+            int cantidad = parte.cantidad() != null ? parte.cantidad() : 1;
+            if (cantidad < 1 || cantidad > 50) {
+                throw new IllegalArgumentException("La cantidad de cada platillo del combo va de 1 a 50.");
+            }
+            cantidades.merge(parte.productId(), cantidad, Integer::sum);
+        }
+        if (cantidades.values().stream().mapToInt(Integer::intValue).sum() < 2) {
+            throw new IllegalArgumentException("Un combo lleva al menos 2 platillos (pueden ser 2 del mismo).");
+        }
+
+        List<ComboItem> partes = new ArrayList<>();
+        int orden = 0;
+        for (var e : cantidades.entrySet()) {
+            Product platillo = productRepository.findById(e.getKey())
+                    .orElseThrow(() -> new IllegalArgumentException("Uno de los platillos del combo ya no existe."));
+            if (platillo.getCategory() == null || !restauranteDe(platillo).equals(restaurantId)) {
+                throw new IllegalArgumentException(platillo.getName() + " no es de este restaurante.");
+            }
+            if (combo.getId() != null && combo.getId().equals(platillo.getId())) {
+                throw new IllegalArgumentException("Un combo no puede incluirse a sí mismo.");
+            }
+            if (Combos.esCombo(platillo)) {
+                throw new IllegalArgumentException(platillo.getName()
+                        + " ya es un combo: arma el nuevo con los platillos sueltos.");
+            }
+            if (e.getValue() > 50) {
+                throw new IllegalArgumentException("La cantidad de cada platillo del combo va de 1 a 50.");
+            }
+            partes.add(ComboItem.builder().combo(combo).producto(platillo).cantidad(e.getValue()).orden(orden++).build());
+        }
+
+        combo.setIsCombo(true);
+        combo.setIsRecipe(false);
+        combo.setTrackStock(false);
+        combo.getRecipeItems().clear();
+        combo.getComboItems().clear();
+        combo.getComboItems().addAll(partes);
+        combo.setPromoDesde(dto.promoDesde());
+        combo.setPromoHasta(dto.promoHasta());
+        combo.setPromoDias(Combos.diasParaGuardar(dto.promoDias()));
     }
 
     private UUID restauranteDe(Product product) {
@@ -224,6 +305,46 @@ public class ProductService {
                 .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
     }
 
+    /**
+     * Cuantos se pueden vender en la sucursal con lo que hay. null = sin limite
+     * (no se lleva inventario de ese platillo).
+     */
+    private Integer porcionesDe(Product p, UUID branchId, java.util.Map<UUID, BigDecimal> existencias) {
+        if (!Boolean.TRUE.equals(p.getActive())) return 0;
+        if (Boolean.TRUE.equals(p.getIsRecipe())) {
+            List<RecipeItem> items = p.getRecipeItems() != null && !p.getRecipeItems().isEmpty()
+                    ? p.getRecipeItems()
+                    : recipeItemRepository.findByProductId(p.getId());
+            if (items.isEmpty()) return 0;
+            int max = Integer.MAX_VALUE;
+            for (RecipeItem item : items) {
+                BigDecimal porPlatillo = InventoryService.consumoPorPlatillo(item);
+                if (porPlatillo == null || porPlatillo.compareTo(BigDecimal.ZERO) <= 0) return 0;
+                BigDecimal hay = existencias.getOrDefault(item.getIngredient().getId(), BigDecimal.ZERO);
+                max = Math.min(max, hay.divide(porPlatillo, 0, RoundingMode.DOWN).intValue());
+            }
+            return Math.max(0, max);
+        }
+        if (Boolean.TRUE.equals(p.getTrackStock())) {
+            return branchProductStockRepository.findByBranchIdAndProductId(branchId, p.getId())
+                    .map(BranchProductStock::getStock)
+                    .orElse(0);
+        }
+        return null;
+    }
+
+    /** Combos que alcanzan: el platillo que se acaba primero manda. */
+    private Integer combosDisponibles(Product combo, UUID branchId, java.util.Map<UUID, BigDecimal> existencias) {
+        Integer min = null;
+        for (ComboItem parte : combo.getComboItems()) {
+            Integer porciones = porcionesDe(parte.getProducto(), branchId, existencias);
+            if (porciones == null) continue;
+            int alcanzan = porciones / parte.getCantidad();
+            min = min == null ? alcanzan : Math.min(min, alcanzan);
+        }
+        return min;
+    }
+
     private ProductResponseDTO mapToResponse(Product product, UUID branchId) {
         return mapToResponse(product, branchId, existenciasDe(branchId));
     }
@@ -232,7 +353,25 @@ public class ProductService {
         Integer currentStock = null;
         List<RecipeItemDTO> recipeItemDTOs = null;
 
-        if (Boolean.TRUE.equals(product.getIsRecipe())) {
+        List<com.omnirest.omnirest_backend.dtos.ComboItemDTO> comboItemDTOs = null;
+        BigDecimal precioNormal = null;
+
+        if (Combos.esCombo(product)) {
+            comboItemDTOs = product.getComboItems().stream()
+                    .map(c -> new com.omnirest.omnirest_backend.dtos.ComboItemDTO(
+                            c.getProducto().getId(),
+                            c.getCantidad(),
+                            c.getProducto().getName(),
+                            c.getProducto().getPrice(),
+                            c.getProducto().getActive()))
+                    .toList();
+            precioNormal = product.getComboItems().stream()
+                    .map(c -> c.getProducto().getPrice().multiply(BigDecimal.valueOf(c.getCantidad())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (branchId != null) {
+                currentStock = combosDisponibles(product, branchId, existencias);
+            }
+        } else if (Boolean.TRUE.equals(product.getIsRecipe())) {
             List<RecipeItem> items = product.getRecipeItems() != null && !product.getRecipeItems().isEmpty()
                     ? product.getRecipeItems()
                     : recipeItemRepository.findByProductId(product.getId());
@@ -312,6 +451,14 @@ public class ProductService {
                 product.getTrackStock(),
                 currentStock,
                 product.getIsRecipe(),
-                recipeItemDTOs);
+                recipeItemDTOs,
+                Combos.esCombo(product),
+                comboItemDTOs,
+                precioNormal,
+                product.getPromoDesde(),
+                product.getPromoHasta(),
+                Combos.dias(product.getPromoDias()).stream().map(java.time.DayOfWeek::getValue).toList(),
+                Combos.textoVigencia(product),
+                Combos.vigenteHoy(product));
     }
 }

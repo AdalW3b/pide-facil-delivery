@@ -60,6 +60,7 @@ public class HistorialCuentaService {
                 .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity() != null ? i.getQuantity() : 1)))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal envio = order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO;
+        BigDecimal propina = order.getPropina() != null ? order.getPropina() : BigDecimal.ZERO;
 
         return new PedidoHistorialDTO(
                 order.getId(),
@@ -73,12 +74,15 @@ public class HistorialCuentaService {
                 vivos.stream().map(this::describir).toList(),
                 comida,
                 envio,
-                comida.add(envio));
+                propina,
+                comida.add(envio).add(propina));
     }
 
     private EntregaHistorialDTO aEntrega(Order order) {
+        BigDecimal propina = order.getPropina() != null ? order.getPropina() : BigDecimal.ZERO;
         BigDecimal cobrado = (order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
-                .add(order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO);
+                .add(order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO)
+                .add(propina);
 
         return new EntregaHistorialDTO(
                 order.getId(),
@@ -89,6 +93,7 @@ public class HistorialCuentaService {
                 order.getDistanciaKm(),
                 order.getPagoRepartidor(),
                 cobrado,
+                propina,
                 order.getAsignadoEn(),
                 order.getEntregadoEn());
     }

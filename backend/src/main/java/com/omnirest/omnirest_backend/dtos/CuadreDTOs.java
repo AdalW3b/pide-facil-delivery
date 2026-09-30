@@ -20,8 +20,11 @@ public final class CuadreDTOs {
             String nombre,
             String telefono,
             long entregas,
+            /** Comida + envio: lo que es del restaurante. */
             BigDecimal cobrado,
             BigDecimal pagoRepartidor,
+            /** Propinas de los clientes: el repartidor se las queda, no entran a caja. */
+            BigDecimal propinas,
             LocalDateTime primeraEntrega,
             LocalDateTime ultimaEntrega) {
     }

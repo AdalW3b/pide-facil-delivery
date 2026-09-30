@@ -49,6 +49,23 @@ public final class TelefonoMx {
     }
 
     /** True si los dos textos apuntan al mismo telefono. */
+    /**
+     * Si parece un numero al que se le puede escribir por WhatsApp: al menos
+     * 10 digitos y no mas de 15 (el maximo internacional). "123" no lo es.
+     */
+    public static boolean esValido(String telefono) {
+        int largo = canonico(telefono).length();
+        return largo >= DIGITOS_NACIONALES && largo <= 15;
+    }
+
+    /** Lanza un error claro si el numero no sirve para WhatsApp. */
+    public static String exigirValido(String telefono, String quien) {
+        if (!esValido(telefono)) {
+            throw new IllegalArgumentException("Escribe " + quien + " completo: 10 dígitos, por ejemplo 951 123 4567.");
+        }
+        return canonico(telefono);
+    }
+
     public static boolean mismoNumero(String uno, String otro) {
         String a = canonico(uno);
         return !a.isEmpty() && a.equals(canonico(otro));

@@ -51,6 +51,8 @@ interface MenuItem {
   /** Ruta de la foto cuadrada (lista) y de la grande (ficha). Null si no tiene. */
   miniatura?: string | null;
   foto?: string | null;
+  /** Si es combo, lo que trae: ["4 × Taco al pastor", "2 × Refresco"]. */
+  incluye?: string[];
 }
 
 interface MenuCategoria {
@@ -335,7 +337,15 @@ interface PedidoCreado {
                         class="min-w-0 flex-1 text-left cursor-pointer"
                         [attr.aria-label]="'Ver ' + item.nombre"
                       >
-                        <p class="font-semibold text-sm">{{ item.nombre }}</p>
+                        <p class="font-semibold text-sm">
+                          {{ item.nombre }}
+                          @if (item.incluye?.length) {
+                            <span class="ml-1 align-middle text-[11px] font-bold uppercase tracking-wide text-orange-800 bg-orange-100 px-1.5 py-0.5 rounded">Combo</span>
+                          }
+                        </p>
+                        @if (item.incluye?.length) {
+                          <p class="text-xs text-stone-600 mt-0.5">Incluye {{ item.incluye!.join(', ') }}</p>
+                        }
                         @if (item.descripcion) {
                           <p class="text-xs text-stone-500 mt-0.5">{{ item.descripcion }}</p>
                         }
@@ -645,6 +655,13 @@ interface PedidoCreado {
             <div class="flex items-start gap-3 px-4 pt-4 pb-3 border-b border-stone-100">
               <div class="min-w-0 flex-1">
                 <h2 class="font-bold text-lg leading-tight">{{ f.item.nombre }}</h2>
+                @if (f.item.incluye?.length) {
+                  <ul class="mt-1.5 text-sm text-stone-700 space-y-0.5" aria-label="El combo incluye">
+                    @for (parte of f.item.incluye!; track parte) {
+                      <li>{{ parte }}</li>
+                    }
+                  </ul>
+                }
                 @if (f.item.descripcion) {
                   <p class="text-sm text-stone-500 mt-1">{{ f.item.descripcion }}</p>
                 }
@@ -893,6 +910,7 @@ export class PublicOrderComponent implements OnInit {
   readonly motivoBloqueo = computed<string | null>(() => {
     if (this.totalArticulos() === 0) return 'Agrega algo al carrito';
     if (!this.telefono().trim()) return 'Falta tu WhatsApp';
+    if (this.telefono().replace(/\D/g, '').length < 10) return 'Tu WhatsApp debe tener 10 dígitos';
     if (!this.direccion().trim()) return 'Falta tu dirección';
     if (!this.tienePin()) return 'Marca tu ubicación en el mapa';
 
@@ -901,6 +919,10 @@ export class PublicOrderComponent implements OnInit {
     if (!c.disponible || c.fueraDeCobertura) return c.mensaje;
     if (c.pedidoMinimo !== null && this.subtotal() < c.pedidoMinimo) {
       return `El pedido mínimo es de ${formatearPesos(c.pedidoMinimo)}`;
+    }
+    const pagaCon = Number(this.pagaCon()) || 0;
+    if (pagaCon > 0 && pagaCon < this.totalAPagar()) {
+      return `Con ${formatearPesos(pagaCon)} no alcanza: tu pedido suma ${formatearPesos(this.totalAPagar())}`;
     }
     return null;
   });

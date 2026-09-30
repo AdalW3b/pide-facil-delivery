@@ -32,6 +32,8 @@ public record CrearPedidoDomicilioRequestDTO(
         @NotEmpty @Valid List<PedidoDomicilioItemDTO> items,
 
         /** Con cuanto paga, para que el repartidor lleve cambio. */
-        BigDecimal pagaCon,
-        BigDecimal propina) {
+        @DecimalMin(value = "0.0", message = "El monto con el que pagas no puede ser negativo.")
+        @DecimalMax(value = "100000.0", message = "Revisa el monto con el que pagas.") BigDecimal pagaCon,
+        @DecimalMin(value = "0.0", message = "La propina no puede ser negativa.")
+        @DecimalMax(value = "10000.0", message = "Revisa la propina.") BigDecimal propina) {
 }

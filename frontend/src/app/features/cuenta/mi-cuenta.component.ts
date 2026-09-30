@@ -300,7 +300,8 @@ export class MiCuentaComponent implements OnInit, OnDestroy {
   );
   readonly entregasCerradas = computed(() => this.cerradas().length);
   readonly kmTotales = computed(() => this.cerradas().reduce((s, e) => s + (e.distanciaKm ?? 0), 0));
-  readonly ganado = computed(() => this.cerradas().reduce((s, e) => s + (e.tuPago ?? 0), 0));
+  /** Su pago más las propinas: lo que de verdad se lleva. */
+  readonly ganado = computed(() => this.cerradas().reduce((s, e) => s + (e.tuPago ?? 0) + (e.propina ?? 0), 0));
 
   readonly pedidosEnCurso = computed(() =>
     this.pedidos().filter((p) => p.estadoEntrega !== null && EN_CURSO.includes(p.estadoEntrega))
@@ -369,8 +370,14 @@ export class MiCuentaComponent implements OnInit, OnDestroy {
     this.ajustarVigilancia();
   }
 
-  private alFallar(err: { error?: { error?: string } }, enSilencio: boolean): void {
+  private alFallar(err: { status?: number; error?: { error?: string } }, enSilencio: boolean): void {
     this.refrescando.set(false);
+    // La sesión venció o ya no es válida: se cierra y se vuelve a entrar, en
+    // lugar de quedarse atorado en "Vuelve a entrar" con la sesión vieja.
+    if (err.status === 401 || err.status === 403) {
+      this.salir();
+      return;
+    }
     if (enSilencio) {
       return; // Un bache de señal no debe romper lo que ya se ve.
     }

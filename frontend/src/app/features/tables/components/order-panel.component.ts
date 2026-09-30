@@ -37,6 +37,10 @@ export interface Product {
   price: number;
   description: string;
   active: boolean;
+  isCombo?: boolean;
+  comboItems?: { productId: string; cantidad: number; nombre: string }[] | null;
+  /** false = combo fuera de sus días de promoción: hoy no se vende. */
+  vigenteHoy?: boolean;
 }
 
 /** Grupo de adicionales de un platillo, tal como lo da el menú público. */
@@ -228,10 +232,13 @@ export interface GrupoAdicional {
                             <option value="">Selecciona un producto</option>
                             @for (prod of productsList(); track prod.id) {
                               <option [value]="prod.id">
-                                {{ prod.name }} - {{ prod.price | pesos }}
+                                {{ prod.isCombo ? 'Combo · ' : '' }}{{ prod.name }} - {{ prod.price | pesos }}
                               </option>
                             }
                           </select>
+                          @if (incluyeDe(newProductForm.productId); as incluye) {
+                            <p class="text-[11px] text-slate-400 mt-1.5">Incluye: {{ incluye }}</p>
+                          }
                         </div>
 
                         <!-- Adicionales del platillo elegido: los mismos que ve el
@@ -729,8 +736,8 @@ export class OrderPanelComponent implements OnChanges {
     if (this.productsList().length === 0) {
       this.http.get<Product[]>(`${environment.apiUrl}/products`).subscribe({
         next: (prods) => {
-          // Filter only active products
-          const activeOnly = prods.filter((p) => p.active !== false);
+          // Solo lo activo, y los combos solo en los días de su promoción.
+          const activeOnly = prods.filter((p) => p.active !== false && p.vigenteHoy !== false);
           this.productsList.set(activeOnly);
         },
         error: (err) => {
@@ -738,6 +745,13 @@ export class OrderPanelComponent implements OnChanges {
         },
       });
     }
+  }
+
+  /** "4 × Taco al pastor, 2 × Refresco" si el producto elegido es combo. */
+  incluyeDe(productId: string): string | null {
+    const p = this.productsList().find((x) => x.id === productId);
+    if (!p?.isCombo || !p.comboItems?.length) return null;
+    return p.comboItems.map((c) => `${c.cantidad} × ${c.nombre}`).join(', ');
   }
 
   /**

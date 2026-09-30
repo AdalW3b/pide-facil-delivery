@@ -126,8 +126,6 @@ public class OrderService {
                 throw new IllegalStateException("Product " + product.getName() + " is inactive");
             }
 
-            inventoryService.checkAndDeductStock(product, order.getBranch().getId(), itemDto.quantity());
-
             OrderItem orderItem = OrderItem.builder()
                     .order(order)
                     .product(product)
@@ -135,6 +133,7 @@ public class OrderService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(itemDto.specialInstructions())
                     .build();
+            inventoryService.venderLinea(orderItem, order.getBranch().getId());
             // El mesero elige de la misma ficha que el cliente: mismas reglas.
             adicionalesService.aplicarALinea(orderItem,
                     adicionalesService.resolver(product, itemDto.adicionales(), grupos));
@@ -405,7 +404,10 @@ public class OrderService {
                         "Customer not found with phone number " + phoneNumber + " in restaurant " + restaurantId));
 
         Order order = orderRepository
-                .findByBranchIdAndCustomerPhoneNumberAndStatus(branchId, phoneNumber, OrderStatus.OPEN)
+                // Solo cuentas de mesa: si el cliente tiene un pedido a domicilio abierto,
+                // lo que pide en el restaurante no se le debe sumar a ese pedido.
+                .findFirstByBranchIdAndCustomerPhoneNumberAndStatusAndOrderTypeOrderByCreatedAtDesc(
+                        branchId, phoneNumber, OrderStatus.OPEN, com.omnirest.omnirest_backend.domain.enums.OrderType.SALON)
                 .orElseGet(() -> {
                     return orderRepository
                             .findByBranchIdAndTableTableNumberAndStatus(branchId, request.tableNumber(),
@@ -447,8 +449,6 @@ public class OrderService {
 
             Product product = buscarProducto(restaurantId, rawName);
 
-            inventoryService.checkAndDeductStock(product, order.getBranch().getId(), itemDto.quantity());
-
             // El bot pide por nombre y puede equivocarse: lo que no se reconoce
             // no tumba el pedido, llega a cocina como aviso para confirmarlo.
             AdicionalesService.EleccionBot eleccion =
@@ -461,6 +461,7 @@ public class OrderService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(conAvisos(itemDto.special_instructions(), eleccion.avisos()))
                     .build();
+            inventoryService.venderLinea(orderItem, order.getBranch().getId());
             adicionalesService.aplicarALinea(orderItem, eleccion.eleccion());
             inventoryService.descontarAdicionales(orderItem, order.getBranch().getId());
 
@@ -705,10 +706,7 @@ public class OrderService {
         orderItemRepository.save(item);
 
         if (status == KitchenStatus.CANCELLED && previousStatus != KitchenStatus.CANCELLED) {
-            if (item.getProduct() != null && item.getQuantity() != null) {
-                inventoryService.restoreStock(item.getProduct(), item.getOrder().getBranch().getId(),
-                        item.getQuantity());
-            }
+            inventoryService.devolverLinea(item, item.getOrder().getBranch().getId());
             inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId());
             descontarDelTotal(item);
             triggerWhatsappItemCancelNotification(item);
@@ -783,7 +781,21 @@ public class OrderService {
      * precio pegado o con otra capitalizacion. Primero se intenta la busqueda
      * directa y, si falla, se compara con los nombres normalizados del catalogo.
      */
-    private Product buscarProducto(UUID restaurantId, String rawName) {
+    Product buscarProducto(UUID restaurantId, String rawName) {
+        Product producto = encontrarProducto(restaurantId, rawName);
+        if (producto == null) {
+            return null;
+        }
+        return producto;
+    }
+
+    /**
+     * Como buscarProducto, pero sin lanzar error: null si no esta en el menu.
+     * El carrito del bot la usa porque una excepcion dentro de este servicio
+     * marca la transaccion para deshacerse aunque quien llama la atrape.
+     */
+    Product encontrarProducto(UUID restaurantId, String rawName) {
+        if (rawName == null) return null;
         String limpio = rawName;
         if (limpio.contains("-")) {
             limpio = limpio.substring(0, limpio.indexOf("-"));
@@ -801,7 +813,7 @@ public class OrderService {
                 .findByCategoryRestaurantIdAndActiveTrueAndNameContainingIgnoreCase(restaurantId, "");
         String clave = normalizarNombre(limpio);
         if (clave.isEmpty() || catalogo.isEmpty()) {
-            throw new IllegalArgumentException("Product not found: " + rawName);
+            return null;
         }
 
         Product hallado = null;
@@ -842,7 +854,7 @@ public class OrderService {
         }
 
         if (hallado == null) {
-            throw new IllegalArgumentException("Product not found: " + rawName);
+            return null;
         }
         if (!hallado.getName().equalsIgnoreCase(limpio)) {
             log.info("Producto '{}' emparejado con '{}' del catalogo.", rawName, hallado.getName());
@@ -965,10 +977,7 @@ public class OrderService {
             for (OrderItem item : items) {
                 if (item.getKitchenStatus() != KitchenStatus.CANCELLED) {
                     item.setKitchenStatus(KitchenStatus.CANCELLED);
-                    if (item.getProduct() != null && item.getQuantity() != null) {
-                        inventoryService.restoreStock(item.getProduct(), item.getOrder().getBranch().getId(),
-                                item.getQuantity());
-                    }
+                    inventoryService.devolverLinea(item, item.getOrder().getBranch().getId());
                     inventoryService.devolverAdicionales(item, item.getOrder().getBranch().getId());
                 }
             }

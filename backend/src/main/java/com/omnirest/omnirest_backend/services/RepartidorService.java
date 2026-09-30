@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -60,11 +59,7 @@ public class RepartidorService {
     @Transactional
     public EntregaRepartidorDTO tomarEntrega(String token, TomarEntregaDTO peticion) {
         Order order = buscarPedido(token);
-        String telefono = normalizar(peticion.phoneNumber());
-
-        if (telefono.isEmpty()) {
-            throw new IllegalArgumentException("Necesitamos tu número de WhatsApp para asignarte la entrega.");
-        }
+        String telefono = TelefonoMx.exigirValido(peticion.phoneNumber(), "tu WhatsApp");
 
         DeliveryStatus estado = order.getDeliveryStatus();
         if (estado == null || estado.esFinal()) {
@@ -144,6 +139,23 @@ public class RepartidorService {
                 order.getBranch().getId(), order.getId(),
                 new CambiarEstadoEntregaDTO(DeliveryStatus.ENTREGADO, null));
 
+        return aDto(buscarPedido(token), normalizar(phoneNumber));
+    }
+
+    /**
+     * El repartidor ya no puede llevarla (se le poncho la llanta, tomo la
+     * equivocada). Solo antes de salir: con la comida en la calle, quien
+     * decide es el restaurante. La entrega vuelve a quedar disponible.
+     */
+    @Transactional
+    public EntregaRepartidorDTO soltarEntrega(String token, String phoneNumber) {
+        Order order = buscarPedido(token);
+        Driver repartidor = exigirQueSeaSuya(order, phoneNumber);
+        if (order.getDeliveryStatus() == DeliveryStatus.EN_CAMINO) {
+            throw new IllegalStateException("Ya vas en camino: si no puedes entregarla, llama al restaurante.");
+        }
+        deliveryService.quitarRepartidor(order);
+        log.info("Entrega {} soltada por {}", token, repartidor.getNombre());
         return aDto(buscarPedido(token), normalizar(phoneNumber));
     }
 
@@ -230,11 +242,8 @@ public class RepartidorService {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal fijo = config.getPagoRepartidorFijo() != null ? config.getPagoRepartidorFijo() : BigDecimal.ZERO;
-        BigDecimal porKm = config.getPagoRepartidorKm() != null ? config.getPagoRepartidorKm() : BigDecimal.ZERO;
-        BigDecimal km = order.getDistanciaKm() != null ? order.getDistanciaKm() : BigDecimal.ZERO;
-
-        return fijo.add(porKm.multiply(km)).setScale(2, RoundingMode.HALF_UP);
+        return CalculadoraEnvio.pagoRepartidor(config.getPagoRepartidorFijo(), config.getPagoRepartidorKm(),
+                order.getDistanciaKm());
     }
 
     private Order buscarPedido(String token) {
@@ -272,28 +281,36 @@ public class RepartidorService {
             cambio = order.getPagaCon().subtract(aCobrar);
         }
 
+        // El enlace circula en un grupo: los datos del cliente (nombre,
+        // telefono, pin exacto) solo los ve quien lleva la entrega. Antes de
+        // tomarla se ve la direccion y lo que hay que cobrar, para decidir; si
+        // ya la tomo otro, solo que ya tiene dueno.
+        boolean disponible = repartidor == null;
+        boolean completa = esMia;
+        boolean paraDecidir = disponible || esMia;
+
         return new EntregaRepartidorDTO(
                 order.getTokenSeguimiento(),
                 order.getDeliveryStatus(),
-                repartidor == null,
+                disponible,
                 esMia,
                 repartidor != null ? repartidor.getNombre() : null,
                 order.getDeliveryStatus() == DeliveryStatus.LISTO,
                 order.getBranch().getName(),
                 order.getBranch().getAddress(),
-                order.getCustomer() != null ? order.getCustomer().getName() : null,
-                order.getCustomer() != null ? order.getCustomer().getPhoneNumber() : null,
-                order.getDireccionEntrega(),
-                order.getReferenciasEntrega(),
-                order.getNotasEntrega(),
-                order.getLatitudEntrega(),
-                order.getLongitudEntrega(),
-                order.getDistanciaKm(),
-                platillos,
-                aCobrar,
-                order.getPagaCon(),
-                cambio,
-                order.getPagoRepartidor());
+                completa && order.getCustomer() != null ? order.getCustomer().getName() : null,
+                completa && order.getCustomer() != null ? order.getCustomer().getPhoneNumber() : null,
+                paraDecidir ? order.getDireccionEntrega() : null,
+                completa ? order.getReferenciasEntrega() : null,
+                completa ? order.getNotasEntrega() : null,
+                completa ? order.getLatitudEntrega() : null,
+                completa ? order.getLongitudEntrega() : null,
+                paraDecidir ? order.getDistanciaKm() : null,
+                paraDecidir ? platillos : List.of(),
+                paraDecidir ? aCobrar : null,
+                paraDecidir ? order.getPagaCon() : null,
+                paraDecidir ? cambio : null,
+                paraDecidir ? (order.getPagoRepartidor() != null ? order.getPagoRepartidor() : calcularPago(order)) : null);
     }
 
     private String describir(OrderItem item) {

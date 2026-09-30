@@ -25,6 +25,7 @@ import com.omnirest.omnirest_backend.security.CustomUserDetails;
 @RequiredArgsConstructor
 public class AdminService {
 
+    private final NumerosDeSucursal numerosDeSucursal;
     private final RestaurantRepository restaurantRepository;
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
@@ -99,11 +100,12 @@ public class AdminService {
                     "Has alcanzado el límite de 5 sucursales para tu Plan Pro. Contacta a soporte para adquirir el Plan Cadena con sucursales ilimitadas.");
         }
 
+        numerosDeSucursal.validarUnico(request.whatsappNumber(), null);
         Branch branch = Branch.builder()
                 .restaurant(restaurant)
                 .name(request.name())
                 .address(request.address())
-                .whatsappNumber(request.whatsappNumber())
+                .whatsappNumber(NumerosDeSucursal.paraGuardar(request.whatsappNumber()))
                 .webhookSecret(request.webhookSecret())
                 .build();
 
@@ -132,13 +134,8 @@ public class AdminService {
             String numero = request.whatsappNumber().trim();
             // El numero identifica a la sucursal ante WhatsApp: si ya es de
             // otra, el bot mandaria los mensajes a la cocina equivocada.
-            branchRepository.findByWhatsappNumber(numero)
-                    .filter(otra -> !otra.getId().equals(branchId))
-                    .ifPresent(otra -> {
-                        throw new ResponseStatusException(HttpStatus.CONFLICT,
-                                "Ese número de WhatsApp ya está en uso por la sucursal " + otra.getName() + ".");
-                    });
-            branch.setWhatsappNumber(numero.isEmpty() ? null : numero);
+            numerosDeSucursal.validarUnico(numero, branchId);
+            branch.setWhatsappNumber(NumerosDeSucursal.paraGuardar(numero));
         }
         if (request.webhookSecret() != null && !request.webhookSecret().isBlank()) {
             branch.setWebhookSecret(request.webhookSecret().trim());

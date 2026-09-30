@@ -1,3 +1,4 @@
+import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -699,6 +700,7 @@ export interface KitchenTicketDTO {
 })
 export class KitchenComponent implements OnInit, OnDestroy {
   private readonly avisos = inject(AvisosService);
+  private readonly sonidos = inject(SonidosService);
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly webSocketService = inject(WebSocketService);
@@ -717,7 +719,7 @@ export class KitchenComponent implements OnInit, OnDestroy {
    * llegó a Cocina desde el menú, ya hubo toque y suena desde el principio; si
    * se recargó, hay que tocar una vez.
    */
-  readonly audioBlocked = signal(!(navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive);
+  readonly audioBlocked = this.sonidos.bloqueado;
   /** Quien trabaja en este equipo quiere oír las comandas (se recuerda). */
   readonly sonidoQuerido = signal(this.leerPreferenciaSonido());
 
@@ -840,17 +842,6 @@ export class KitchenComponent implements OnInit, OnDestroy {
       if (branchId) untracked(() => this.loadTickets(branchId, true));
     });
 
-    // Check if we already have audio permissions (standard autoplay policies are tricky, so default is true)
-    if (typeof window !== 'undefined') {
-      // Check if navigator userAgent or document interaction has occurred
-      const handleInteraction = () => {
-        this.audioBlocked.set(false);
-        window.removeEventListener('click', handleInteraction);
-        window.removeEventListener('touchstart', handleInteraction);
-      };
-      window.addEventListener('click', handleInteraction);
-      window.addEventListener('touchstart', handleInteraction);
-    }
   }
 
   ngOnInit(): void {
@@ -1132,12 +1123,10 @@ export class KitchenComponent implements OnInit, OnDestroy {
    * Unblocks browser audio APIs
    */
   enableAudio(): void {
-    this.audioBlocked.set(false);
     this.guardarPreferenciaSonido(true);
-    const audio = new Audio('/bell.ogg');
-    audio.play()
-      .then(() => console.log('KDS Audio notification unlocked successfully'))
-      .catch((err) => console.error('Failed to unlock audio context:', err));
+    this.sonidos.desbloquear();
+    // Una muestra, para confirmar que se oye y a qué volumen.
+    this.sonidos.tocar('comanda');
   }
 
   /**
@@ -1166,21 +1155,6 @@ export class KitchenComponent implements OnInit, OnDestroy {
 
   playNotificationSound(): void {
     if (!this.sonidoQuerido()) return;
-    if (this.audioBlocked()) {
-      console.warn('Sound is blocked by the browser. Awaiting user interaction.');
-      return;
-    }
-
-    try {
-      const audio = new Audio('/bell.ogg');
-      audio.play().catch((err) => {
-        console.error('Autoplay policy prevented audio playback:', err);
-        if (err.name === 'NotAllowedError') {
-          this.audioBlocked.set(true);
-        }
-      });
-    } catch (e) {
-      console.error('Audio playback failed', e);
-    }
+    this.sonidos.tocar('comanda');
   }
 }

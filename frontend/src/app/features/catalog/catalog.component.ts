@@ -305,6 +305,13 @@ import {
                     <svg lucidePlus class="w-4 h-4"></svg>
                     <span>Agregar Producto</span>
                   </button>
+                  <button
+                    (click)="showCreateProductModal(true)"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-fuchsia-500/30 text-fuchsia-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <svg lucidePackage class="w-4 h-4"></svg>
+                    <span>Nuevo combo</span>
+                  </button>
                 </div>
               </div>
 
@@ -382,10 +389,36 @@ import {
                               </span>
                             </div>
                             <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed min-h-[32px]">{{ prod.description || 'Sin descripción' }}</p>
+                            @if (prod.isCombo && prod.comboItems?.length) {
+                              <p class="text-xs text-slate-300 leading-relaxed">
+                                <span class="text-slate-500">Incluye:</span> {{ textoIncluye(prod) }}
+                                @if (ahorroDe(prod); as ahorro) {
+                                  <span class="block text-emerald-400 font-semibold mt-0.5">Ahorra {{ ahorro | pesos }} contra pedirlo por separado</span>
+                                }
+                              </p>
+                            }
                           </div>
 
                           <!-- Recipe & Inventory Badges (Requirement 4) -->
                           <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                            @if (prod.isCombo) {
+                              <span class="px-2 py-0.5 rounded-md bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                <svg lucidePackage class="w-3 h-3"></svg> Combo
+                              </span>
+                              @if (prod.vigencia) {
+                                <span class="px-2 py-0.5 rounded-md border text-[11px] font-bold tracking-wide"
+                                  [class]="prod.vigenteHoy ? 'bg-sky-500/10 border-sky-500/20 text-sky-300' : 'bg-slate-800/80 border-slate-700/60 text-slate-400'"
+                                  [title]="prod.vigenteHoy ? 'Se vende hoy' : 'Hoy no aparece en el menú ni en el panel de meseros'">
+                                  {{ prod.vigenteHoy ? '' : 'Hoy no · ' }}{{ prod.vigencia }}
+                                </span>
+                              }
+                              @if (activeBranchId() && prod.stock !== null && prod.stock !== undefined) {
+                                <span class="px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wider"
+                                  [class]="prod.stock > 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'">
+                                  {{ prod.stock > 0 ? 'Alcanzan: ' + prod.stock : 'Sin existencias' }}
+                                </span>
+                              }
+                            }
                             @if (prod.isRecipe) {
                               <span class="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
                                 <svg lucideChefHat class="w-3 h-3"></svg> Receta
@@ -539,6 +572,23 @@ import {
                                       Receta
                                     </span>
                                   }
+                                  @if (prod.isCombo) {
+                                    <span class="px-1.5 py-0.5 rounded bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300 text-[10px] font-bold uppercase">
+                                      Combo
+                                    </span>
+                                    @if (prod.vigencia) {
+                                      <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold"
+                                        [class]="prod.vigenteHoy ? 'bg-sky-500/10 border-sky-500/20 text-sky-300' : 'bg-slate-800 border-slate-700 text-slate-400'">
+                                        {{ prod.vigenteHoy ? '' : 'Hoy no · ' }}{{ prod.vigencia }}
+                                      </span>
+                                    }
+                                    @if (activeBranchId() && prod.stock !== null && prod.stock !== undefined) {
+                                      <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase"
+                                        [class]="prod.stock > 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'">
+                                        {{ prod.stock > 0 ? 'Alcanzan: ' + prod.stock : 'Sin existencias' }}
+                                      </span>
+                                    }
+                                  }
                                   
                                   @if (prod.trackStock || prod.isRecipe) {
                                     @if (!activeBranchId() || prod.stock === null || prod.stock === undefined) {
@@ -572,7 +622,7 @@ import {
                                     </button>
                                   }
                                 </div>
-                                <p class="text-xs text-slate-400 truncate max-w-lg">{{ prod.description || 'Sin descripción' }}</p>
+                                <p class="text-xs text-slate-400 truncate max-w-lg">{{ prod.isCombo && prod.comboItems?.length ? 'Incluye: ' + textoIncluye(prod) : (prod.description || 'Sin descripción') }}</p>
                               </div>
                             </div>
 
@@ -827,7 +877,7 @@ import {
         <div class="w-full max-w-xl bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col max-h-[90vh]">
           <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/80 shrink-0">
             <h3 class="text-base font-bold text-white">
-              {{ productForm.id ? 'Editar Producto' : 'Crear Producto' }}
+              {{ productForm.isCombo ? (productForm.id ? 'Editar combo' : 'Nuevo combo') : (productForm.id ? 'Editar Producto' : 'Crear Producto') }}
             </h3>
             <button aria-label="Cerrar"
               (click)="closeProductModal()"
@@ -838,20 +888,34 @@ import {
           </div>
 
           <div class="p-6 space-y-5 overflow-y-auto">
+            <!-- ¿Platillo o combo? -->
+            <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-955 border border-slate-800" role="radiogroup" aria-label="Tipo de producto">
+              <button type="button" role="radio" [attr.aria-checked]="!productForm.isCombo" (click)="productForm.isCombo = false"
+                class="py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                [class]="!productForm.isCombo ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
+                Platillo o bebida
+              </button>
+              <button type="button" role="radio" [attr.aria-checked]="productForm.isCombo" (click)="volverCombo()"
+                class="py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                [class]="productForm.isCombo ? 'bg-fuchsia-600 text-white' : 'text-slate-400 hover:text-white'">
+                Combo o paquete
+              </button>
+            </div>
+
             <!-- Name & Price -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div class="sm:col-span-2">
                 <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nombre</label>
                 <input aria-label="Nombre del producto"
                   type="text"
-                  placeholder="Nombre del plato o bebida"
+                  [placeholder]="productForm.isCombo ? 'Ej. Combo pareja, Martes de tacos' : 'Nombre del plato o bebida'"
                   [(ngModel)]="productForm.name"
                   class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Precio ($)</label>
+                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{{ productForm.isCombo ? 'Precio del combo ($)' : 'Precio ($)' }}</label>
                 <input aria-label="Precio"
                   type="number"
                   step="0.01"
@@ -860,6 +924,21 @@ import {
                   class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
+            </div>
+
+            <!-- Categoría: en qué parte del menú aparece -->
+            <div>
+              <label for="prod-categoria" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Categoría</label>
+              <select id="prod-categoria" [(ngModel)]="productForm.categoryId"
+                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer [color-scheme:dark]">
+                <option value="" disabled class="bg-slate-900 text-slate-400">Elige una categoría</option>
+                @for (cat of categories(); track cat.id) {
+                  <option [value]="cat.id" class="bg-slate-900 text-white">{{ cat.name }}{{ cat.active ? '' : ' (oculta)' }}</option>
+                }
+              </select>
+              @if (productForm.isCombo && !hayCategoriaDeCombos()) {
+                <p class="text-[11px] text-slate-500 mt-1.5">Consejo: crea una categoría «Combos» o «Paquetes» para que aparezcan juntos en el menú.</p>
+              }
             </div>
 
             <!-- Description -->
@@ -884,6 +963,107 @@ import {
               <label for="prod-active" class="text-xs font-semibold text-slate-300 cursor-pointer">Producto Disponible / Activo</label>
             </div>
 
+            @if (productForm.isCombo) {
+              <!-- QUÉ INCLUYE EL COMBO -->
+              <div class="p-4 rounded-xl bg-slate-955/60 border border-fuchsia-500/20 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-bold text-fuchsia-300 uppercase tracking-wider flex items-center gap-2">
+                    <svg lucidePackage class="w-4 h-4"></svg>
+                    Qué incluye
+                  </h4>
+                  <button type="button" (click)="agregarAlCombo()" [disabled]="platillosParaCombo().length === 0"
+                    class="px-2.5 py-1 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                    <svg lucidePlus class="w-3.5 h-3.5"></svg>
+                    <span>Agregar platillo</span>
+                  </button>
+                </div>
+
+                @if (productForm.comboItems.length === 0) {
+                  <p class="p-4 text-center border border-dashed border-slate-800 rounded-xl text-slate-400 text-xs">
+                    Agrega los platillos que trae el combo. Pueden ser varios del mismo: 4 tacos, 2 refrescos.
+                  </p>
+                } @else {
+                  <div class="space-y-2">
+                    @for (parte of productForm.comboItems; track $index) {
+                      <div class="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800">
+                        <input aria-label="Cantidad" type="number" min="1" max="50" step="1"
+                          [(ngModel)]="parte.cantidad"
+                          class="w-16 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white text-center tabular-nums outline-none focus:border-fuchsia-500 shrink-0" />
+                        <span class="text-slate-500 text-xs shrink-0">×</span>
+                        <select aria-label="Platillo" [(ngModel)]="parte.productId"
+                          class="flex-1 min-w-0 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-fuchsia-500 cursor-pointer [color-scheme:dark]">
+                          <option value="" disabled class="bg-slate-900 text-slate-400">Elige un platillo</option>
+                          @for (grupo of platillosParaCombo(); track grupo.categoria) {
+                            <optgroup [label]="grupo.categoria" class="bg-slate-900 text-slate-400">
+                              @for (p of grupo.platillos; track p.id) {
+                                <option [value]="p.id" class="bg-slate-900 text-white">{{ p.name }} — {{ p.price | pesos }}{{ p.active ? '' : ' (desactivado)' }}</option>
+                              }
+                            </optgroup>
+                          }
+                        </select>
+                        <button type="button" aria-label="Quitar del combo" (click)="productForm.comboItems.splice($index, 1)"
+                          class="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg cursor-pointer shrink-0">
+                          <svg lucideX class="w-4 h-4"></svg>
+                        </button>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Cuánto ahorra el cliente -->
+                  <dl class="grid grid-cols-3 gap-2 text-center">
+                    <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                      <dt class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Por separado</dt>
+                      <dd class="text-sm font-bold text-slate-300 tabular-nums">{{ precioNormalForm() | pesos }}</dd>
+                    </div>
+                    <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                      <dt class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Combo</dt>
+                      <dd class="text-sm font-bold text-white tabular-nums">{{ (productForm.price || 0) | pesos }}</dd>
+                    </div>
+                    <div class="p-2 rounded-lg border"
+                      [class]="ahorroForm() > 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'">
+                      <dt class="text-[10px] font-bold uppercase tracking-wider" [class]="ahorroForm() > 0 ? 'text-emerald-400' : 'text-amber-400'">Ahorro</dt>
+                      <dd class="text-sm font-bold tabular-nums" [class]="ahorroForm() > 0 ? 'text-emerald-300' : 'text-amber-300'">
+                        {{ ahorroForm() > 0 ? (ahorroForm() | pesos) + ' (' + porcentajeAhorroForm() + '%)' : 'Ninguno' }}
+                      </dd>
+                    </div>
+                  </dl>
+                  @if (ahorroForm() <= 0 && productForm.price > 0) {
+                    <p class="text-[11px] text-amber-400">El combo cuesta lo mismo o más que pedir sus platillos por separado.</p>
+                  }
+                }
+                <p class="text-[11px] text-slate-500">Al venderse descuenta del inventario lo de cada platillo, y en cocina se ve lo que incluye.</p>
+              </div>
+
+              <!-- CUÁNDO SE VENDE -->
+              <div class="p-4 rounded-xl bg-slate-955/60 border border-slate-800 space-y-3">
+                <div>
+                  <h4 class="text-xs font-bold text-sky-300 uppercase tracking-wider">Cuándo se vende</h4>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Opcional. Fuera de estos días no aparece en el menú en línea, en el bot ni en el panel de meseros.</p>
+                </div>
+                <div role="group" aria-label="Días de la semana" class="flex flex-wrap gap-1.5">
+                  @for (d of diasSemana; track d.valor) {
+                    <button type="button" (click)="alternarDia(d.valor)" [attr.aria-pressed]="productForm.promoDias.includes(d.valor)" [title]="d.nombre"
+                      class="w-10 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer"
+                      [class]="productForm.promoDias.includes(d.valor) ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600'">
+                      {{ d.corto }}
+                    </button>
+                  }
+                </div>
+                <p class="text-[11px] text-slate-500">{{ productForm.promoDias.length === 0 ? 'Todos los días.' : 'Solo ' + diasElegidosTexto() + '.' }}</p>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label for="promo-desde" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Desde</label>
+                    <input id="promo-desde" type="date" [(ngModel)]="productForm.promoDesde"
+                      class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
+                  </div>
+                  <div>
+                    <label for="promo-hasta" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Hasta</label>
+                    <input id="promo-hasta" type="date" [(ngModel)]="productForm.promoHasta" [min]="productForm.promoDesde || null"
+                      class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
+                  </div>
+                </div>
+              </div>
+            } @else {
             <!-- INVENTORY & RECIPE CONFIGURATION SECTION -->
             <div class="p-4 rounded-xl bg-slate-955/60 border border-slate-800 space-y-4">
               <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
@@ -1009,9 +1189,13 @@ import {
                 </div>
               }
             </div>
+            }
           </div>
 
           <div class="p-6 border-t border-slate-800/80 bg-slate-900/40 shrink-0 flex items-center justify-end gap-3">
+            @if (faltaParaGuardar(); as falta) {
+              <p class="mr-auto text-[11px] text-amber-400" role="status">{{ falta }}</p>
+            }
             <button
               (click)="closeProductModal()"
               class="px-4 py-2 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
@@ -1020,7 +1204,7 @@ import {
             </button>
             <button
               (click)="saveProduct()"
-              [disabled]="!productForm.name.trim() || productForm.price <= 0"
+              [disabled]="faltaParaGuardar() !== null"
               class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/15 hover:shadow-indigo-500/25 cursor-pointer"
             >
               Guardar
@@ -1277,17 +1461,39 @@ export class CatalogComponent implements OnInit {
     trackStock: boolean;
     stock: number;
     recipeItems: RecipeItem[];
-  } = {
-    id: '',
-    name: '',
-    price: 0,
-    description: '',
-    active: true,
-    isRecipe: false,
-    trackStock: false,
-    stock: 0,
-    recipeItems: []
-  };
+    isCombo: boolean;
+    comboItems: { productId: string; cantidad: number }[];
+    promoDesde: string;
+    promoHasta: string;
+    promoDias: number[];
+    categoryId: string;
+  } = this.formularioVacio(false);
+
+  readonly diasSemana = [
+    { valor: 1, corto: 'L', nombre: 'lunes' },
+    { valor: 2, corto: 'M', nombre: 'martes' },
+    { valor: 3, corto: 'Mi', nombre: 'miércoles' },
+    { valor: 4, corto: 'J', nombre: 'jueves' },
+    { valor: 5, corto: 'V', nombre: 'viernes' },
+    { valor: 6, corto: 'S', nombre: 'sábado' },
+    { valor: 7, corto: 'D', nombre: 'domingo' },
+  ];
+
+  /**
+   * Lo que puede ir dentro de un combo: platillos sueltos (no otros combos),
+   * agrupados por categoría para encontrarlos rápido en la lista.
+   */
+  readonly platillosParaCombo = computed(() => {
+    const grupos = new Map<string, Product[]>();
+    for (const p of this.products()) {
+      if (p.isCombo || p.id.startsWith('temp-')) continue;
+      const categoria = p.categoryName || 'Sin categoría';
+      grupos.set(categoria, [...(grupos.get(categoria) ?? []), p]);
+    }
+    return [...grupos.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([categoria, platillos]) => ({ categoria, platillos: platillos.sort((a, b) => a.name.localeCompare(b.name)) }));
+  });
 
   // Ingredient local form binding
   ingredientForm: {
@@ -1633,8 +1839,8 @@ export class CatalogComponent implements OnInit {
   }
 
   // --- Product Actions ---
-  showCreateProductModal(): void {
-    this.productForm = {
+  private formularioVacio(combo: boolean) {
+    return {
       id: '',
       name: '',
       price: 0,
@@ -1643,9 +1849,105 @@ export class CatalogComponent implements OnInit {
       isRecipe: false,
       trackStock: false,
       stock: 0,
-      recipeItems: []
+      recipeItems: [] as RecipeItem[],
+      isCombo: combo,
+      comboItems: [] as { productId: string; cantidad: number }[],
+      promoDesde: '',
+      promoHasta: '',
+      promoDias: [] as number[],
+      categoryId: '',
     };
+  }
+
+  showCreateProductModal(combo = false): void {
+    this.productForm = this.formularioVacio(combo);
+    // Un combo nuevo va de entrada a la categoría de combos, si existe.
+    this.productForm.categoryId = (combo ? this.categoriaDeCombos()?.id : null) ?? this.selectedCategoryId();
+    if (combo) this.agregarAlCombo();
     this.isProductModalOpen.set(true);
+  }
+
+  // --- Combos ---
+
+  /** La categoría "Combos", "Paquetes" o "Promociones", si el restaurante tiene una. */
+  categoriaDeCombos(): Category | undefined {
+    return this.categories().find((c) => /combo|paquete|promo/i.test(c.name));
+  }
+
+  hayCategoriaDeCombos(): boolean {
+    return !!this.categoriaDeCombos();
+  }
+
+  volverCombo(): void {
+    this.productForm.isCombo = true;
+    if (this.productForm.comboItems.length === 0) this.agregarAlCombo();
+  }
+
+  agregarAlCombo(): void {
+    this.productForm.comboItems.push({ productId: '', cantidad: 1 });
+  }
+
+  alternarDia(dia: number): void {
+    const dias = this.productForm.promoDias;
+    this.productForm.promoDias = dias.includes(dia) ? dias.filter((d) => d !== dia) : [...dias, dia].sort();
+  }
+
+  diasElegidosTexto(): string {
+    const nombres = this.productForm.promoDias.map((d) => this.diasSemana[d - 1].nombre);
+    return nombres.length === 1 ? nombres[0] : nombres.slice(0, -1).join(', ') + ' y ' + nombres[nombres.length - 1];
+  }
+
+  precioNormalForm(): number {
+    return this.productForm.comboItems.reduce((suma, parte) => {
+      const p = this.products().find((x) => x.id === parte.productId);
+      return suma + (p ? p.price * (Number(parte.cantidad) || 0) : 0);
+    }, 0);
+  }
+
+  ahorroForm(): number {
+    return Math.round((this.precioNormalForm() - (Number(this.productForm.price) || 0)) * 100) / 100;
+  }
+
+  porcentajeAhorroForm(): number {
+    const normal = this.precioNormalForm();
+    return normal > 0 ? Math.round((this.ahorroForm() / normal) * 100) : 0;
+  }
+
+  /** Lo que falta para poder guardar, dicho en palabras; null si ya se puede. */
+  faltaParaGuardar(): string | null {
+    const f = this.productForm;
+    if (!f.name.trim()) return 'Escribe el nombre.';
+    if (!f.categoryId) return 'Elige la categoría.';
+    if (!(Number(f.price) > 0)) return f.isCombo ? 'Escribe el precio del combo.' : 'Escribe el precio.';
+    if (!f.isCombo) return null;
+    if (f.comboItems.length === 0) return 'Agrega los platillos que incluye.';
+    if (f.comboItems.some((p) => !p.productId)) return 'Elige el platillo de cada renglón.';
+    if (f.comboItems.some((p) => !Number.isInteger(Number(p.cantidad)) || p.cantidad < 1 || p.cantidad > 50)) {
+      return 'Cada cantidad va de 1 a 50.';
+    }
+    if (f.comboItems.reduce((s, p) => s + (Number(p.cantidad) || 0), 0) < 2) {
+      return 'Un combo lleva al menos 2 platillos: sube la cantidad o agrega otro.';
+    }
+    if (f.promoDesde && f.promoHasta && f.promoDesde > f.promoHasta) return 'La fecha "Hasta" va después de "Desde".';
+    return null;
+  }
+
+  /** Cada renglón con platillo y cantidad válida, y al menos 2 platillos en total. */
+  comboCompleto(): boolean {
+    const partes = this.productForm.comboItems;
+    const validas = partes.every((p) => p.productId && Number.isInteger(Number(p.cantidad)) && p.cantidad >= 1 && p.cantidad <= 50);
+    const total = partes.reduce((s, p) => s + (Number(p.cantidad) || 0), 0);
+    return partes.length > 0 && validas && total >= 2;
+  }
+
+  textoIncluye(prod: Product): string {
+    return (prod.comboItems ?? []).map((c) => `${c.cantidad} × ${c.nombre}`).join(', ');
+  }
+
+  ahorroDe(prod: Product): number | null {
+    if (!prod.isCombo || prod.precioNormal == null) return null;
+    const ahorro = Math.round((prod.precioNormal - prod.price) * 100) / 100;
+    return ahorro > 0 ? ahorro : null;
   }
 
   editProduct(prod: Product): void {
@@ -1664,7 +1966,13 @@ export class CatalogComponent implements OnInit {
           ...item,
           recipeUnit: item.recipeUnit || matchedIng?.unitOfMeasure || ''
         };
-      }) : []
+      }) : [],
+      isCombo: prod.isCombo ?? false,
+      comboItems: (prod.comboItems ?? []).map((c) => ({ productId: c.productId, cantidad: c.cantidad })),
+      promoDesde: prod.promoDesde ?? '',
+      promoHasta: prod.promoHasta ?? '',
+      promoDias: [...(prod.promoDias ?? [])],
+      categoryId: prod.categoryId,
     };
     this.isProductModalOpen.set(true);
   }
@@ -1701,18 +2009,27 @@ export class CatalogComponent implements OnInit {
     const price = this.productForm.price;
     const description = this.productForm.description.trim();
     const active = this.productForm.active;
-    const categoryId = this.selectedCategoryId();
+    const categoryId = this.productForm.categoryId;
+    const categoryName = this.categories().find((c) => c.id === categoryId)?.name || '';
     const branchId = this.activeBranchId();
 
-    if (!name || price <= 0 || !categoryId) return;
+    if (!name || price <= 0 || !categoryId || this.faltaParaGuardar()) return;
 
     this.isSyncing.set(true);
     this.isProductModalOpen.set(false);
 
-    const isRecipe = this.productForm.isRecipe;
-    const trackStock = !isRecipe ? this.productForm.trackStock : false;
+    const isCombo = this.productForm.isCombo;
+    if (isCombo && !this.comboCompleto()) return;
+    const isRecipe = !isCombo && this.productForm.isRecipe;
+    const trackStock = !isRecipe && !isCombo ? this.productForm.trackStock : false;
     const stock = (!isRecipe && trackStock) ? this.productForm.stock : 0;
     const recipeItems = isRecipe ? this.productForm.recipeItems : [];
+    const comboItems = isCombo
+      ? this.productForm.comboItems.map((c) => ({ productId: c.productId, cantidad: Number(c.cantidad) }))
+      : [];
+    const promoDesde = isCombo && this.productForm.promoDesde ? this.productForm.promoDesde : null;
+    const promoHasta = isCombo && this.productForm.promoHasta ? this.productForm.promoHasta : null;
+    const promoDias = isCombo ? this.productForm.promoDias : [];
 
     const requestPayload = {
       categoryId,
@@ -1724,6 +2041,11 @@ export class CatalogComponent implements OnInit {
       trackStock,
       stock,
       recipeItems,
+      isCombo,
+      comboItems,
+      promoDesde,
+      promoHasta,
+      promoDias,
       branchId
     };
 
@@ -1734,6 +2056,8 @@ export class CatalogComponent implements OnInit {
       this.products.update(list => 
         list.map(p => p.id === prodId ? { 
           ...p, 
+          categoryId,
+          categoryName,
           name, 
           price, 
           description, 
@@ -1756,6 +2080,7 @@ export class CatalogComponent implements OnInit {
           this.avisos.error(err.error?.error || err.error?.message || 'No se pudo guardar el producto.');
           this.products.set(previousProds);
           this.isSyncing.set(false);
+          this.isProductModalOpen.set(true); // Lo escrito sigue ahí: se corrige y se vuelve a guardar.
         }
       });
     } else {
@@ -1763,7 +2088,7 @@ export class CatalogComponent implements OnInit {
       const tempProduct: Product = {
         id: tempId,
         categoryId,
-        categoryName: this.selectedCategory()?.name || '',
+        categoryName,
         name,
         price,
         description,
@@ -1787,6 +2112,7 @@ export class CatalogComponent implements OnInit {
           this.avisos.error(err.error?.error || err.error?.message || 'No se pudo crear el producto.');
           this.products.update(list => list.filter(p => p.id !== tempId));
           this.isSyncing.set(false);
+          this.isProductModalOpen.set(true); // Lo escrito sigue ahí: se corrige y se vuelve a guardar.
         }
       });
     }

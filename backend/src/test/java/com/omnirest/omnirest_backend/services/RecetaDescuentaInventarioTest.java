@@ -42,7 +42,7 @@ class RecetaDescuentaInventarioTest {
     private ProductService productService() {
         return new ProductService(productRepository, categoryRepository, ingredientRepository,
                 mock(RecipeItemRepository.class), mock(BranchProductStockRepository.class), stockRepository,
-                mock(BranchRepository.class), mock(RestaurantRepository.class));
+                mock(BranchRepository.class), mock(RestaurantRepository.class), mock(ComboItemRepository.class));
     }
 
     private InventoryService inventoryService() {

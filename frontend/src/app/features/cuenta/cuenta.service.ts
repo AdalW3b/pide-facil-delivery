@@ -28,6 +28,7 @@ export interface PedidoHistorial {
   platillos: string[];
   comida: number;
   envio: number;
+  propina: number;
   total: number;
 }
 
@@ -39,7 +40,10 @@ export interface EntregaHistorial {
   direccion: string | null;
   distanciaKm: number | null;
   tuPago: number | null;
+  /** Lo que le cobró al cliente, propina incluida. */
   cobrado: number;
+  /** La propina del cliente: es del repartidor. */
+  propina: number;
   asignadoEn: string | null;
   entregadoEn: string | null;
 }

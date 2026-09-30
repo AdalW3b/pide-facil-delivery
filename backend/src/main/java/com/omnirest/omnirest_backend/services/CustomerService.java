@@ -96,6 +96,7 @@ public class CustomerService {
 
         Map<String, List<Product>> grouped = activeProducts.stream()
                 .filter(p -> p.getCategory() != null && p.getCategory().getActive())
+                .filter(com.omnirest.omnirest_backend.services.Combos::vigenteHoy)
                 .collect(Collectors.groupingBy(p -> p.getCategory().getName()));
 
         return grouped.entrySet().stream()
@@ -106,6 +107,9 @@ public class CustomerService {
                             // respuesta no cambia para el flujo que ya lo consume.
                             .map(p -> {
                                 String linea = p.getName() + " - $" + p.getPrice();
+                                if (Combos.esCombo(p)) {
+                                    linea += " (combo: incluye " + Combos.textoIncluye(p) + ")";
+                                }
                                 List<String> extras = adicionalesService.describirParaBot(p, grupos);
                                 return extras.isEmpty() ? linea : linea + " | " + String.join(" | ", extras);
                             })

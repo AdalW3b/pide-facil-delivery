@@ -16,7 +16,10 @@ public record EntregaHistorialDTO(
         BigDecimal distanciaKm,
         /** Lo que el negocio le pago por esta entrega. */
         BigDecimal tuPago,
+        /** Lo que le cobro al cliente, propina incluida. */
         BigDecimal cobrado,
+        /** La propina del cliente: es del repartidor. */
+        BigDecimal propina,
         LocalDateTime asignadoEn,
         LocalDateTime entregadoEn) {
 }

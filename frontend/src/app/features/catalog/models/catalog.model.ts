@@ -31,4 +31,24 @@ export interface Product {
   trackStock?: boolean;
   stock?: number | null;
   recipeItems?: RecipeItem[];
+  /** Combo o paquete: lleva platillos del menú en vez de receta. */
+  isCombo?: boolean;
+  comboItems?: ComboItem[] | null;
+  /** Lo que costarían sus platillos por separado. */
+  precioNormal?: number | null;
+  /** Vigencia de la promoción (fechas yyyy-mm-dd; días 1 = lunes … 7 = domingo). */
+  promoDesde?: string | null;
+  promoHasta?: string | null;
+  promoDias?: number[];
+  /** "martes y jueves, del 1 oct al 31 oct"; null si se vende siempre. */
+  vigencia?: string | null;
+  vigenteHoy?: boolean;
+}
+
+export interface ComboItem {
+  productId: string;
+  cantidad: number;
+  nombre?: string;
+  precio?: number;
+  activo?: boolean;
 }

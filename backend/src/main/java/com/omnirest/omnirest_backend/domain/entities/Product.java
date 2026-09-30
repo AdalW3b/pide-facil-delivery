@@ -52,4 +52,27 @@ public class Product {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private List<RecipeItem> recipeItems = new java.util.ArrayList<>();
+
+    /** Combo o paquete: en vez de receta lleva platillos (comboItems). */
+    @Column(name = "is_combo", nullable = false)
+    @Builder.Default
+    private Boolean isCombo = false;
+
+    @OneToMany(mappedBy = "combo", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("orden ASC")
+    @Builder.Default
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private List<ComboItem> comboItems = new java.util.ArrayList<>();
+
+    /** Vigencia de la promocion; null = sin limite. Ver services.Promociones. */
+    @Column(name = "promo_desde")
+    private java.time.LocalDate promoDesde;
+
+    @Column(name = "promo_hasta")
+    private java.time.LocalDate promoHasta;
+
+    /** Dias ISO separados por coma (1 = lunes ... 7 = domingo); null = todos. */
+    @Column(name = "promo_dias", length = 20)
+    private String promoDias;
 }

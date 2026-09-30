@@ -60,6 +60,10 @@ interface FilaPrevia {
   costo: number;
   absorbe: number;
   cliente: number;
+  /** Lo que se le paga al repartidor a esa distancia. */
+  repartidor: number;
+  /** Lo que paga el cliente de envío menos el pago al repartidor. Negativo = lo pone el negocio. */
+  balance: number;
   fuera: boolean;
 }
 
@@ -214,7 +218,8 @@ interface FilaPrevia {
 
           <!-- Tarifa -->
           <div class="border-t border-slate-800/80 pt-4">
-            <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Tarifa por distancia</p>
+            <p class="text-[11px] font-bold text-sky-300 uppercase tracking-wider">Lo que le cobras al cliente</p>
+            <p class="text-xs text-slate-500 mt-0.5 mb-3">El envío que ve el cliente al pedir. Lo que absorbes es lo que regalas del envío.</p>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
@@ -223,9 +228,10 @@ interface FilaPrevia {
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
               </div>
               <div>
-                <label for="bs-base" class="block text-xs text-slate-400 mb-1.5">Tarifa base ($)</label>
+                <label for="bs-base" class="block text-xs text-slate-400 mb-1.5">Envío base ($)</label>
                 <input id="bs-base" type="number" step="1" min="0" [ngModel]="tarifaBase()" (ngModelChange)="tarifaBase.set($event)"
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
+                <p class="text-[11px] text-slate-500 mt-1">Cubre los kilómetros incluidos.</p>
               </div>
               <div>
                 <label for="bs-pctbase" class="block text-xs text-slate-400 mb-1.5">Absorbes del tramo base (%)</label>
@@ -233,9 +239,10 @@ interface FilaPrevia {
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
               </div>
               <div>
-                <label for="bs-kmx" class="block text-xs text-slate-400 mb-1.5">Precio por km extra ($)</label>
+                <label for="bs-kmx" class="block text-xs text-slate-400 mb-1.5">Le cobras por km extra ($)</label>
                 <input id="bs-kmx" type="number" step="1" min="0" [ngModel]="precioKmExtra()" (ngModelChange)="precioKmExtra.set($event)"
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
+                <p class="text-[11px] text-slate-500 mt-1">Solo los km después de los incluidos.</p>
               </div>
               <div>
                 <label for="bs-pctx" class="block text-xs text-slate-400 mb-1.5">Absorbes del extra (%)</label>
@@ -263,54 +270,23 @@ interface FilaPrevia {
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
               </div>
             </div>
-
-            <!-- Vista previa: los porcentajes son difíciles de imaginar en frío -->
-            <div class="mt-5 bg-slate-950/50 border border-slate-800 rounded-xl p-4">
-              <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Así queda tu tarifa</p>
-              <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                  <thead>
-                    <tr class="text-slate-500 text-left">
-                      <th class="pb-2 pr-4 font-semibold">Distancia</th>
-                      <th class="pb-2 pr-4 font-semibold text-right">Cuesta</th>
-                      <th class="pb-2 pr-4 font-semibold text-right">Absorbes</th>
-                      <th class="pb-2 font-semibold text-right">Paga el cliente</th>
-                    </tr>
-                  </thead>
-                  <tbody class="tabular-nums">
-                    @for (fila of vistaPrevia(); track fila.km) {
-                      <tr class="border-t border-slate-800/60">
-                        <td class="py-1.5 pr-4 text-slate-300">{{ fila.km }} km</td>
-                        @if (fila.fuera) {
-                          <td colspan="3" class="py-1.5 text-right text-rose-400">Fuera de cobertura</td>
-                        } @else {
-                          <td class="py-1.5 pr-4 text-right text-slate-400">{{ fila.costo | pesos }}</td>
-                          <td class="py-1.5 pr-4 text-right text-amber-400">{{ fila.absorbe | pesos }}</td>
-                          <td class="py-1.5 text-right font-bold" [class]="fila.cliente === 0 ? 'text-emerald-400' : 'text-white'">
-                            {{ fila.cliente === 0 ? 'Gratis' : (fila.cliente | pesos) }}
-                          </td>
-                        }
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
 
           <!-- Repartidores -->
           <div class="border-t border-slate-800/80 pt-4">
-            <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Pago al repartidor</p>
+            <p class="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Lo que le pagas al repartidor</p>
+            <p class="text-xs text-slate-500 mt-0.5 mb-3">No depende de lo que pague el cliente: es por todo el viaje.</p>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label for="bs-pfijo" class="block text-xs text-slate-400 mb-1.5">Fijo por entrega ($)</label>
+                <label for="bs-pfijo" class="block text-xs text-slate-400 mb-1.5">Le pagas por entrega ($)</label>
                 <input id="bs-pfijo" type="number" step="1" min="0" [ngModel]="pagoFijo()" (ngModelChange)="pagoFijo.set($event)"
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
               </div>
               <div>
-                <label for="bs-pkm" class="block text-xs text-slate-400 mb-1.5">Por km recorrido ($)</label>
+                <label for="bs-pkm" class="block text-xs text-slate-400 mb-1.5">Le pagas por km ($)</label>
                 <input id="bs-pkm" type="number" step="1" min="0" [ngModel]="pagoKm()" (ngModelChange)="pagoKm.set($event)"
                   class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-sm text-white outline-none focus:border-indigo-500 tabular-nums" />
+                <p class="text-[11px] text-slate-500 mt-1">Cada km del viaje, desde el primero.</p>
               </div>
               <div>
                 <label for="bs-grupo" class="block text-xs text-slate-400 mb-1.5">Grupo de repartidores</label>
@@ -347,6 +323,46 @@ interface FilaPrevia {
                   Volver a buscar grupos
                 </button>
               </div>
+            </div>
+
+            <!-- Vista previa: las dos cuentas juntas, para ver cuánto pones tú en cada envío -->
+            <div class="mt-5 bg-slate-950/50 border border-slate-800 rounded-xl p-4">
+              <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Así queda cada envío</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-slate-500 text-left">
+                      <th class="pb-2 pr-4 font-semibold">Distancia</th>
+                      <th class="pb-2 pr-4 font-semibold text-right">Envío</th>
+                      <th class="pb-2 pr-4 font-semibold text-right">Absorbes</th>
+                      <th class="pb-2 pr-4 font-semibold text-right text-sky-300">Paga el cliente</th>
+                      <th class="pb-2 pr-4 font-semibold text-right text-emerald-300">Le pagas al repartidor</th>
+                      <th class="pb-2 font-semibold text-right">Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody class="tabular-nums">
+                    @for (fila of vistaPrevia(); track fila.km) {
+                      <tr class="border-t border-slate-800/60">
+                        <td class="py-1.5 pr-4 text-slate-300">{{ fila.km }} km</td>
+                        @if (fila.fuera) {
+                          <td colspan="5" class="py-1.5 text-right text-rose-400">Fuera de cobertura</td>
+                        } @else {
+                          <td class="py-1.5 pr-4 text-right text-slate-400">{{ fila.costo | pesos }}</td>
+                          <td class="py-1.5 pr-4 text-right text-slate-400">{{ fila.absorbe | pesos }}</td>
+                          <td class="py-1.5 pr-4 text-right font-bold" [class]="fila.cliente === 0 ? 'text-emerald-400' : 'text-white'">
+                            {{ fila.cliente === 0 ? 'Gratis' : (fila.cliente | pesos) }}
+                          </td>
+                          <td class="py-1.5 pr-4 text-right text-white">{{ fila.repartidor | pesos }}</td>
+                          <td class="py-1.5 text-right font-bold" [class]="fila.balance > 0 ? 'text-emerald-400' : fila.balance < 0 ? 'text-amber-400' : 'text-slate-400'">
+                            {{ fila.balance > 0 ? 'Te quedan ' + (fila.balance | pesos) : fila.balance < 0 ? 'Pones ' + (-fila.balance | pesos) : 'Parejo' }}
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-2">Resultado = lo que paga el cliente de envío menos lo que le pagas al repartidor.</p>
             </div>
           </div>
 
@@ -443,19 +459,24 @@ export class BranchSettingsComponent implements OnInit {
     const maxima = this.distanciaMaxima() || 0;
     const absorbeBase = (this.pctBase() || 0) / 100;
     const absorbeExtra = (this.pctExtra() || 0) / 100;
+    const pagoFijo = this.pagoFijo() || 0;
+    const pagoKm = this.pagoKm() || 0;
 
     const distancias = [2, 4, 6, 8, 10];
 
     return distancias.map((km) => {
       if (km > maxima) {
-        return { km, costo: 0, absorbe: 0, cliente: 0, fuera: true };
+        return { km, costo: 0, absorbe: 0, cliente: 0, repartidor: 0, balance: 0, fuera: true };
       }
       const sobrante = Math.max(0, km - incluidos);
       const kmExtra = sobrante > 0 ? Math.ceil(sobrante / escalon) * escalon : 0;
       const cargoExtra = kmExtra * porExtra;
       const costo = base + cargoExtra;
       const absorbe = Math.min(costo, base * absorbeBase + cargoExtra * absorbeExtra);
-      return { km, costo, absorbe, cliente: costo - absorbe, fuera: false };
+      const cliente = costo - absorbe;
+      // Lo mismo que calcula el backend (CalculadoraEnvio.pagoRepartidor).
+      const repartidor = Math.round((pagoFijo + pagoKm * km) * 100) / 100;
+      return { km, costo, absorbe, cliente, repartidor, balance: Math.round((cliente - repartidor) * 100) / 100, fuera: false };
     });
   });
 

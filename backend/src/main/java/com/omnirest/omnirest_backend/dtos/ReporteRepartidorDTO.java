@@ -20,5 +20,7 @@ public record ReporteRepartidorDTO(
         BigDecimal aPagar,
         /** Dinero que recibio de los clientes y tiene que entregar en caja. */
         BigDecimal cobrado,
+        /** Propinas de los clientes: son del repartidor, no se entregan en caja. */
+        BigDecimal propinas,
         LocalDateTime ultimaEntrega) {
 }

@@ -48,7 +48,8 @@ interface EntregaRepartidor {
   distanciaKm: number | null;
 
   platillos: string[];
-  aCobrar: number;
+  /** Null si la entrega ya la tomó otro repartidor. */
+  aCobrar: number | null;
   pagaCon: number | null;
   cambio: number | null;
   tuPago: number | null;
@@ -157,6 +158,7 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
               </div>
             }
 
+            @if (e.disponible || e.esMia) {
             <!-- A dónde va -->
             <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
               <div class="flex items-start gap-2">
@@ -184,6 +186,12 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
                 </a>
               }
 
+              @if (!e.esMia) {
+                <p class="border-t border-slate-800 pt-3 text-xs text-slate-500">
+                  Al tomarla verás el nombre y teléfono del cliente y el punto exacto en el mapa.
+                </p>
+              }
+              @if (e.esMia) {
               <div class="border-t border-slate-800 pt-3 text-sm space-y-1">
                 <p class="text-slate-300">{{ e.clienteNombre || 'Cliente' }}</p>
                 @if (e.clienteTelefono) {
@@ -199,6 +207,7 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
                   <p class="text-amber-400/90 text-xs pt-1">Nota: {{ e.notas }}</p>
                 }
               </div>
+              }
             </section>
 
             <!-- Qué lleva -->
@@ -215,7 +224,7 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
             <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm text-slate-400">Cobrar al cliente</span>
-                <span class="text-2xl font-black tabular-nums">{{ e.aCobrar | pesos }}</span>
+                <span class="text-2xl font-black tabular-nums">{{ (e.aCobrar ?? 0) | pesos }}</span>
               </div>
               @if (e.cambio !== null) {
                 <p class="flex items-center gap-2 text-sm text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
@@ -230,6 +239,8 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
                 </div>
               }
             </section>
+
+            }
 
             <!-- Registro / acciones -->
             @if (e.disponible) {
@@ -308,6 +319,24 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
                     Actualizar
                   </button>
                 }
+                <!-- Ya no puede llevarla: solo antes de salir a la calle -->
+                @if (e.estado !== 'EN_CAMINO') {
+                  @if (confirmandoSoltar()) {
+                    <div class="flex gap-2">
+                      <button (click)="soltar()" [disabled]="enviando()"
+                        class="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-bold cursor-pointer disabled:opacity-60">
+                        Sí, ya no puedo llevarla
+                      </button>
+                      <button (click)="confirmandoSoltar.set(false)"
+                        class="px-4 rounded-xl text-sm text-slate-400 hover:text-white cursor-pointer">No</button>
+                    </div>
+                  } @else {
+                    <button (click)="confirmandoSoltar.set(true)"
+                      class="w-full text-xs text-slate-500 hover:text-rose-300 py-1 cursor-pointer">
+                      Ya no puedo llevarla
+                    </button>
+                  }
+                }
               }
             </div>
           </div>
@@ -330,6 +359,7 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
 
   readonly telefono = signal('');
   readonly nombre = signal('');
+  readonly confirmandoSoltar = signal(false);
 
   /**
    * Mientras el repartidor espera a que empaquen, la pantalla se consulta
@@ -467,8 +497,14 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
     this.accion('entregado');
   }
 
+  /** Ya no puede llevarla: vuelve a quedar disponible para otro repartidor. */
+  soltar(): void {
+    this.confirmandoSoltar.set(false);
+    this.accion('soltar');
+  }
+
   /** Las dos acciones del repartidor se mandan igual; solo cambia el paso. */
-  private accion(paso: 'en-camino' | 'entregado'): void {
+  private accion(paso: 'en-camino' | 'entregado' | 'soltar'): void {
     if (this.enviando()) return;
 
     this.enviando.set(true);
