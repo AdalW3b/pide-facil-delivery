@@ -136,12 +136,12 @@ interface Columna {
                 />
                 <div class="flex gap-2 shrink-0">
                   <button
-                    (click)="copiarEnlace()"
+                    (click)="copiarEnlace(enlacePublico(), 'menu')"
                     [disabled]="esEnlaceLocal()"
                     class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                   >
                     <svg lucideCopy class="w-3.5 h-3.5"></svg>
-                    {{ copiado() ? 'Copiado' : 'Copiar' }}
+                    {{ copiado() === 'menu' ? 'Copiado' : 'Copiar' }}
                   </button>
                   <a
                     [href]="enlacePublico()"
@@ -161,6 +161,25 @@ interface Columna {
                     QR
                   </button>
                 </div>
+              </div>
+
+              <!-- Ligas de cuenta: clientes que quieren registrarse y repartidores nuevos -->
+              <div class="grid gap-2 pt-2 sm:grid-cols-2">
+                @for (l of ligasDeCuenta(); track l.clave) {
+                  <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                    <p class="text-xs font-bold text-slate-200">{{ l.titulo }}</p>
+                    <p class="mt-0.5 text-[11px] text-slate-400">{{ l.ayuda }}</p>
+                    <div class="mt-2 flex gap-2">
+                      <input type="text" readonly [value]="l.url" (focus)="seleccionarTodo($event)" [attr.aria-label]="l.titulo"
+                        class="flex-1 min-w-0 bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-indigo-300 outline-none focus:border-indigo-500" />
+                      <button (click)="copiarEnlace(l.url, l.clave)" [disabled]="esEnlaceLocal()"
+                        class="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <svg lucideCopy class="w-3.5 h-3.5"></svg>
+                        {{ copiado() === l.clave ? 'Copiado' : 'Copiar' }}
+                      </button>
+                    </div>
+                  </div>
+                }
               </div>
 
               @if (esEnlaceLocal()) {
@@ -602,7 +621,8 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
 
   readonly aviso = signal<{ ok: boolean; texto: string } | null>(null);
   readonly mostrarQr = signal(false);
-  readonly copiado = signal(false);
+  /** Cuál liga se acaba de copiar: 'menu', 'clientes' o 'repartidores'. */
+  readonly copiado = signal<string | null>(null);
 
   readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
 
@@ -611,11 +631,28 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
    * se abrió el panel: si entraron por el dominio público, el enlace ya sirve
    * para cualquiera; si entraron por localhost, solo sirve aquí.
    */
+  private readonly origenPublico = computed(() =>
+    (environment.publicAppUrl || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, ''),
+  );
+
   readonly enlacePublico = computed(() => {
     const branchId = this.activeBranchId();
-    if (!branchId) return '';
-    const origen = environment.publicAppUrl || (typeof window !== 'undefined' ? window.location.origin : '');
-    return `${origen.replace(/\/$/, '')}/pedir/${branchId}`;
+    return branchId ? `${this.origenPublico()}/pedir/${branchId}` : '';
+  });
+
+  /**
+   * Ligas para entrar a una cuenta de esta sucursal. Los repartidores reciben
+   * cada entrega por WhatsApp, pero un repartidor nuevo necesita esta liga
+   * para crear su cuenta y ver sus entregas y su corte.
+   */
+  readonly ligasDeCuenta = computed(() => {
+    const branchId = this.activeBranchId();
+    if (!branchId) return [];
+    const base = `${this.origenPublico()}/cuenta/${branchId}`;
+    return [
+      { clave: 'clientes', titulo: 'Cuenta de clientes', ayuda: 'Para que guarden sus direcciones y vean sus pedidos.', url: base },
+      { clave: 'repartidores', titulo: 'Liga para repartidores', ayuda: 'Mándala a tu grupo: entran con su teléfono y un código.', url: `${base}?tipo=REPARTIDOR` },
+    ];
   });
 
   readonly esEnlaceLocal = computed(() => /localhost|127\.0\.0\.1/.test(this.enlacePublico()));
@@ -998,14 +1035,13 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
     (event.target as HTMLInputElement).select();
   }
 
-  copiarEnlace(): void {
-    const enlace = this.enlacePublico();
+  copiarEnlace(enlace: string, clave: string): void {
     if (!enlace) return;
 
     navigator.clipboard.writeText(enlace).then(
       () => {
-        this.copiado.set(true);
-        setTimeout(() => this.copiado.set(false), 2000);
+        this.copiado.set(clave);
+        setTimeout(() => this.copiado.set(null), 2000);
       },
       () => this.avisos.error('No se pudo copiar. Selecciona el enlace y cópialo a mano.')
     );

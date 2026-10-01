@@ -230,3 +230,35 @@ body {
 .lp-corte {
   border-top: 1.5px dashed var(--linea);
 }
+
+/* Barra de avance de la pestaña que está rotando en el inicio */
+@keyframes lp-barra {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Deslizadores de la calculadora: perilla grande y fácil de agarrar */
+.lp input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 5px solid var(--chile);
+  box-shadow: 0 4px 10px -2px rgba(36, 25, 15, 0.45);
+  cursor: grab;
+}
+.lp input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 5px solid var(--chile);
+  box-shadow: 0 4px 10px -2px rgba(36, 25, 15, 0.45);
+  cursor: grab;
+}
+.lp input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
