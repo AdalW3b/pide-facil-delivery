@@ -97,6 +97,13 @@ export const routes: Routes = [
         data: { requiredPermission: 'CATALOG_READ' },
       },
       {
+        // Inventario con su propio permiso: quien lleva el almacén no necesita el catálogo.
+        path: 'inventario',
+        loadComponent: () => import('./features/inventario/inventario.component').then((m) => m.InventarioComponent),
+        canActivate: [permissionGuard],
+        data: { requiredPermission: 'INVENTORY_READ', permisosAlternos: ['CATALOG_READ'] },
+      },
+      {
         path: 'settings',
         component: SettingsComponent,
         canActivate: [roleGuard],

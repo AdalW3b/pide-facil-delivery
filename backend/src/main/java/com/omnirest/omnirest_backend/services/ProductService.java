@@ -254,7 +254,7 @@ public class ProductService {
         return new ProductResponseDTO(r.id(), r.categoryId(), r.categoryName(), r.name(), r.price(), r.description(),
                 r.active(), r.trackStock(), r.stock(), r.isRecipe(), r.recipeItems(), r.isCombo(), r.comboItems(),
                 r.precioNormal(), r.promoDesde(), r.promoHasta(), r.promoDias(), r.vigencia(), r.vigenteHoy(),
-                agotado, aMano);
+                agotado, aMano, r.costo(), r.costoCompleto());
     }
 
     private UUID restauranteDe(Product product) {
@@ -443,6 +443,10 @@ public class ProductService {
             currentStock = 0;
         }
 
+        Costos.Costo costo = Costos.dePlatillo(product, Boolean.TRUE.equals(product.getIsRecipe())
+                ? (product.getRecipeItems() != null && !product.getRecipeItems().isEmpty()
+                        ? product.getRecipeItems() : recipeItemRepository.findByProductId(product.getId()))
+                : null);
         return new ProductResponseDTO(
                 product.getId(),
                 product.getCategory().getId(),
@@ -464,6 +468,8 @@ public class ProductService {
                 Combos.textoVigencia(product),
                 Combos.vigenteHoy(product),
                 false,
-                false);
+                false,
+                costo.valor(),
+                costo.completo());
     }
 }

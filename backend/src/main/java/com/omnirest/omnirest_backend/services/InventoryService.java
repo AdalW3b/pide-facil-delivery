@@ -312,6 +312,50 @@ public class InventoryService {
         return aplicarProducto(branchId, producto, delta, tipo, false, null, nota, null);
     }
 
+    public BigDecimal moverProducto(UUID branchId, Product producto, int delta, TipoMovimiento tipo, String nota,
+                                   BigDecimal costoUnitario) {
+        return aplicarProducto(branchId, producto, delta, tipo, false, null, nota, null, costoUnitario, null);
+    }
+
+    /**
+     * Movimiento de un ingrediente dentro de una compra, transferencia o
+     * produccion (comparten grupo). Con {@code bloquear} no deja en negativo.
+     */
+    public BigDecimal moverIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal delta, TipoMovimiento tipo,
+                                      boolean bloquear, String nota, BigDecimal costoUnitario, String proveedor, UUID grupoId) {
+        return aplicarIngrediente(branchId, ingrediente, delta, tipo, bloquear, null, nota, costoUnitario, proveedor,
+                "No hay suficiente " + ingrediente.getName() + " en esta sucursal.", grupoId);
+    }
+
+    public BigDecimal moverProducto(UUID branchId, Product producto, int delta, TipoMovimiento tipo, boolean bloquear,
+                                   String nota, BigDecimal costoUnitario, UUID grupoId) {
+        return aplicarProducto(branchId, producto, delta, tipo, bloquear, null, nota,
+                "No hay suficientes " + producto.getName() + " en esta sucursal.", costoUnitario, grupoId);
+    }
+
+    public BigDecimal fijarIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal nuevo, TipoMovimiento tipo,
+                                      String nota, UUID grupoId) {
+        BigDecimal delta = nuevo.subtract(saldoIngrediente(branchId, ingrediente.getId()));
+        return aplicarIngrediente(branchId, ingrediente, delta, tipo, false, null, nota, null, null, null, grupoId);
+    }
+
+    public BigDecimal fijarProducto(UUID branchId, Product producto, int nuevo, TipoMovimiento tipo, String nota, UUID grupoId) {
+        int delta = nuevo - saldoProducto(branchId, producto.getId()).intValue();
+        return aplicarProducto(branchId, producto, delta, tipo, false, null, nota, null, null, grupoId);
+    }
+
+    /**
+     * Costo promedio ponderado: lo que habia a su costo mas lo que entra a su
+     * precio. Si no habia nada (o estaba en negativo), manda el precio nuevo.
+     */
+    static BigDecimal promedio(BigDecimal costoActual, BigDecimal habia, BigDecimal entra, BigDecimal costoNuevo) {
+        if (costoActual == null || habia == null || habia.signum() <= 0) {
+            return costoNuevo.setScale(4, RoundingMode.HALF_UP);
+        }
+        BigDecimal total = habia.multiply(costoActual).add(entra.multiply(costoNuevo));
+        return total.divide(habia.add(entra), 4, RoundingMode.HALF_UP);
+    }
+
     /** Compatibilidad con los ajustes viejos del panel: fija el numero y lo registra como ajuste. */
     public void setAbsoluteStock(UUID itemId, UUID branchId, Number newStock, boolean isIngredient) {
         if (itemId == null || branchId == null || newStock == null) return;
@@ -340,6 +384,13 @@ public class InventoryService {
     private BigDecimal aplicarIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal delta, TipoMovimiento tipo,
                                           boolean bloquear, UUID orderId, String nota, BigDecimal costoUnitario,
                                           String proveedor, String mensajeFalta) {
+        return aplicarIngrediente(branchId, ingrediente, delta, tipo, bloquear, orderId, nota, costoUnitario,
+                proveedor, mensajeFalta, null);
+    }
+
+    private BigDecimal aplicarIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal delta, TipoMovimiento tipo,
+                                          boolean bloquear, UUID orderId, String nota, BigDecimal costoUnitario,
+                                          String proveedor, String mensajeFalta, UUID grupoId) {
         UUID id = ingrediente.getId();
         if (delta.signum() < 0) {
             int hecho = branchIngredientStockRepository.subtractStockAtomic(branchId, id, delta.negate());
@@ -357,7 +408,11 @@ public class InventoryService {
         registrar(MovimientoInventario.builder()
                 .branchId(branchId).ingredientId(id).tipo(tipo).cantidad(delta).saldo(saldo)
                 .costoUnitario(costoUnitario).proveedor(proveedor).nota(recortar(nota))
-                .orderId(orderId).usuario(quien()).build());
+                .orderId(orderId).grupoId(grupoId).usuario(quien()).build());
+        if (delta.signum() > 0 && costoUnitario != null && costoUnitario.signum() > 0) {
+            ingrediente.setCostoPromedio(promedio(ingrediente.getCostoPromedio(), saldo.subtract(delta), delta, costoUnitario));
+            ingredientRepository.save(ingrediente);
+        }
         if (delta.signum() < 0) {
             avisarSiQuedaPoco(branchId, ingrediente, saldo.subtract(delta), saldo);
         }
@@ -381,6 +436,11 @@ public class InventoryService {
 
     private BigDecimal aplicarProducto(UUID branchId, Product producto, int delta, TipoMovimiento tipo, boolean bloquear,
                                        UUID orderId, String nota, String mensajeFalta) {
+        return aplicarProducto(branchId, producto, delta, tipo, bloquear, orderId, nota, mensajeFalta, null, null);
+    }
+
+    private BigDecimal aplicarProducto(UUID branchId, Product producto, int delta, TipoMovimiento tipo, boolean bloquear,
+                                       UUID orderId, String nota, String mensajeFalta, BigDecimal costoUnitario, UUID grupoId) {
         UUID id = producto.getId();
         if (delta < 0) {
             int hecho = branchProductStockRepository.subtractStockAtomic(branchId, id, -delta);
@@ -397,10 +457,21 @@ public class InventoryService {
         BigDecimal saldo = saldoProducto(branchId, id);
         registrar(MovimientoInventario.builder()
                 .branchId(branchId).productId(id).tipo(tipo).cantidad(BigDecimal.valueOf(delta)).saldo(saldo)
-                .nota(recortar(nota)).orderId(orderId).usuario(quien()).build());
-        if (delta < 0 && saldo.signum() < 0 && saldo.subtract(BigDecimal.valueOf(delta)).signum() >= 0) {
+                .costoUnitario(costoUnitario).nota(recortar(nota)).orderId(orderId).grupoId(grupoId)
+                .usuario(quien()).build());
+        BigDecimal antes = saldo.subtract(BigDecimal.valueOf(delta));
+        if (delta < 0 && saldo.signum() < 0 && antes.signum() >= 0) {
             avisar(branchId, producto.getName() + " quedó en negativo (" + saldo.stripTrailingZeros().toPlainString()
                     + "): revisa el inventario.");
+        } else if (delta < 0 && producto.getMinimo() != null && producto.getMinimo() > 0
+                && antes.compareTo(BigDecimal.valueOf(producto.getMinimo())) >= 0
+                && saldo.compareTo(BigDecimal.valueOf(producto.getMinimo())) < 0) {
+            avisar(branchId, "Queda poco de " + producto.getName() + ": " + saldo.stripTrailingZeros().toPlainString()
+                    + " (mínimo " + producto.getMinimo() + ").");
+        }
+        if (delta > 0 && costoUnitario != null && costoUnitario.signum() > 0) {
+            producto.setCostoPromedio(promedio(producto.getCostoPromedio(), antes, BigDecimal.valueOf(delta), costoUnitario));
+            productRepository.save(producto);
         }
         return saldo;
     }

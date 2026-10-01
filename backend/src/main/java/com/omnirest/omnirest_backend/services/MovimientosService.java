@@ -86,7 +86,9 @@ public class MovimientosService {
         }
         int cantidad = m.cantidad().intValue();
         BigDecimal saldo = switch (tipo) {
-            case ENTRADA -> inventoryService.moverProducto(branchId, p, cantidad, tipo, nota != null ? nota : "Entrada de mercancía");
+            case ENTRADA -> inventoryService.moverProducto(branchId, p, cantidad, tipo, nota != null ? nota : "Entrada de mercancía",
+                    m.costoTotal() != null && m.costoTotal().signum() > 0 && cantidad > 0
+                            ? m.costoTotal().divide(BigDecimal.valueOf(cantidad), 4, RoundingMode.HALF_UP) : null);
             case MERMA -> inventoryService.moverProducto(branchId, p, -cantidad, tipo, nota != null ? nota : "Merma");
             default -> inventoryService.fijarProducto(branchId, p, cantidad, tipo, nota != null ? nota : "Conteo físico");
         };

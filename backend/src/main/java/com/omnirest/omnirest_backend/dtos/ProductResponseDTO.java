@@ -31,5 +31,9 @@ public record ProductResponseDTO(
     /** No se puede pedir hoy: se marco "se acabó" o ya no alcanza (modo Bloquear). */
     Boolean agotado,
     /** Se marco "se acabó" a mano hoy. */
-    Boolean agotadoHoy
+    Boolean agotadoHoy,
+    /** Cuanto cuesta hacerlo con los costos de hoy; null si no se sabe. */
+    java.math.BigDecimal costo,
+    /** false si a algun ingrediente le falta costo: el numero es parcial. */
+    Boolean costoCompleto
 ) {}

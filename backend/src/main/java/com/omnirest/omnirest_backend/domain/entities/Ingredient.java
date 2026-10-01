@@ -39,4 +39,27 @@ public class Ingredient {
     /** Por debajo de esto se avisa que queda poco. Null = sin alerta. */
     @Column(precision = 12, scale = 3)
     private BigDecimal minimo;
+
+    /** Costo por unidad del inventario (kg, l, pieza). Null = sin costo capturado. */
+    @Column(name = "costo_promedio", precision = 12, scale = 4)
+    private BigDecimal costoPromedio;
+
+    /** Donde se guarda, para contarlo por zona: "Refri", "Almacén". */
+    @Column(length = 40)
+    private String zona;
+
+    /** Se hace en la cocina con otros ingredientes (salsa, frijoles). */
+    @Column(name = "es_preparado", nullable = false)
+    @Builder.Default
+    private Boolean esPreparado = false;
+
+    /** Cuanto sale de una tanda de su receta, en su propia unidad. */
+    @Column(precision = 12, scale = 3)
+    private BigDecimal rinde;
+
+    @OneToMany(mappedBy = "preparado", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private java.util.List<PreparacionComponente> componentes = new java.util.ArrayList<>();
 }

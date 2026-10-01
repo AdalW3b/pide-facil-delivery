@@ -11,5 +11,9 @@ public enum TipoMovimiento {
     /** Conteo fisico: la diferencia contra lo que decia el sistema. */
     CONTEO,
     /** Correccion a mano del numero. */
-    AJUSTE
+    AJUSTE,
+    /** Se hizo una preparacion: salen sus ingredientes y entra lo preparado. */
+    PRODUCCION,
+    /** Paso de una sucursal a otra. */
+    TRANSFERENCIA
 }

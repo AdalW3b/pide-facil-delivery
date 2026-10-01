@@ -9,6 +9,7 @@ import {
   LucideChevronsLeft,
   LucideLayoutDashboard,
   LucideBookOpen,
+  LucideBoxes,
   LucideMessageSquare,
   LucideShield,
   LucideMenu,
@@ -57,6 +58,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideChevronsLeft,
     LucideLayoutDashboard,
     LucideBookOpen,
+    LucideBoxes,
     LucideMessageSquare,
     LucideShield,
     LucideMenu,
@@ -82,6 +84,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('historial') { <svg lucideReceipt class="w-5 h-5 shrink-0"></svg> }
         @case ('reportes') { <svg lucideBarChart3 class="w-5 h-5 shrink-0"></svg> }
         @case ('catalogo') { <svg lucideBookOpen class="w-5 h-5 shrink-0"></svg> }
+        @case ('inventario') { <svg lucideBoxes class="w-5 h-5 shrink-0"></svg> }
         @case ('sucursales') { <svg lucideStore class="w-5 h-5 shrink-0"></svg> }
         @case ('pagos') { <svg lucideCreditCard class="w-5 h-5 shrink-0"></svg> }
         @case ('whatsapp') { <svg lucideMessageSquare class="w-5 h-5 shrink-0"></svg> }
@@ -410,6 +413,8 @@ export class AdminLayoutComponent {
       titulo: 'Menú',
       items: [
         { ruta: '/catalog', nombre: 'Catálogo', icono: 'catalogo', exacta: false, visible: () => this.hasPermission('CATALOG_READ') },
+        { ruta: '/inventario', nombre: 'Inventario', icono: 'inventario', exacta: false,
+          visible: () => this.hasPermission('INVENTORY_READ') || this.hasPermission('CATALOG_READ') },
       ],
     },
     {

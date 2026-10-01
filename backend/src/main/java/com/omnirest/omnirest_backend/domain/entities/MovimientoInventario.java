@@ -56,6 +56,10 @@ public class MovimientoInventario {
     @Column(name = "order_id")
     private UUID orderId;
 
+    /** Compra, transferencia o produccion a la que pertenece. */
+    @Column(name = "grupo_id")
+    private UUID grupoId;
+
     @Column(length = 100)
     private String usuario;
 

@@ -52,6 +52,10 @@ export interface Product {
   agotado?: boolean;
   /** Se marcó "se acabó" a mano hoy. */
   agotadoHoy?: boolean;
+  /** Cuánto cuesta hacerlo con los costos de hoy. */
+  costo?: number | null;
+  /** false si a algún ingrediente le falta costo. */
+  costoCompleto?: boolean;
 }
 
 export interface ComboItem {

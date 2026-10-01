@@ -393,6 +393,12 @@ import {
                               <span class="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-xs font-black text-indigo-400 inline-block">
                                 {{ prod.price | pesos }}
                               </span>
+                              @if (prod.costo !== null && prod.costo !== undefined) {
+                                <span class="ml-1.5 text-[11px] tabular-nums" [class]="claseMargen(prod)"
+                                  [title]="prod.costoCompleto ? 'Con el costo promedio de sus ingredientes' : 'A algún ingrediente le falta costo: el margen real es menor'">
+                                  Costo {{ prod.costo | pesos }} · margen {{ margen(prod) }}%{{ prod.costoCompleto ? '' : '*' }}
+                                </span>
+                              }
                             </div>
                             <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed min-h-[32px]">{{ prod.description || 'Sin descripción' }}</p>
                             @if (prod.isCombo && prod.comboItems?.length) {
@@ -2325,6 +2331,17 @@ export class CatalogComponent implements OnInit {
       },
       error: (err) => this.avisos.error(err.error?.error || 'No se pudo cambiar.'),
     });
+  }
+
+  /** Qué parte del precio queda después de pagar los ingredientes. */
+  margen(prod: Product): number {
+    if (!prod.price || prod.costo === null || prod.costo === undefined) return 0;
+    return Math.round(((prod.price - prod.costo) / prod.price) * 100);
+  }
+
+  claseMargen(prod: Product): string {
+    const m = this.margen(prod);
+    return m < 30 ? 'text-rose-300' : m < 55 ? 'text-amber-300' : 'text-emerald-300';
   }
 
   alRegistrarMovimiento(mensaje: string): void {

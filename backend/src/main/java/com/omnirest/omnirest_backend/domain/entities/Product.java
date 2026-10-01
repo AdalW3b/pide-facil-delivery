@@ -75,4 +75,14 @@ public class Product {
     /** Dias ISO separados por coma (1 = lunes ... 7 = domingo); null = todos. */
     @Column(name = "promo_dias", length = 20)
     private String promoDias;
+
+    /** Productos terminados (refrescos): costo por pieza. */
+    @Column(name = "costo_promedio", precision = 12, scale = 4)
+    private BigDecimal costoPromedio;
+
+    /** Productos terminados: por debajo de esto, "queda poco". */
+    private Integer minimo;
+
+    @Column(length = 40)
+    private String zona;
 }

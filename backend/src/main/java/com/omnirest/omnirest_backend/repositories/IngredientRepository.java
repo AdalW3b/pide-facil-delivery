@@ -14,5 +14,10 @@ public interface IngredientRepository extends JpaRepository<Ingredient, UUID> {
     @org.springframework.data.jpa.repository.Query(
             "SELECT count(a) FROM Adicional a WHERE a.ingrediente.id = :ingredientId")
     long adicionalesQueLoUsan(@org.springframework.data.repository.query.Param("ingredientId") UUID ingredientId);
+
+    /** Si el ingrediente va dentro de alguna preparacion. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT count(c) > 0 FROM PreparacionComponente c WHERE c.componente.id = :ingredientId")
+    boolean usadoComoComponente(@org.springframework.data.repository.query.Param("ingredientId") UUID ingredientId);
     List<Ingredient> findByRestaurantId(UUID restaurantId);
 }
