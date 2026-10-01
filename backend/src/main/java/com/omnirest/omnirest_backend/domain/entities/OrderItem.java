@@ -47,6 +47,10 @@ public class OrderItem {
     @Column(name = "ready_at")
     private java.time.LocalDateTime readyAt;
 
+    /** Cuando se pidio; lo pone la base (los renglones viejos quedan en null). */
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private java.time.LocalDateTime createdAt;
+
     /**
      * Lo que se eligio en la ficha del platillo. Se carga con subselect: una
      * sola consulta para todas las lineas, y sin fallar si se lee fuera de una

@@ -1,6 +1,8 @@
 package com.omnirest.omnirest_backend.controllers;
 
+import com.omnirest.omnirest_backend.domain.entities.Restaurant;
 import com.omnirest.omnirest_backend.dtos.AnalyticsSummaryDTO;
+import com.omnirest.omnirest_backend.dtos.CanalVentasDTO;
 import com.omnirest.omnirest_backend.dtos.DailySalesDTO;
 import com.omnirest.omnirest_backend.dtos.EmployeePerformanceDTO;
 import com.omnirest.omnirest_backend.dtos.KdsEfficiencyDTO;
@@ -8,10 +10,11 @@ import com.omnirest.omnirest_backend.dtos.PeakHourDTO;
 import com.omnirest.omnirest_backend.dtos.ProductPerformanceDTO;
 import com.omnirest.omnirest_backend.dtos.TablePerformanceDTO;
 import com.omnirest.omnirest_backend.dtos.TurnaroundTimeDTO;
-import com.omnirest.omnirest_backend.security.CustomUserDetails;
-import com.omnirest.omnirest_backend.domain.entities.Restaurant;
+import com.omnirest.omnirest_backend.repositories.BranchRepository;
 import com.omnirest.omnirest_backend.repositories.RestaurantRepository;
+import com.omnirest.omnirest_backend.security.CustomUserDetails;
 import com.omnirest.omnirest_backend.services.AnalyticsService;
+import com.omnirest.omnirest_backend.services.SecurityValidationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -27,159 +30,158 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/analytics")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
     private final RestaurantRepository restaurantRepository;
+    private final BranchRepository branchRepository;
+    private final SecurityValidationService securityValidationService;
 
-    @GetMapping("/summary")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
+    @GetMapping({"/summary", "/kpis/today"})
     public ResponseEntity<AnalyticsSummaryDTO> getAnalyticsSummary(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getAnalyticsSummary(effRestId, effBranchId, startDate, endDate));
-    }
-
-    @GetMapping("/kpis/today")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
-    public ResponseEntity<AnalyticsSummaryDTO> getTodayKpis(
-            @RequestParam(required = false) UUID restaurantId,
-            @RequestParam(required = false) UUID branchId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getAnalyticsSummary(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getAnalyticsSummary(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/sales/daily")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<DailySalesDTO>> getDailySales(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getDailySales(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getDailySales(a.restaurantId(), a.branchId(), startDate, endDate));
+    }
+
+    @GetMapping("/sales/channels")
+    public ResponseEntity<List<CanalVentasDTO>> getVentasPorCanal(
+            @RequestParam(required = false) UUID restaurantId,
+            @RequestParam(required = false) UUID branchId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getVentasPorCanal(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/employees/performance")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<EmployeePerformanceDTO>> getEmployeePerformance(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getEmployeePerformance(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getEmployeePerformance(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/tables/performance")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<TablePerformanceDTO>> getTablePerformance(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getTablePerformance(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getTablePerformance(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
+    /** Los mas vendidos con costo y margen. limit: 10 para el tablero, hasta 500 para exportar. */
     @GetMapping("/products/performance")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<ProductPerformanceDTO>> getTopSellingProducts(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "10") int limit,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getTopSellingProducts(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        int limite = Math.max(1, Math.min(limit, 500));
+        return ResponseEntity.ok(analyticsService.getTopSellingProducts(a.restaurantId(), a.branchId(), startDate, endDate, limite));
     }
 
     @GetMapping("/tables/turnaround")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<TurnaroundTimeDTO>> getTableTurnaround(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getTableTurnaround(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getTableTurnaround(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/peak-hours")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<PeakHourDTO>> getPeakHours(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getPeakHours(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getPeakHours(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/kitchen/efficiency")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'BRANCH_MANAGER')")
     public ResponseEntity<List<KdsEfficiencyDTO>> getKdsEfficiency(
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) UUID branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails user) {
-        UUID effRestId = getEffectiveRestaurantId(restaurantId, user);
-        UUID effBranchId = getEffectiveBranchId(branchId, user);
-        return ResponseEntity.ok(analyticsService.getKdsEfficiency(effRestId, effBranchId, startDate, endDate));
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(analyticsService.getKdsEfficiency(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
-    private UUID getEffectiveRestaurantId(UUID requestedId, CustomUserDetails user) {
+    /** De que restaurante y sucursal sale el reporte. */
+    record Alcance(UUID restaurantId, UUID branchId) {
+    }
+
+    /**
+     * Solo SYSTEM_ADMIN elige cualquier restaurante. Los demas ven siempre el
+     * suyo: antes bastaba mandar otro restaurantId para leer las ventas de un
+     * restaurante ajeno. La sucursal pedida se valida (el gerente solo la
+     * suya) y el restaurante se toma de ella.
+     */
+    Alcance alcance(UUID restaurantId, UUID branchId, CustomUserDetails user) {
         if ("SYSTEM_ADMIN".equalsIgnoreCase(user.roleName())) {
-            return requestedId;
+            return new Alcance(restaurantId, branchId);
         }
-        UUID targetId = (requestedId != null) ? requestedId : user.restaurantId();
-        if (targetId == null) {
-            return null;
+        if (branchId != null) {
+            securityValidationService.validateUserAccessToBranch(branchId);
+            UUID deLaSucursal = branchRepository.findById(branchId)
+                    .map(b -> b.getRestaurant().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Esa sucursal no existe."));
+            return new Alcance(deLaSucursal, branchId);
         }
-        boolean isDemo = restaurantRepository.findById(targetId)
-                .map(r -> Boolean.TRUE.equals(r.getIsDemo()))
-                .orElse(false);
-        if (isDemo) {
-            return restaurantRepository.findAll().stream()
-                    .filter(r -> Boolean.TRUE.equals(r.getIsDemo()))
-                    .map(Restaurant::getId)
-                    .findFirst()
-                    .orElse(targetId);
+        if ("BRANCH_MANAGER".equalsIgnoreCase(user.roleName())) {
+            if (user.branchId() == null) throw new AccessDeniedException("No tienes una sucursal asignada.");
+            return alcance(null, user.branchId(), user);
         }
-        return targetId;
+        UUID propio = restauranteDe(user);
+        if (propio == null) throw new AccessDeniedException("No tienes un restaurante asignado.");
+        return new Alcance(propio, null);
     }
 
-    private UUID getEffectiveBranchId(UUID requestedId, CustomUserDetails user) {
-        if ("SUPER_ADMIN".equalsIgnoreCase(user.roleName()) || "SYSTEM_ADMIN".equalsIgnoreCase(user.roleName())) {
-            return requestedId;
-        }
-        boolean isDemo = user.restaurantId() != null && restaurantRepository.findById(user.restaurantId())
+    /** El restaurante del usuario; los usuarios demo comparten el restaurante demo con datos. */
+    private UUID restauranteDe(CustomUserDetails user) {
+        UUID propio = user.restaurantId();
+        if (propio == null) return null;
+        boolean esDemo = restaurantRepository.findById(propio)
                 .map(r -> Boolean.TRUE.equals(r.getIsDemo()))
                 .orElse(false);
-        if (isDemo) {
-            return requestedId;
-        }
-        return user.branchId();
+        if (!esDemo) return propio;
+        return restaurantRepository.findAll().stream()
+                .filter(r -> Boolean.TRUE.equals(r.getIsDemo()))
+                .map(Restaurant::getId)
+                .findFirst()
+                .orElse(propio);
     }
 }

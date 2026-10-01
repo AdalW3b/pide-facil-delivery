@@ -9,10 +9,7 @@ import { HttpClient } from '@angular/common/http';
 import { NgxEchartsModule } from 'ngx-echarts';
 import * as echarts from 'echarts';
 import { EChartsOption } from 'echarts';
-import { AnalyticsService } from '../../core/services/analytics.service';
-import { DailySaleData } from '../../core/models/analytics.model';
-import { AuthService } from '../../core/services/auth.service';
-import { Restaurant, Branch } from '../admin-core/models/admin.model';
+import { Branch } from '../admin-core/models/admin.model';
 import { environment } from '../../../environments/environment';
 import {
   LucideTrendingUp,
@@ -24,13 +21,49 @@ import {
   LucideCalendar,
   LucideClock,
   LucideFlame,
-  LucideChefHat
+  LucideChefHat,
+  LucideDownload,
+  LucideTruck,
+  LucideReceipt,
 } from '@lucide/angular';
 
 export type FilterRange = 'today' | '7d' | '30d' | 'all' | 'custom';
 
+export interface Resumen {
+  totalSalesToday: number;
+  salesGrowthPercentage: number | null;
+  tablesServedToday: number;
+  tablesGrowthPercentage: number | null;
+  averageTicket: number;
+  ticketGrowthPercentage: number | null;
+  totalOrdersToday: number;
+  ordersGrowthPercentage: number | null;
+  envioCobrado: number;
+  propinas: number;
+  canceladas: number;
+  costoVendido: number;
+  utilidadBruta: number;
+  margenPorcentaje: number | null;
+  costoCompleto: boolean;
+  platillosSinCosto: number;
+}
+
+export interface VentaDelDia {
+  date: string;
+  revenue: number;
+  ordersCount: number;
+}
+
+export interface Canal {
+  tipo: 'SALON' | 'PARA_LLEVAR' | 'DOMICILIO' | string;
+  origen: string | null;
+  ordenes: number;
+  ventas: number;
+  envioCobrado: number;
+  propinas: number;
+}
+
 export interface EmployeePerformance {
-  employeeId: string;
   employeeName: string;
   totalOrders: number;
   totalRevenue: number;
@@ -50,6 +83,12 @@ export interface ProductPerformance {
   quantitySold: number;
   totalRevenue: number;
   branchName?: string;
+  categoria: string | null;
+  costoUnitario: number | null;
+  costoTotal: number | null;
+  utilidad: number | null;
+  margenPorcentaje: number | null;
+  costoCompleto: boolean;
 }
 
 export interface TurnaroundTime {
@@ -61,6 +100,7 @@ export interface TurnaroundTime {
 
 export interface PeakHour {
   hourOfDay: number;
+  diaSemana: number;
   totalOrders: number;
   totalRevenue: number;
 }
@@ -69,519 +109,352 @@ export interface KdsEfficiency {
   productName: string;
   avgMinutes: number;
   branchName: string;
+  piezas: number;
 }
+
+const RESUMEN_VACIO: Resumen = {
+  totalSalesToday: 0, salesGrowthPercentage: null, tablesServedToday: 0, tablesGrowthPercentage: null,
+  averageTicket: 0, ticketGrowthPercentage: null, totalOrdersToday: 0, ordersGrowthPercentage: null,
+  envioCobrado: 0, propinas: 0, canceladas: 0, costoVendido: 0, utilidadBruta: 0, margenPorcentaje: null,
+  costoCompleto: false, platillosSinCosto: 0,
+};
+
+const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+const TARJETA = 'p-5 bg-slate-900/90 border border-slate-700/50 rounded-2xl shadow-xl';
+const PANEL = 'p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl';
+const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl';
 
 @Component({
   selector: 'app-analytics-dashboard',
   standalone: true,
-  imports: [TituloPaginaComponent, PesosPipe, 
-    CommonModule,
-    FormsModule,
-    NgxEchartsModule,
-    LucideTrendingUp,
-    LucideUsers,
-    LucideDollarSign,
-    LucideShoppingBag,
-    LucideRefreshCw,
-    LucideBarChart3,
-    LucideCalendar,
-    LucideClock,
-    LucideFlame,
-    LucideChefHat
+  imports: [
+    TituloPaginaComponent, PesosPipe, CommonModule, FormsModule, NgxEchartsModule,
+    LucideTrendingUp, LucideUsers, LucideDollarSign, LucideShoppingBag, LucideRefreshCw, LucideBarChart3,
+    LucideCalendar, LucideClock, LucideFlame, LucideChefHat, LucideDownload, LucideTruck, LucideReceipt,
   ],
   template: `
-    <div class="space-y-8 select-none">
-      <!-- Header Section with Context Controls (Restaurante y Sucursal) -->
+    <div class="space-y-8">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-        <div>
-          <div class="flex items-center gap-3">
-            <div>
-              <app-titulo-pagina titulo="Reportes" descripcion="Ingresos, mesas atendidas y lo más vendido." />
-            </div>
-          </div>
-        </div>
+        <app-titulo-pagina titulo="Reportes" descripcion="Ventas, utilidad, canales, personal y cocina." />
 
-        <!-- Alcance: la sucursal de la barra superior o todas las del restaurante -->
         @if (sucursalesDelRestaurante() > 1) {
           <div class="inline-flex p-1 bg-slate-900/60 rounded-xl border border-slate-800" role="group" aria-label="Alcance del reporte">
             <button type="button" (click)="alcance.set('sucursal')" [attr.aria-pressed]="alcance() === 'sucursal'"
               class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-              [class]="alcance() === 'sucursal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
-              Esta sucursal
-            </button>
+              [class]="alcance() === 'sucursal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">Esta sucursal</button>
             <button type="button" (click)="alcance.set('todas')" [attr.aria-pressed]="alcance() === 'todas'"
               class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-              [class]="alcance() === 'todas' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
-              Todas las sucursales
-            </button>
+              [class]="alcance() === 'todas' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">Todas las sucursales</button>
           </div>
         }
       </div>
 
-      <!-- Time Filter Control Bar -->
+      <!-- Rango, actualizar y exportar -->
       <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div class="flex items-center gap-2 text-xs font-semibold text-slate-400">
-          <span>Rango de análisis:</span>
-        </div>
-
-        <!-- Filters Container -->
         <div class="flex flex-wrap items-center gap-3">
-          <!-- Filter Buttons Group -->
-          <div class="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl flex-wrap">
-            <button
-              (click)="setFilterRange('today')"
-              [class.bg-indigo-600]="selectedRange() === 'today'"
-              [class.text-white]="selectedRange() === 'today'"
-              [class.text-slate-400]="selectedRange() !== 'today'"
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-            >
-              Hoy
-            </button>
-            <button
-              (click)="setFilterRange('7d')"
-              [class.bg-indigo-600]="selectedRange() === '7d'"
-              [class.text-white]="selectedRange() === '7d'"
-              [class.text-slate-400]="selectedRange() !== '7d'"
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-            >
-              7 Días
-            </button>
-            <button
-              (click)="setFilterRange('30d')"
-              [class.bg-indigo-600]="selectedRange() === '30d'"
-              [class.text-white]="selectedRange() === '30d'"
-              [class.text-slate-400]="selectedRange() !== '30d'"
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-            >
-              30 Días
-            </button>
-            <button
-              (click)="setFilterRange('all')"
-              [class.bg-indigo-600]="selectedRange() === 'all'"
-              [class.text-white]="selectedRange() === 'all'"
-              [class.text-slate-400]="selectedRange() !== 'all'"
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-            >
-              Histórico
-            </button>
-            <button
-              (click)="setFilterRange('custom')"
-              [class.bg-indigo-600]="selectedRange() === 'custom'"
-              [class.text-white]="selectedRange() === 'custom'"
-              [class.text-slate-400]="selectedRange() !== 'custom'"
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer"
-            >
-              <svg lucideCalendar class="w-3.5 h-3.5"></svg>
-              <span>Rango</span>
-            </button>
+          <div class="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl flex-wrap" role="group" aria-label="Rango de fechas">
+            @for (r of rangos; track r.id) {
+              <button type="button" (click)="setFilterRange(r.id)" [attr.aria-pressed]="selectedRange() === r.id"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                [class]="selectedRange() === r.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
+                @if (r.id === 'custom') { <svg lucideCalendar class="w-3.5 h-3.5"></svg> }
+                {{ r.texto }}
+              </button>
+            }
           </div>
 
-          <!-- Custom Date Range Picker Container -->
           @if (selectedRange() === 'custom') {
-            <div class="flex items-center gap-2 p-1.5 bg-slate-900 border border-indigo-500/30 rounded-xl animate-fadeIn">
-              <div class="flex items-center gap-1.5">
-                <span class="text-[11px] uppercase font-bold text-slate-400 pl-1">Desde:</span>
-                <input aria-label="Desde"
-                  type="date"
-                  [value]="customStartDate()"
-                  (change)="onStartDateChange($event)"
-                  class="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
-              <div class="flex items-center gap-1.5">
-                <span class="text-[11px] uppercase font-bold text-slate-400">Hasta:</span>
-                <input aria-label="Hasta"
-                  type="date"
-                  [value]="customEndDate()"
-                  (change)="onEndDateChange($event)"
-                  class="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
-              <button
-                (click)="applyCustomRange()"
-                class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer"
-              >
-                Aplicar
-              </button>
+            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-slate-900 border border-indigo-500/30 rounded-xl">
+              <label class="flex items-center gap-1.5 text-[11px] uppercase font-bold text-slate-400 pl-1">Desde
+                <input type="date" [value]="customStartDate()" (change)="customStartDate.set($any($event.target).value)"
+                  class="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white [color-scheme:dark] outline-none focus:border-indigo-500" />
+              </label>
+              <label class="flex items-center gap-1.5 text-[11px] uppercase font-bold text-slate-400">Hasta
+                <input type="date" [value]="customEndDate()" (change)="customEndDate.set($any($event.target).value)"
+                  class="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white [color-scheme:dark] outline-none focus:border-indigo-500" />
+              </label>
+              <button type="button" (click)="applyCustomRange()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold cursor-pointer">Aplicar</button>
             </div>
           }
+        </div>
 
-          <!-- Refresh Button -->
-          <button
-            (click)="loadAnalyticsData()"
-            [disabled]="isLoading()"
-            class="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50"
-            title="Actualizar métricas"
-          >
-            <svg
-              lucideRefreshCw
-              [class.animate-spin]="isLoading()"
-              class="w-4 h-4"
-            ></svg>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-slate-400 flex items-center gap-1"><svg lucideDownload class="w-3.5 h-3.5"></svg> Exportar:</span>
+          <button type="button" (click)="exportarDias()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Ventas por día</button>
+          <button type="button" (click)="exportarPlatillos()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Platillos</button>
+          <button type="button" (click)="exportarMeseros()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Meseros</button>
+          <button type="button" (click)="loadAnalyticsData()" [disabled]="isLoading()" title="Actualizar"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50">
+            <svg lucideRefreshCw [class.animate-spin]="isLoading()" class="w-4 h-4"></svg>
             <span class="hidden sm:inline">Actualizar</span>
           </button>
         </div>
       </div>
 
-      <!-- Top KPI Cards Grid (4 Widget Style Cards) -->
+      <!-- Indicadores principales -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <!-- Card 1: Ventas del Periodo -->
-        <div class="p-5 bg-slate-900/90 border border-slate-700/50 hover:border-slate-600/60 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 group hover:-translate-y-0.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ventas del Periodo</span>
-            <div class="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
-              <svg lucideDollarSign class="w-4 h-4"></svg>
+        @for (k of indicadores(); track k.titulo) {
+          <div class="${TARJETA}">
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">{{ k.titulo }}</span>
+            <p class="mt-3 text-2xl lg:text-3xl font-extrabold text-white tracking-tight tabular-nums">
+              {{ k.valor }} @if (k.unidad) { <span class="text-sm font-normal text-slate-400">{{ k.unidad }}</span> }
+            </p>
+            <div class="mt-3 flex items-center gap-2">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border tabular-nums" [class]="tendencia(k.cambio).clase">{{ tendencia(k.cambio).texto }}</span>
+              <span class="text-xs text-slate-400">{{ k.cambio === null ? comparacion() : 'vs. periodo anterior' }}</span>
             </div>
           </div>
-          <div class="mt-3 flex items-baseline justify-between">
-            <span class="text-2xl lg:text-3xl font-extrabold text-white tracking-tight tabular-nums">
-              {{ summaryMetrics().totalSalesToday | pesos }}
-            </span>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border tabular-nums" [class]="tendencia(summaryMetrics().salesGrowthPercentage).clase">{{ tendencia(summaryMetrics().salesGrowthPercentage).texto }}</span>
-            <span class="text-xs text-slate-400">vs. periodo anterior</span>
-          </div>
-        </div>
+        }
+      </div>
 
-        <!-- Card 2: Mesas Atendidas -->
-        <div class="p-5 bg-slate-900/90 border border-slate-700/50 hover:border-slate-600/60 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 group hover:-translate-y-0.5">
+      <!-- Utilidad, envío, propinas y cancelados -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="col-span-2 ${TARJETA}">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Mesas Atendidas</span>
-            <div class="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 group-hover:scale-110 transition-transform">
-              <svg lucideUsers class="w-4 h-4"></svg>
-            </div>
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Utilidad bruta</span>
+            @if (resumen().margenPorcentaje !== null) {
+              <span class="px-2 py-0.5 rounded-full text-xs font-bold border tabular-nums" [class]="claseMargen(resumen().margenPorcentaje)">margen {{ resumen().margenPorcentaje }}%</span>
+            }
           </div>
-          <div class="mt-3 flex items-baseline justify-between">
-            <span class="text-2xl lg:text-3xl font-extrabold text-white tracking-tight tabular-nums">
-              {{ summaryMetrics().tablesServedToday }} <span class="text-sm font-normal text-slate-400">mesas</span>
-            </span>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border tabular-nums" [class]="tendencia(summaryMetrics().tablesGrowthPercentage).clase">{{ tendencia(summaryMetrics().tablesGrowthPercentage).texto }}</span>
-            <span class="text-xs text-slate-400">vs. periodo anterior</span>
-          </div>
+          <p class="mt-2 text-2xl font-extrabold text-white tabular-nums">{{ resumen().utilidadBruta | pesos }}</p>
+          <p class="mt-1 text-xs text-slate-400">Ventas {{ resumen().totalSalesToday | pesos }} − costo de lo vendido {{ resumen().costoVendido | pesos }}</p>
+          @if (resumen().platillosSinCosto > 0 || (!resumen().costoCompleto && resumen().totalOrdersToday > 0)) {
+            <p class="mt-2 text-[11px] text-amber-300/90">
+              @if (resumen().platillosSinCosto > 0) {
+                {{ resumen().platillosSinCosto }} {{ resumen().platillosSinCosto === 1 ? 'platillo vendido no tiene' : 'platillos vendidos no tienen' }} costo:
+              } @else { Faltan costos de algunos ingredientes: }
+              la utilidad real es menor. Captura los costos en Inventario.
+            </p>
+          }
         </div>
-
-        <!-- Card 3: Ticket Promedio -->
-        <div class="p-5 bg-slate-900/90 border border-slate-700/50 hover:border-slate-600/60 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 group hover:-translate-y-0.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ticket Promedio</span>
-            <div class="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 group-hover:scale-110 transition-transform">
-              <svg lucideTrendingUp class="w-4 h-4"></svg>
-            </div>
-          </div>
-          <div class="mt-3 flex items-baseline justify-between">
-            <span class="text-2xl lg:text-3xl font-extrabold text-white tracking-tight tabular-nums">
-              {{ summaryMetrics().averageTicket | pesos }}
-            </span>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border tabular-nums" [class]="tendencia(summaryMetrics().ticketGrowthPercentage).clase">{{ tendencia(summaryMetrics().ticketGrowthPercentage).texto }}</span>
-            <span class="text-xs text-slate-400">vs. periodo anterior</span>
-          </div>
+        <div class="${TARJETA}">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><svg lucideTruck class="w-3.5 h-3.5"></svg> Envío cobrado</span>
+          <p class="mt-2 text-xl font-extrabold text-white tabular-nums">{{ resumen().envioCobrado | pesos }}</p>
+          <p class="mt-1 text-[11px] text-slate-400">Aparte de las ventas</p>
         </div>
-
-        <!-- Card 4: Pedidos Totales -->
-        <div class="p-5 bg-slate-900/90 border border-slate-700/50 hover:border-slate-600/60 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 group hover:-translate-y-0.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Pedidos Totales</span>
-            <div class="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 group-hover:scale-110 transition-transform">
-              <svg lucideShoppingBag class="w-4 h-4"></svg>
-            </div>
-          </div>
-          <div class="mt-3 flex items-baseline justify-between">
-            <span class="text-2xl lg:text-3xl font-extrabold text-white tracking-tight tabular-nums">
-              {{ summaryMetrics().totalOrdersToday }} <span class="text-sm font-normal text-slate-400">órdenes</span>
-            </span>
-          </div>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border tabular-nums" [class]="tendencia(summaryMetrics().ordersGrowthPercentage).clase">{{ tendencia(summaryMetrics().ordersGrowthPercentage).texto }}</span>
-            <span class="text-xs text-slate-400">vs. periodo anterior</span>
-          </div>
+        <div class="${TARJETA}">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><svg lucideReceipt class="w-3.5 h-3.5"></svg> Propinas · cancelados</span>
+          <p class="mt-2 text-xl font-extrabold text-white tabular-nums">{{ resumen().propinas | pesos }}</p>
+          <p class="mt-1 text-[11px]" [class]="resumen().canceladas ? 'text-rose-300' : 'text-slate-400'">
+            {{ resumen().canceladas }} {{ resumen().canceladas === 1 ? 'pedido cancelado' : 'pedidos cancelados' }}
+          </p>
         </div>
       </div>
 
-      <!-- Main ECharts Area Chart Container -->
-      <div class="p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-6 relative overflow-hidden">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <!-- Tendencia + canales -->
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="xl:col-span-2 ${PANEL} space-y-4">
           <div>
-            <h2 class="text-lg font-bold text-white tracking-tight">Tendencia de Ingresos</h2>
+            <h2 class="text-lg font-bold text-white tracking-tight">Ventas por día</h2>
             <p class="text-xs text-slate-400 mt-1">
-              Filtro activo: <span class="text-indigo-400 font-semibold">{{ getFilterLabel() }}</span>
-              <span class="text-slate-500 ml-1">
-                · {{ nombreSucursalSeleccionada() }}
-              </span>
+              <span class="text-indigo-400 font-semibold">{{ getFilterLabel() }}</span> · {{ nombreSucursalSeleccionada() }}
             </p>
           </div>
-          <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-indigo-500"></span>
-              <span class="text-xs font-medium text-slate-300">Ingresos Totales (\$)</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ECharts Render Canvas Container -->
-        <div class="w-full relative min-h-[380px]">
-          @if (isLoading()) {
-            <div class="absolute inset-0 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm z-10 rounded-xl">
-              <div class="flex flex-col items-center gap-3 text-indigo-400">
-                <svg lucideRefreshCw class="w-8 h-8 animate-spin"></svg>
-                <span class="text-xs font-semibold text-slate-300">Cargando datos de analítica...</span>
-              </div>
-            </div>
-          }
-
-          @if (!isLoading() && sinVentas()) {
-            <div class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-center px-6">
-              <svg lucideBarChart3 class="w-8 h-8 text-slate-600"></svg>
-              <p class="text-sm font-semibold text-slate-200">Sin ventas en este periodo ({{ getFilterLabel().toLowerCase() }})</p>
-              <p class="text-xs text-slate-400 max-w-sm">Cuando se cierren cuentas en este periodo, aquí verás cómo van los ingresos día por día.</p>
-              @if (selectedRange() !== 'all') {
-                <button (click)="setFilterRange('all')" class="mt-1 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white cursor-pointer">Ver todo el histórico</button>
-              }
-            </div>
-          }
-          <div
-            echarts
-            [options]="chartOption()"
-            class="w-full h-[380px]"
-            [class.opacity-20]="!isLoading() && sinVentas()"
-          ></div>
-        </div>
-      </div>
-
-      <!-- 2-Column Grid for 4 Leaderboards (2x2 Layout) -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <!-- Employee Performance Leaderboard -->
-        <div class="p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-6 flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4 shrink-0">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Rendimiento del Personal</h2>
-              <p class="text-xs text-slate-400 mt-1">Mejores meseros por volumen de ventas y órdenes despachadas</p>
-            </div>
-            <div class="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
-              <svg lucideUsers class="w-5 h-5"></svg>
-            </div>
-          </div>
-
-          @if (employeePerformance().length === 0) {
-            <div class="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl flex-1 flex items-center justify-center">
-              No hay datos de rendimiento registrados para este periodo.
-            </div>
-          } @else {
-            <div class="flex flex-col gap-4 max-h-[360px] overflow-y-auto pr-2">
-              @for (emp of employeePerformance(); track emp.employeeId; let idx = $index) {
-                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-indigo-500/30 transition-colors">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div 
-                      class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border"
-                      [class.bg-amber-500/20]="idx === 0" [class.text-amber-400]="idx === 0" [class.border-amber-500/30]="idx === 0"
-                      [class.bg-slate-800]="idx !== 0" [class.text-slate-300]="idx !== 0" [class.border-slate-700]="idx !== 0"
-                    >
-                      {{ idx === 0 ? '🏆 1' : emp.employeeName.charAt(0).toUpperCase() }}
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-sm font-bold text-white truncate">{{ emp.employeeName }}</p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">{{ emp.totalOrders }} órdenes <span class="opacity-50">•</span> <span class="text-indigo-400 font-semibold">{{ emp.branchName }}</span></p>
-                    </div>
-                  </div>
-                  <div class="text-right shrink-0 pl-2">
-                    <p class="text-sm font-black text-emerald-400">{{ emp.totalRevenue | pesos }}</p>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- Table Performance Leaderboard -->
-        <div class="p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-6 flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4 shrink-0">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Rendimiento por Mesa</h2>
-              <p class="text-xs text-slate-400 mt-1">Mesas que generan mayor volumen de ventas</p>
-            </div>
-            <div class="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-              <svg lucideBarChart3 class="w-5 h-5"></svg> 
-            </div>
-          </div>
-
-          @if (tablePerformance().length === 0) {
-            <div class="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl flex-1 flex items-center justify-center">
-              No hay datos de mesas para este periodo.
-            </div>
-          } @else {
-            <div class="flex flex-col gap-4 max-h-[360px] overflow-y-auto pr-2">
-              @for (table of tablePerformance(); track table.tableNumber; let idx = $index) {
-                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-emerald-500/30 transition-colors">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div 
-                      class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border"
-                      [class.bg-emerald-500/20]="idx === 0" [class.text-emerald-400]="idx === 0" [class.border-emerald-500/30]="idx === 0"
-                      [class.bg-slate-800]="idx !== 0" [class.text-slate-300]="idx !== 0" [class.border-slate-700]="idx !== 0"
-                    >
-                      #{{ table.tableNumber }}
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-sm font-bold text-white truncate">Mesa {{ table.tableNumber }}</p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">{{ table.totalOrders }} tickets <span class="opacity-50">•</span> <span class="text-emerald-400 font-semibold">{{ table.branchName }}</span></p>
-                    </div>
-                  </div>
-                  <div class="text-right shrink-0 pl-2">
-                    <p class="text-sm font-black text-emerald-400">{{ table.totalRevenue | pesos }}</p>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- Top Selling Products Leaderboard -->
-        <div class="p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-6 flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4 shrink-0">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Productos Estrella</h2>
-              <p class="text-xs text-slate-400 mt-1">Platillos más vendidos y rentables</p>
-            </div>
-            <div class="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 shrink-0">
-              <svg lucideShoppingBag class="w-5 h-5"></svg> 
-            </div>
-          </div>
-
-          @if (productPerformance().length === 0) {
-            <div class="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl flex-1 flex items-center justify-center">
-              No hay datos de productos para este periodo.
-            </div>
-          } @else {
-            <div class="flex flex-col gap-4 max-h-[360px] overflow-y-auto pr-2">
-              @for (prod of productPerformance(); track prod.productId; let idx = $index) {
-                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-sky-500/30 transition-colors">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div 
-                      class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border"
-                      [class.bg-sky-500/20]="idx === 0" [class.text-sky-400]="idx === 0" [class.border-sky-500/30]="idx === 0"
-                      [class.bg-slate-800]="idx !== 0" [class.text-slate-300]="idx !== 0" [class.border-slate-700]="idx !== 0"
-                    >
-                      #{{ idx + 1 }}
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-sm font-bold text-white truncate" [title]="prod.productName">{{ prod.productName }}</p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">{{ prod.quantitySold }} unidades <span class="opacity-50">•</span> <span class="text-sky-400 font-semibold">{{ prod.branchName }}</span></p>
-                    </div>
-                  </div>
-                  <div class="text-right shrink-0 pl-2">
-                    <p class="text-sm font-black text-sky-400">{{ prod.totalRevenue | pesos }}</p>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- Table Turnaround Time Leaderboard -->
-        <div class="p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-6 flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4 shrink-0">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Tiempo de Ocupación</h2>
-              <p class="text-xs text-slate-400 mt-1">Promedio en minutos desde la apertura al cobro</p>
-            </div>
-            <div class="p-2 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400 shrink-0">
-              <svg lucideClock class="w-5 h-5"></svg> 
-            </div>
-          </div>
-
-          @if (tableTurnaround().length === 0) {
-            <div class="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl flex-1 flex items-center justify-center">
-              No hay datos de tiempo para este periodo.
-            </div>
-          } @else {
-            <div class="flex flex-col gap-4 max-h-[360px] overflow-y-auto pr-2">
-              @for (table of tableTurnaround(); track table.tableNumber; let idx = $index) {
-                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-fuchsia-500/30 transition-colors">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div 
-                      class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border"
-                      [class.bg-fuchsia-500/20]="idx === 0" [class.text-fuchsia-400]="idx === 0" [class.border-fuchsia-500/30]="idx === 0"
-                      [class.bg-slate-800]="idx !== 0" [class.text-slate-300]="idx !== 0" [class.border-slate-700]="idx !== 0"
-                    >
-                      #{{ table.tableNumber }}
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-sm font-bold text-white truncate">Mesa {{ table.tableNumber }}</p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">{{ table.totalOrders }} tickets <span class="opacity-50">•</span> <span class="text-fuchsia-400 font-semibold">{{ table.branchName }}</span></p>
-                    </div>
-                  </div>
-                  <div class="text-right shrink-0 pl-2">
-                    <p class="text-sm font-black text-fuchsia-400">{{ table.averageMinutes }} min</p>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- Fila Inferior: Mapa de Calor (2/3) + KDS Efficiency (1/3) -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <!-- Peak Hours Heatmap Chart -->
-        <div class="lg:col-span-2 p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Mapa de Calor: Horas Pico</h2>
-              <p class="text-xs text-slate-400 mt-1">Intensidad de atención y creación de órdenes por hora del día</p>
-            </div>
-            <div class="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
-              <svg lucideFlame class="w-5 h-5"></svg>
-            </div>
-          </div>
-          <div class="w-full relative min-h-[220px]">
+          <div class="w-full relative min-h-[340px]">
             @if (isLoading()) {
-              <div class="absolute inset-0 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm z-10 rounded-xl">
-                <svg lucideLoader2 class="w-6 h-6 animate-spin text-rose-400"></svg>
+              <div class="absolute inset-0 flex items-center justify-center bg-slate-900/60 z-10 rounded-xl">
+                <svg lucideRefreshCw class="w-8 h-8 animate-spin text-indigo-400"></svg>
               </div>
             }
-            <div echarts [options]="peakHoursChartOption()" class="w-full h-[220px]"></div>
+            @if (!isLoading() && sinVentas()) {
+              <div class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-center px-6">
+                <svg lucideBarChart3 class="w-8 h-8 text-slate-600"></svg>
+                <p class="text-sm font-semibold text-slate-200">Sin ventas en este periodo</p>
+                @if (selectedRange() !== 'all') {
+                  <button type="button" (click)="setFilterRange('all')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white cursor-pointer">Ver todo el histórico</button>
+                }
+              </div>
+            }
+            <div echarts [options]="chartOption()" class="w-full h-[340px]" [class.opacity-20]="!isLoading() && sinVentas()"></div>
           </div>
         </div>
 
-        <!-- KDS Efficiency Leaderboard -->
-        <div class="lg:col-span-1 p-6 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4 shrink-0">
-            <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Tiempos de Cocina</h2>
-              <p class="text-xs text-slate-400 mt-1">Platillos que más tardan en prepararse</p>
-            </div>
-            <div class="p-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shrink-0">
-              <svg lucideChefHat class="w-5 h-5"></svg> 
-            </div>
-          </div>
-
-          @if (kdsEfficiency().length === 0) {
-            <div class="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-800 rounded-xl flex-1 flex items-center justify-center mt-6">
-              Esperando datos de preparación...
-            </div>
+        <div class="${PANEL} flex flex-col">
+          <h2 class="text-lg font-bold text-white tracking-tight">Por canal</h2>
+          <p class="text-xs text-slate-400 mt-1 mb-5">De dónde vinieron las ventas</p>
+          @if (canales().length === 0) {
+            <div class="${VACIO} flex-1 flex items-center justify-center">Sin ventas en este periodo.</div>
           } @else {
-            <div class="flex flex-col gap-4 flex-1 content-start mt-6 max-h-[260px] overflow-y-auto pr-2">
-              @for (item of kdsEfficiency(); track item.productName; let idx = $index) {
-                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl hover:border-orange-500/30 transition-colors">
+            <ul class="space-y-4">
+              @for (c of canales(); track c.tipo + (c.origen ?? '')) {
+                <li>
+                  <div class="flex items-baseline justify-between gap-2 text-sm">
+                    <span class="font-semibold text-white">{{ nombreCanal(c) }}</span>
+                    <span class="font-bold text-emerald-400 tabular-nums">{{ c.ventas | pesos }}</span>
+                  </div>
+                  <div class="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div class="h-full rounded-full bg-indigo-500" [style.width.%]="porcentajeCanal(c)"></div>
+                  </div>
+                  <p class="mt-1 text-[11px] text-slate-400 tabular-nums">
+                    {{ porcentajeCanal(c) }}% · {{ c.ordenes }} {{ c.ordenes === 1 ? 'orden' : 'órdenes' }} · ticket {{ (c.ordenes ? c.ventas / c.ordenes : 0) | pesos }}
+                    @if (c.envioCobrado > 0) { · envío {{ c.envioCobrado | pesos }} }
+                  </p>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+
+      <!-- Platillos con costo y margen -->
+      <div class="${PANEL} space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-white tracking-tight">Platillos</h2>
+            <p class="text-xs text-slate-400 mt-1">Lo más vendido, cuánto deja cada uno y su margen con los costos de hoy</p>
+          </div>
+          @if (productPerformance().length > 10) {
+            <button type="button" (click)="verTodosPlatillos.set(!verTodosPlatillos())" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 cursor-pointer self-start">
+              {{ verTodosPlatillos() ? 'Ver solo los 10 primeros' : 'Ver los ' + productPerformance().length }}
+            </button>
+          }
+        </div>
+        @if (productPerformance().length === 0) {
+          <div class="${VACIO}">No hay platillos vendidos en este periodo.</div>
+        } @else {
+          <div class="overflow-x-auto -mx-2">
+            <table class="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr class="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                  <th class="text-left font-semibold px-2 py-2">Platillo</th>
+                  <th class="text-right font-semibold px-2 py-2">Vendidos</th>
+                  <th class="text-right font-semibold px-2 py-2">Ventas</th>
+                  <th class="text-right font-semibold px-2 py-2">Costo c/u</th>
+                  <th class="text-right font-semibold px-2 py-2">Utilidad</th>
+                  <th class="text-right font-semibold px-2 py-2">Margen</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of platillosVisibles(); track p.productId; let i = $index) {
+                  <tr class="border-b border-slate-800/60 hover:bg-slate-800/30">
+                    <td class="px-2 py-2.5">
+                      <span class="text-slate-500 tabular-nums mr-2">{{ i + 1 }}</span>
+                      <span class="font-semibold text-white">{{ p.productName }}</span>
+                      @if (p.categoria) { <span class="text-[11px] text-slate-500 ml-1">· {{ p.categoria }}</span> }
+                    </td>
+                    <td class="px-2 py-2.5 text-right tabular-nums text-slate-200">{{ p.quantitySold }}</td>
+                    <td class="px-2 py-2.5 text-right tabular-nums font-semibold text-sky-300">{{ p.totalRevenue | pesos }}</td>
+                    <td class="px-2 py-2.5 text-right tabular-nums text-slate-300">{{ p.costoUnitario === null ? '—' : (p.costoUnitario | pesos) }}</td>
+                    <td class="px-2 py-2.5 text-right tabular-nums text-slate-200">{{ p.utilidad === null ? '—' : (p.utilidad | pesos) }}</td>
+                    <td class="px-2 py-2.5 text-right">
+                      @if (p.margenPorcentaje === null) {
+                        <span class="text-[11px] text-slate-500">Sin costo</span>
+                      } @else {
+                        <span class="px-2 py-0.5 rounded-full text-xs font-bold border tabular-nums" [class]="claseMargen(p.margenPorcentaje)"
+                          [title]="p.costoCompleto ? '' : 'A algún ingrediente le falta costo'">{{ p.margenPorcentaje }}%{{ p.costoCompleto ? '' : '*' }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (hayCostoParcial()) {
+            <p class="text-[11px] text-slate-500">* A algún ingrediente de ese platillo le falta costo; el margen real es menor.</p>
+          }
+        }
+      </div>
+
+      <!-- Personal y mesas -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="${PANEL} space-y-5 flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">Meseros</h2>
+              <p class="text-xs text-slate-400 mt-1">Según quién atendía la mesa al cobrar; si eran dos, la venta se reparte</p>
+            </div>
+            <svg lucideUsers class="w-5 h-5 text-amber-400 shrink-0"></svg>
+          </div>
+          @if (employeePerformance().length === 0) {
+            <div class="${VACIO} flex-1 flex items-center justify-center">No hay cuentas de mesa cobradas en este periodo.</div>
+          } @else {
+            <div class="flex flex-col gap-3 max-h-[360px] overflow-y-auto pr-1">
+              @for (emp of employeePerformance(); track emp.employeeName; let idx = $index) {
+                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl">
                   <div class="flex items-center gap-3 min-w-0">
-                    <div 
-                      class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border"
-                      [class.bg-orange-500/20]="idx === 0" [class.text-orange-400]="idx === 0" [class.border-orange-500/30]="idx === 0"
-                      [class.bg-slate-800]="idx !== 0" [class.text-slate-300]="idx !== 0" [class.border-slate-700]="idx !== 0"
-                    >
-                      #{{ idx + 1 }}
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border"
+                      [class]="idx === 0 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-300 border-slate-700'">
+                      {{ idx + 1 }}
                     </div>
                     <div class="min-w-0">
-                      <p class="text-sm font-bold text-white truncate" [title]="item.productName">{{ item.productName }}</p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">Promedio <span class="opacity-50">•</span> <span class="text-orange-400 font-semibold">{{ item.branchName }}</span></p>
+                      <p class="text-sm font-bold truncate" [class]="emp.employeeName === 'Sin asignar' ? 'text-slate-400 italic' : 'text-white'">{{ emp.employeeName }}</p>
+                      <p class="text-[11px] text-slate-400 mt-0.5 tabular-nums">{{ emp.totalOrders }} cuentas · ticket {{ (emp.totalOrders ? emp.totalRevenue / emp.totalOrders : 0) | pesos }}
+                        @if (alcance() === 'todas' && emp.branchName) { · {{ emp.branchName }} }</p>
                     </div>
                   </div>
-                  <div class="text-right shrink-0 pl-2">
-                    <p class="text-sm font-black text-orange-400">{{ item.avgMinutes }} min</p>
+                  <p class="text-sm font-black text-emerald-400 tabular-nums shrink-0 pl-2">{{ emp.totalRevenue | pesos }}</p>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="${PANEL} space-y-5 flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">Mesas</h2>
+              <p class="text-xs text-slate-400 mt-1">Lo que vendió cada mesa y cuánto tiempo estuvo ocupada en promedio</p>
+            </div>
+            <svg lucideClock class="w-5 h-5 text-fuchsia-400 shrink-0"></svg>
+          </div>
+          @if (tablePerformance().length === 0) {
+            <div class="${VACIO} flex-1 flex items-center justify-center">No hay cuentas de mesa en este periodo.</div>
+          } @else {
+            <div class="flex flex-col gap-3 max-h-[360px] overflow-y-auto pr-1">
+              @for (t of tablePerformance(); track $index) {
+                <div class="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-800 rounded-xl">
+                  <div class="min-w-0">
+                    <p class="text-sm font-bold text-white">Mesa {{ t.tableNumber }}
+                      @if (alcance() === 'todas') { <span class="text-[11px] font-normal text-slate-400">· {{ t.branchName }}</span> }</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5 tabular-nums">{{ t.totalOrders }} cuentas
+                      @if (minutosDeMesa(t); as m) { · <span class="text-fuchsia-300">{{ m }} min ocupada</span> }</p>
                   </div>
+                  <p class="text-sm font-black text-emerald-400 tabular-nums shrink-0 pl-2">{{ t.totalRevenue | pesos }}</p>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Horas pico + cocina -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 ${PANEL} space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">Horas pico</h2>
+              <p class="text-xs text-slate-400 mt-1">Órdenes abiertas por día de la semana y hora. Úsalo para armar los turnos.</p>
+            </div>
+            <svg lucideFlame class="w-5 h-5 text-rose-400 shrink-0"></svg>
+          </div>
+          @if (horaMasFuerte(); as h) {
+            <p class="text-xs text-slate-300">Lo más fuerte: <span class="font-bold text-rose-300">{{ h }}</span></p>
+          }
+          <div class="overflow-x-auto">
+            <div echarts [options]="peakHoursChartOption()" class="h-[260px] min-w-[560px]"></div>
+          </div>
+        </div>
+
+        <div class="${PANEL} flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">Tiempos de cocina</h2>
+              <p class="text-xs text-slate-400 mt-1">Minutos de que se pide a que está listo</p>
+            </div>
+            <svg lucideChefHat class="w-5 h-5 text-orange-400 shrink-0"></svg>
+          </div>
+          @if (kdsEfficiency().length === 0) {
+            <div class="${VACIO} flex-1 flex items-center justify-center mt-5">Sin platillos marcados como listos en este periodo.</div>
+          } @else {
+            <div class="flex flex-col gap-3 mt-5 max-h-[300px] overflow-y-auto pr-1">
+              @for (item of kdsEfficiency(); track item.productName) {
+                <div class="flex items-center justify-between p-3 bg-slate-950/50 border border-slate-800 rounded-xl">
+                  <div class="min-w-0">
+                    <p class="text-sm font-bold text-white truncate" [title]="item.productName">{{ item.productName }}</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">{{ item.piezas }} {{ item.piezas === 1 ? 'pieza' : 'piezas' }}</p>
+                  </div>
+                  <p class="text-sm font-black tabular-nums shrink-0 pl-2" [class]="item.avgMinutes >= 25 ? 'text-rose-400' : item.avgMinutes >= 15 ? 'text-orange-400' : 'text-emerald-400'">{{ item.avgMinutes }} min</p>
                 </div>
               }
             </div>
@@ -590,45 +463,40 @@ export interface KdsEfficiency {
       </div>
     </div>
   `,
-  styles: [`
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.98); }
-      to { opacity: 1; transform: scale(1); }
-    }
-    .animate-fadeIn {
-      animation: fadeIn 0.2s ease-out forwards;
-    }
-    :host {
-      display: block;
-    }
-  `],
+  styles: [`:host { display: block; }`],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AnalyticsDashboardComponent implements OnInit {
   private readonly avisos = inject(AvisosService);
-  private readonly analyticsService = inject(AnalyticsService);
-  private readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
+  private readonly sucursalActiva = inject(SucursalActivaService);
 
-  // Writable Signals for State & Filters
-  readonly salesData = signal<DailySaleData[]>([]);
+  readonly rangos: { id: FilterRange; texto: string }[] = [
+    { id: 'today', texto: 'Hoy' },
+    { id: '7d', texto: '7 días' },
+    { id: '30d', texto: '30 días' },
+    { id: 'all', texto: 'Histórico' },
+    { id: 'custom', texto: 'Rango' },
+  ];
+
+  readonly resumen = signal<Resumen>(RESUMEN_VACIO);
+  readonly salesData = signal<VentaDelDia[]>([]);
+  readonly canales = signal<Canal[]>([]);
   readonly employeePerformance = signal<EmployeePerformance[]>([]);
   readonly tablePerformance = signal<TablePerformance[]>([]);
   readonly productPerformance = signal<ProductPerformance[]>([]);
   readonly tableTurnaround = signal<TurnaroundTime[]>([]);
   readonly peakHoursData = signal<PeakHour[]>([]);
   readonly kdsEfficiency = signal<KdsEfficiency[]>([]);
-  readonly isLoading = signal<boolean>(true);
+  readonly isLoading = signal(true);
   readonly selectedRange = signal<FilterRange>('7d');
-  
-  // Custom Date Range inputs signals
-  readonly customStartDate = signal<string>('');
-  readonly customEndDate = signal<string>('');
+  readonly verTodosPlatillos = signal(false);
 
-  // Context Dropdowns State Signals
+  readonly customStartDate = signal('');
+  readonly customEndDate = signal('');
+
   // Restaurante y sucursal: los de la barra superior. Aquí solo se elige si el
   // reporte es de esa sucursal o de todas las del restaurante.
-  private readonly sucursalActiva = inject(SucursalActivaService);
   readonly restaurants = this.sucursalActiva.restaurantes;
   readonly selectedRestaurantId = this.sucursalActiva.restaurantId;
   readonly alcance = signal<'sucursal' | 'todas'>('sucursal');
@@ -644,252 +512,150 @@ export class AnalyticsDashboardComponent implements OnInit {
     untracked(() => this.loadAnalyticsData());
   });
 
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
-
   readonly availableBranches = computed<Branch[]>(() => {
     const rId = this.selectedRestaurantId();
-    if (!rId) return [];
-    const matched = this.restaurants().find((r) => r.id === rId);
-    return matched?.branches || [];
+    return this.restaurants().find((r) => r.id === rId)?.branches || [];
   });
-
-  readonly summaryMetrics = signal({
-    totalSalesToday: 0,
-    salesGrowthPercentage: 0,
-    tablesServedToday: 0,
-    tablesGrowthPercentage: 0,
-    averageTicket: 0,
-    ticketGrowthPercentage: 0,
-    totalOrdersToday: 0,
-    ordersGrowthPercentage: 0,
-  });
-
-  ngOnInit(): void {
-    // Set default custom dates (last 30 days)
-    const today = new Date();
-    const past = new Date();
-    past.setDate(today.getDate() - 30);
-    this.customEndDate.set(today.toISOString().split('T')[0]);
-    this.customStartDate.set(past.toISOString().split('T')[0]);
-
-  }
 
   /**
-   * Triggers dynamic data reload when context (Restaurante / Sucursal) changes
+   * Cada recarga lleva un número; las respuestas de una recarga vieja se tiran.
+   * Sin esto, cambiar rápido de "Hoy" a "30 días" podía dejar en pantalla los
+   * números del rango anterior si esa respuesta llegaba al último.
    */
-  onContextChange(): void {
-    this.loadAnalyticsData();
+  private recarga = 0;
+  private pendientes = 0;
+  private huboError = false;
+
+  ngOnInit(): void {
+    const hoy = new Date();
+    const antes = new Date();
+    antes.setDate(hoy.getDate() - 29);
+    this.customEndDate.set(this.fecha(hoy));
+    this.customStartDate.set(this.fecha(antes));
   }
 
   setFilterRange(range: FilterRange): void {
     this.selectedRange.set(range);
-    if (range !== 'custom') {
-      this.loadAnalyticsData();
-    }
-  }
-
-  onStartDateChange(event: Event): void {
-    const val = (event.target as HTMLInputElement).value;
-    this.customStartDate.set(val);
-  }
-
-  onEndDateChange(event: Event): void {
-    const val = (event.target as HTMLInputElement).value;
-    this.customEndDate.set(val);
+    if (range !== 'custom') this.loadAnalyticsData();
   }
 
   applyCustomRange(): void {
-    if (!this.customStartDate() || !this.customEndDate()) {
-      this.avisos.error('Por favor selecciona ambas fechas (Inicio y Fin).');
+    const desde = this.customStartDate();
+    const hasta = this.customEndDate();
+    if (!desde || !hasta) {
+      this.avisos.error('Elige las dos fechas.');
+      return;
+    }
+    if (desde > hasta) {
+      this.avisos.error('La fecha "desde" es posterior a "hasta".');
       return;
     }
     this.loadAnalyticsData();
   }
 
   getFilterLabel(): string {
-    switch (this.selectedRange()) {
-      case 'today': return 'Hoy';
-      case '7d': return 'Últimos 7 Días';
-      case '30d': return 'Últimos 30 Días';
-      case 'all': return 'Histórico Completo';
-      case 'custom': return 'Rango Personalizado';
-      default: return '';
+    if (this.selectedRange() === 'custom') {
+      return `Del ${this.fechaCorta(this.customStartDate())} al ${this.fechaCorta(this.customEndDate())}`;
     }
+    return { today: 'Hoy', '7d': 'Últimos 7 días', '30d': 'Últimos 30 días', all: 'Histórico completo', custom: '' }[this.selectedRange()];
   }
 
-  private toLocalDateString(d: Date): string {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  /** Texto junto al indicador cuando no hay porcentaje. */
+  comparacion(): string {
+    return this.selectedRange() === 'all' ? 'histórico completo' : 'sin ventas en el periodo anterior';
+  }
+
+  private fecha(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  private fechaCorta(iso: string): string {
+    const [, m, d] = iso.split('-');
+    return d && m ? `${d}/${m}` : iso;
   }
 
   private getDateParams(): { startDate?: string; endDate?: string } {
-    const today = new Date();
-    const todayStr = this.toLocalDateString(today);
-
+    const hoy = new Date();
+    const diasAtras = (n: number) => {
+      const d = new Date(hoy);
+      d.setDate(d.getDate() - n);
+      return this.fecha(d);
+    };
     switch (this.selectedRange()) {
-      case 'today':
-        return { startDate: todayStr, endDate: todayStr };
-      case '7d': {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 6);
-        return { startDate: this.toLocalDateString(d), endDate: todayStr };
-      }
-      case '30d': {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 29);
-        return { startDate: this.toLocalDateString(d), endDate: todayStr };
-      }
-      case 'all':
-        return {};
-      case 'custom':
-        return {
-          startDate: this.customStartDate() || undefined,
-          endDate: this.customEndDate() || undefined
-        };
-      default:
-        return {};
+      case 'today': return { startDate: this.fecha(hoy), endDate: this.fecha(hoy) };
+      case '7d': return { startDate: diasAtras(6), endDate: this.fecha(hoy) };
+      case '30d': return { startDate: diasAtras(29), endDate: this.fecha(hoy) };
+      case 'custom': return { startDate: this.customStartDate() || undefined, endDate: this.customEndDate() || undefined };
+      default: return {};
     }
   }
 
-  loadKPIs(branchId?: string, restaurantId?: string): void {
+  private consulta(extra: Record<string, string | number> = {}): string {
     const { startDate, endDate } = this.getDateParams();
-    const bId = branchId !== undefined ? branchId : (this.selectedBranchId() || '');
-    const rId = restaurantId !== undefined ? restaurantId : (this.selectedRestaurantId() || '');
+    const q = new URLSearchParams();
+    const rId = this.selectedRestaurantId();
+    const bId = this.selectedBranchId();
+    if (rId) q.set('restaurantId', rId);
+    if (bId) q.set('branchId', bId);
+    if (startDate) q.set('startDate', startDate);
+    if (endDate) q.set('endDate', endDate);
+    for (const [k, v] of Object.entries(extra)) q.set(k, String(v));
+    const s = q.toString();
+    return s ? `?${s}` : '';
+  }
 
-    let query = [];
-    if (rId) query.push(`restaurantId=${rId}`);
-    if (bId) query.push(`branchId=${bId}`);
-    if (startDate) query.push(`startDate=${startDate}`);
-    if (endDate) query.push(`endDate=${endDate}`);
-    const queryString = query.length > 0 ? `?${query.join('&')}` : '';
-
-    this.http.get<any>(`${environment.apiUrl}/analytics/summary${queryString}`).subscribe({
-      next: (summary) => {
-        if (summary) {
-          this.summaryMetrics.set({
-            totalSalesToday: summary.totalSalesToday ?? 0,
-            salesGrowthPercentage: summary.salesGrowthPercentage ?? 0,
-            tablesServedToday: summary.tablesServedToday ?? 0,
-            tablesGrowthPercentage: summary.tablesGrowthPercentage ?? 0,
-            averageTicket: summary.averageTicket ?? 0,
-            ticketGrowthPercentage: summary.ticketGrowthPercentage ?? 0,
-            totalOrdersToday: summary.totalOrdersToday ?? 0,
-            ordersGrowthPercentage: summary.ordersGrowthPercentage ?? 0,
-          });
+  private pedir<T>(ruta: string, guardar: (datos: T) => void, extra: Record<string, string | number> = {}): void {
+    const esta = this.recarga;
+    this.pendientes++;
+    this.http.get<T>(`${environment.apiUrl}/analytics/${ruta}${this.consulta(extra)}`).subscribe({
+      next: (datos) => {
+        if (esta === this.recarga) guardar(datos);
+      },
+      error: () => {
+        if (esta === this.recarga && !this.huboError) {
+          this.huboError = true;
+          this.avisos.error('No se pudo cargar parte del reporte. Intenta con "Actualizar".');
         }
       },
-      error: (err) => console.error('Error al cargar KPIs:', err)
+    }).add(() => {
+      if (esta !== this.recarga) return;
+      if (--this.pendientes === 0) this.isLoading.set(false);
     });
   }
 
-  loadChartData(branchId?: string, restaurantId?: string): void {
-    this.isLoading.set(true);
-    const { startDate, endDate } = this.getDateParams();
-    const bId = branchId !== undefined ? branchId : (this.selectedBranchId() || '');
-    const rId = restaurantId !== undefined ? restaurantId : (this.selectedRestaurantId() || '');
-
-    let query = [];
-    if (rId) query.push(`restaurantId=${rId}`);
-    if (bId) query.push(`branchId=${bId}`);
-    if (startDate) query.push(`startDate=${startDate}`);
-    if (endDate) query.push(`endDate=${endDate}`);
-    const queryString = query.length > 0 ? `?${query.join('&')}` : '';
-
-    this.http.get<DailySaleData[]>(`${environment.apiUrl}/analytics/sales/daily${queryString}`).subscribe({
-      next: (data) => {
-        let filteredData = (data && Array.isArray(data)) ? data : [];
-        if (startDate && endDate && filteredData.length > 0) {
-          const match = filteredData.filter((d) => d.date >= startDate && d.date <= endDate);
-          if (match.length > 0) {
-            filteredData = match;
-          }
-        }
-        this.salesData.set(filteredData);
-        this.isLoading.set(false);
-      },
-      error: (err) => {
-        console.error('Error al cargar la gráfica:', err);
-        this.salesData.set([]);
-        this.isLoading.set(false);
-      }
-    });
-
-    this.http.get<EmployeePerformance[]>(`${environment.apiUrl}/analytics/employees/performance${queryString}`).subscribe({
-      next: (data) => this.employeePerformance.set(data || []),
-      error: (err) => console.error('Error al cargar rendimiento:', err)
-    });
-
-    this.http.get<TablePerformance[]>(`${environment.apiUrl}/analytics/tables/performance${queryString}`).subscribe({
-      next: (data) => this.tablePerformance.set(data || []),
-      error: (err) => console.error('Error al cargar rendimiento de mesas:', err)
-    });
-
-    this.http.get<ProductPerformance[]>(`${environment.apiUrl}/analytics/products/performance${queryString}`).subscribe({
-      next: (data) => this.productPerformance.set(data || []),
-      error: (err) => console.error('Error al cargar rendimiento de productos:', err)
-    });
-
-    this.http.get<TurnaroundTime[]>(`${environment.apiUrl}/analytics/tables/turnaround${queryString}`).subscribe({
-      next: (data) => this.tableTurnaround.set(data || []),
-      error: (err) => console.error('Error al cargar tiempos de ocupación:', err)
-    });
-  }
-
-  /**
-   * Main reload method calling real KPI and chart data endpoints
-   */
   loadAnalyticsData(): void {
-    const restaurantId = this.selectedRestaurantId() || undefined;
-    const branchId = this.selectedBranchId() || undefined;
-
-    this.loadKPIs(branchId, restaurantId);
-    this.loadChartData(branchId, restaurantId);
-    this.loadPeakHours(branchId, restaurantId);
-    this.loadKdsEfficiency(branchId, restaurantId);
+    this.recarga++;
+    this.pendientes = 0;
+    this.huboError = false;
+    this.isLoading.set(true);
+    this.pedir<Resumen>('summary', (r) => this.resumen.set({ ...RESUMEN_VACIO, ...r }));
+    this.pedir<VentaDelDia[]>('sales/daily', (d) => this.salesData.set(d ?? []));
+    this.pedir<Canal[]>('sales/channels', (d) => this.canales.set(d ?? []));
+    this.pedir<ProductPerformance[]>('products/performance', (d) => this.productPerformance.set(d ?? []), { limit: 500 });
+    this.pedir<EmployeePerformance[]>('employees/performance', (d) => this.employeePerformance.set(d ?? []));
+    this.pedir<TablePerformance[]>('tables/performance', (d) => this.tablePerformance.set(d ?? []));
+    this.pedir<TurnaroundTime[]>('tables/turnaround', (d) => this.tableTurnaround.set(d ?? []));
+    this.pedir<PeakHour[]>('peak-hours', (d) => this.peakHoursData.set(d ?? []));
+    this.pedir<KdsEfficiency[]>('kitchen/efficiency', (d) => this.kdsEfficiency.set(d ?? []));
   }
 
-  loadPeakHours(branchId?: string, restaurantId?: string): void {
-    const { startDate, endDate } = this.getDateParams();
-    const bId = branchId !== undefined ? branchId : (this.selectedBranchId() || '');
-    const rId = restaurantId !== undefined ? restaurantId : (this.selectedRestaurantId() || '');
-    let query = [];
-    if (rId) query.push(`restaurantId=${rId}`);
-    if (bId) query.push(`branchId=${bId}`);
-    if (startDate) query.push(`startDate=${startDate}`);
-    if (endDate) query.push(`endDate=${endDate}`);
-    const queryString = query.length > 0 ? `?${query.join('&')}` : '';
+  // ------------------------------------------------------------ indicadores
 
-    this.http.get<PeakHour[]>(`${environment.apiUrl}/analytics/peak-hours${queryString}`).subscribe({
-      next: (data) => this.peakHoursData.set(data || []),
-      error: (err) => console.error('Error al cargar horas pico:', err)
-    });
-  }
+  readonly indicadores = computed(() => {
+    const r = this.resumen();
+    return [
+      { titulo: 'Ventas', valor: formatearPesos(r.totalSalesToday), unidad: '', cambio: r.salesGrowthPercentage },
+      { titulo: 'Órdenes', valor: String(r.totalOrdersToday), unidad: 'cobradas', cambio: r.ordersGrowthPercentage },
+      { titulo: 'Ticket promedio', valor: formatearPesos(r.averageTicket), unidad: '', cambio: r.ticketGrowthPercentage },
+      { titulo: 'Mesas atendidas', valor: String(r.tablesServedToday), unidad: 'cuentas', cambio: r.tablesGrowthPercentage },
+    ];
+  });
 
-  loadKdsEfficiency(branchId?: string, restaurantId?: string): void {
-    const { startDate, endDate } = this.getDateParams();
-    const bId = branchId !== undefined ? branchId : (this.selectedBranchId() || '');
-    const rId = restaurantId !== undefined ? restaurantId : (this.selectedRestaurantId() || '');
-    let query = [];
-    if (rId) query.push(`restaurantId=${rId}`);
-    if (bId) query.push(`branchId=${bId}`);
-    if (startDate) query.push(`startDate=${startDate}`);
-    if (endDate) query.push(`endDate=${endDate}`);
-    const queryString = query.length > 0 ? `?${query.join('&')}` : '';
-
-    this.http.get<KdsEfficiency[]>(`${environment.apiUrl}/analytics/kitchen/efficiency${queryString}`).subscribe({
-      next: (data) => this.kdsEfficiency.set(data || []),
-      error: (err) => console.error('Error al cargar eficiencia KDS:', err)
-    });
-  }
-
-  formatCurrency(value: number): string {
-    return formatearPesos(value).replace('$', '');
-  }
-
-  /** «↑ 12%» en verde, «↓ 8%» en rojo y «Sin cambio» en gris. */
+  /** «↑ 12%» en verde, «↓ 8%» en rojo, «Sin cambio» en gris y «—» si no hay con qué comparar. */
   tendencia(pct: number | null | undefined): { texto: string; clase: string } {
+    if (pct === null || pct === undefined) {
+      return { texto: '—', clase: 'bg-slate-800/60 text-slate-400 border-slate-700' };
+    }
     const v = Number(pct);
     if (!Number.isFinite(v) || Math.abs(v) < 0.05) {
       return { texto: 'Sin cambio', clase: 'bg-slate-800/60 text-slate-400 border-slate-700' };
@@ -900,7 +666,13 @@ export class AnalyticsDashboardComponent implements OnInit {
       : { texto: `↓ ${cifra}%`, clase: 'bg-rose-500/10 text-rose-400 border-rose-500/20' };
   }
 
-  /** Ninguna venta en el rango elegido. */
+  claseMargen(m: number | null): string {
+    if (m === null) return 'bg-slate-800 text-slate-400 border-slate-700';
+    if (m >= 60) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    if (m >= 40) return 'bg-amber-500/10 text-amber-300 border-amber-500/20';
+    return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+  }
+
   readonly sinVentas = computed(() => !this.salesData().some((d) => Number(d.revenue) > 0));
 
   readonly nombreSucursalSeleccionada = computed(() => {
@@ -909,191 +681,200 @@ export class AnalyticsDashboardComponent implements OnInit {
     return this.availableBranches().find((b) => String(b.id) === String(id))?.name ?? 'Sucursal seleccionada';
   });
 
-  /**
-   * Computed signal configuring ECharts Option object with premium dark theme,
-   * subtle grid, and indigo-to-transparent gradient area fill.
-   */
+  // ------------------------------------------------------------ canales, platillos y mesas
+
+  private readonly totalCanales = computed(() => this.canales().reduce((s, c) => s + Number(c.ventas), 0));
+
+  porcentajeCanal(c: Canal): number {
+    const total = this.totalCanales();
+    return total > 0 ? Math.round((Number(c.ventas) / total) * 100) : 0;
+  }
+
+  nombreCanal(c: Canal): string {
+    const por: Record<string, string> = { WEB: 'menú en línea', TELEFONO: 'teléfono', WHATSAPP: 'WhatsApp' };
+    if (c.tipo === 'SALON') return 'Salón';
+    const base = c.tipo === 'PARA_LLEVAR' ? 'Para llevar' : 'Domicilio';
+    return c.origen ? `${base} · ${por[c.origen] ?? c.origen.toLowerCase()}` : base;
+  }
+
+  readonly platillosVisibles = computed(() =>
+    this.verTodosPlatillos() ? this.productPerformance() : this.productPerformance().slice(0, 10),
+  );
+
+  readonly hayCostoParcial = computed(() =>
+    this.platillosVisibles().some((p) => p.margenPorcentaje !== null && !p.costoCompleto),
+  );
+
+  private readonly minutosPorMesa = computed(() => {
+    const m = new Map<string, number>();
+    for (const t of this.tableTurnaround()) m.set(`${t.branchName}|${t.tableNumber}`, t.averageMinutes);
+    return m;
+  });
+
+  minutosDeMesa(t: TablePerformance): number | null {
+    return this.minutosPorMesa().get(`${t.branchName}|${t.tableNumber}`) ?? null;
+  }
+
+  readonly horaMasFuerte = computed(() => {
+    const datos = this.peakHoursData();
+    if (!datos.length) return null;
+    const max = datos.reduce((a, b) => (b.totalOrders > a.totalOrders ? b : a));
+    return `${DIAS[max.diaSemana - 1]} de ${max.hourOfDay}:00 a ${max.hourOfDay + 1}:00 (${max.totalOrders} órdenes)`;
+  });
+
+  // ------------------------------------------------------------ gráficas
+
   readonly chartOption = computed<EChartsOption>(() => {
-    const rawData = this.salesData();
-    const xAxisDates = rawData.map((d) => {
-      if (!d.date) return '';
-      const parts = d.date.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}`;
-      }
-      return d.date;
-    });
-    const yAxisRevenues = rawData.map((d) => d.revenue);
-
-    // Verificamos si el rango actual es 'today'
-    const isToday = this.selectedRange() === 'today';
-
+    const datos = this.salesData();
+    const barras = datos.length <= 1;
     return {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'axis',
         backgroundColor: '#0f172a',
         borderColor: '#334155',
-        borderWidth: 1,
-        textStyle: {
-          color: '#f8fafc',
-          fontSize: 12,
-          fontFamily: 'sans-serif'
-        },
-        padding: [10, 14],
+        textStyle: { color: '#f8fafc', fontSize: 12 },
         formatter: (params: any) => {
-          if (!Array.isArray(params) || params.length === 0) return '';
-          const p = params[0];
-          const val = formatearPesos(Number(p.value));
-          return `
-            <div class="font-sans">
-              <div class="text-[11px] text-slate-400 font-semibold mb-1">Fecha: ${p.name}</div>
-              <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-                <span class="text-xs text-slate-200">Ventas:</span>
-                <span class="text-xs font-bold text-emerald-400">${val}</span>
-              </div>
-            </div>
-          `;
-        }
+          const p = Array.isArray(params) ? params[0] : null;
+          if (!p) return '';
+          const d = datos[p.dataIndex];
+          return `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">${p.name}</div>
+            <div>Ventas: <b style="color:#34d399">${formatearPesos(Number(p.value))}</b></div>
+            <div>Órdenes: <b>${d?.ordersCount ?? 0}</b></div>`;
+        },
       },
-      grid: {
-        top: 25,
-        left: 20,
-        right: 25,
-        bottom: 10,
-        containLabel: true
-      },
+      grid: { top: 25, left: 20, right: 25, bottom: 10, containLabel: true },
       xAxis: {
         type: 'category',
-        boundaryGap: isToday, // True para barras, false para línea
-        data: xAxisDates,
-        axisLine: {
-          lineStyle: {
-            color: '#334155'
-          }
-        },
-        axisLabel: {
-          color: '#94a3b8',
-          fontSize: 11,
-          fontFamily: 'sans-serif',
-          margin: 12
-        },
-        axisTick: {
-          show: false
-        }
+        boundaryGap: barras,
+        data: datos.map((d) => this.fechaCorta(d.date)),
+        axisLine: { lineStyle: { color: '#334155' } },
+        axisLabel: { color: '#94a3b8', fontSize: 11, margin: 12 },
+        axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
-        axisLine: {
-          show: false
-        },
         axisLabel: {
           color: '#94a3b8',
           fontSize: 11,
-          fontFamily: 'sans-serif',
-          formatter: (val: number) => `\$${val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val}`
+          formatter: (v: number) => `$${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v}`,
         },
-        splitLine: {
-          show: true,
-          lineStyle: {
-            color: 'rgba(255, 255, 255, 0.05)',
-            type: 'dashed'
-          }
-        }
+        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)', type: 'dashed' } },
       },
       series: [
         {
-          name: 'Ingresos',
-          type: isToday ? 'bar' : 'line',
+          name: 'Ventas',
+          type: barras ? 'bar' : 'line',
           smooth: true,
-          symbol: 'circle',
+          showSymbol: datos.length <= 31,
           symbolSize: 6,
-          showSymbol: false,
-          barMaxWidth: 80, // Evita que la barra sea excesivamente ancha
-          itemStyle: isToday ? {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: '#818cf8' },
-              { offset: 1, color: '#4f46e5' }
-            ]),
-            borderRadius: [6, 6, 0, 0] // Bordes superiores redondeados para las barras
-          } : {
-            color: '#818cf8',
-            borderColor: '#6366f1',
-            borderWidth: 2
-          },
-          lineStyle: isToday ? undefined : {
-            color: '#6366f1',
-            width: 3
-          },
-          areaStyle: isToday ? undefined : {
+          barMaxWidth: 80,
+          itemStyle: { color: '#818cf8', borderRadius: barras ? [6, 6, 0, 0] : 0 },
+          lineStyle: { color: '#6366f1', width: 3 },
+          areaStyle: barras ? undefined : {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: 'rgba(99, 102, 241, 0.45)' },
-              { offset: 1, color: 'rgba(99, 102, 241, 0.0)' }
-            ])
+              { offset: 1, color: 'rgba(99, 102, 241, 0)' },
+            ]),
           },
-          data: yAxisRevenues
-        }
-      ]
+          data: datos.map((d) => Number(d.revenue)),
+        },
+      ],
     };
   });
 
+  /** Mapa de calor real: días de la semana contra horas. */
   readonly peakHoursChartOption = computed<EChartsOption>(() => {
-    const data = this.peakHoursData();
-    const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
-    const ordersByHour = new Array(24).fill(0);
-    
-    data.forEach(d => {
-      if (d.hourOfDay >= 0 && d.hourOfDay < 24) ordersByHour[d.hourOfDay] = d.totalOrders;
-    });
-
-    const maxOrders = Math.max(...ordersByHour, 1);
-
+    const datos = this.peakHoursData();
+    const horas = datos.map((d) => d.hourOfDay);
+    const desde = horas.length ? Math.min(...horas) : 8;
+    const hasta = horas.length ? Math.max(...horas) : 23;
+    const columnas = Array.from({ length: hasta - desde + 1 }, (_, i) => `${desde + i}:00`);
+    const celdas = datos.map((d) => [d.hourOfDay - desde, d.diaSemana - 1, d.totalOrders]);
+    const max = Math.max(1, ...datos.map((d) => d.totalOrders));
     return {
       backgroundColor: 'transparent',
       tooltip: {
-        trigger: 'axis',
         backgroundColor: '#0f172a',
         borderColor: '#334155',
-        textStyle: { color: '#f8fafc' },
-        formatter: (params: any) => {
-          if (!Array.isArray(params) || params.length === 0) return '';
-          const p = params[0];
-          return `
-            <div class="font-sans">
-              <div class="text-[11px] text-slate-400 font-semibold mb-1">Hora: ${p.name}</div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-200">Órdenes creadas:</span>
-                <span class="text-xs font-bold text-rose-400">${p.value}</span>
-              </div>
-            </div>
-          `;
-        }
+        textStyle: { color: '#f8fafc', fontSize: 12 },
+        formatter: (p: any) => {
+          const [h, dia, n] = p.value as number[];
+          const d = datos.find((x) => x.diaSemana === dia + 1 && x.hourOfDay === h + desde);
+          return `${DIAS[dia]} ${h + desde}:00<br/>Órdenes: <b>${n}</b><br/>Ventas: <b>${formatearPesos(Number(d?.totalRevenue ?? 0))}</b>`;
+        },
       },
-      grid: { top: 10, left: 15, right: 15, bottom: 20, containLabel: true },
-      xAxis: {
-        type: 'category',
-        data: hours,
-        axisLabel: { color: '#94a3b8', fontSize: 10 },
-        axisLine: { lineStyle: { color: '#334155' } }
-      },
-      yAxis: { show: false },
+      grid: { top: 5, left: 10, right: 10, bottom: 45, containLabel: true },
+      xAxis: { type: 'category', data: columnas, splitArea: { show: false }, axisLabel: { color: '#94a3b8', fontSize: 10 }, axisLine: { lineStyle: { color: '#334155' } } },
+      yAxis: { type: 'category', data: DIAS, inverse: true, axisLabel: { color: '#94a3b8', fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
       visualMap: {
+        min: 0,
+        max,
+        calculable: false,
         orient: 'horizontal',
         left: 'center',
-        min: 0,
-        max: maxOrders,
-        show: false,
-        inRange: {
-          color: ['#1e293b', '#6366f1', '#d946ef', '#f43f5e']
-        }
+        bottom: 0,
+        itemHeight: 120,
+        textStyle: { color: '#94a3b8', fontSize: 10 },
+        text: ['Más', 'Menos'],
+        inRange: { color: ['#1e293b', '#4f46e5', '#d946ef', '#f43f5e'] },
       },
       series: [{
-        type: 'bar',
-        data: ordersByHour,
-        barMaxWidth: 30,
-        itemStyle: { borderRadius: [4, 4, 0, 0] }
-      }]
+        type: 'heatmap',
+        data: celdas,
+        label: { show: true, color: '#e2e8f0', fontSize: 10, formatter: (p: any) => (p.value[2] ? String(p.value[2]) : '') },
+        itemStyle: { borderColor: '#0f172a', borderWidth: 2, borderRadius: 3 },
+      }],
     };
   });
+
+  // ------------------------------------------------------------ exportar
+
+  /** Descarga un CSV que Excel abre con acentos (BOM UTF-8). */
+  private descargarCsv(nombre: string, filas: (string | number | null)[][]): void {
+    const celda = (v: string | number | null) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const texto = '﻿' + filas.map((f) => f.map(celda).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([texto], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${nombre}-${this.sufijoArchivo()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private sufijoArchivo(): string {
+    const { startDate, endDate } = this.getDateParams();
+    return startDate ? `${startDate}_a_${endDate}` : `historico-al-${this.fecha(new Date())}`;
+  }
+
+  exportarDias(): void {
+    this.descargarCsv('ventas-por-dia', [
+      ['Fecha', 'Órdenes', 'Ventas'],
+      ...this.salesData().map((d) => [d.date, d.ordersCount, Number(d.revenue).toFixed(2)]),
+    ]);
+  }
+
+  exportarPlatillos(): void {
+    const n = (v: number | null) => (v === null ? null : Number(v).toFixed(2));
+    this.descargarCsv('platillos', [
+      ['Platillo', 'Categoría', 'Vendidos', 'Ventas', 'Costo unitario', 'Costo total', 'Utilidad', 'Margen %', 'Costo completo'],
+      ...this.productPerformance().map((p) => [
+        p.productName, p.categoria, p.quantitySold, n(p.totalRevenue), n(p.costoUnitario), n(p.costoTotal),
+        n(p.utilidad), p.margenPorcentaje, p.costoUnitario === null ? 'sin costo' : p.costoCompleto ? 'sí' : 'no',
+      ]),
+    ]);
+  }
+
+  exportarMeseros(): void {
+    this.descargarCsv('meseros', [
+      ['Mesero', 'Cuentas', 'Ventas', 'Ticket promedio', 'Sucursal'],
+      ...this.employeePerformance().map((e) => [
+        e.employeeName, e.totalOrders, Number(e.totalRevenue).toFixed(2),
+        e.totalOrders ? (Number(e.totalRevenue) / e.totalOrders).toFixed(2) : '0.00', e.branchName ?? '',
+      ]),
+    ]);
+  }
 }
