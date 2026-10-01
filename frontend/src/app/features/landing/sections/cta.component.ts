@@ -2,55 +2,31 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideArrowRight, LucideCircleCheck } from '@lucide/angular';
 
+/** Cierre: la misma promesa del inicio y el botón de prueba. */
 @Component({
   selector: 'app-landing-cta',
   standalone: true,
   imports: [RouterLink, LucideArrowRight, LucideCircleCheck],
   template: `
-    <section class="relative overflow-hidden bg-indigo-600">
-      <div
-        class="absolute inset-0 bg-grid opacity-25 [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,#000,transparent)]"
-        aria-hidden="true"
-      ></div>
-
-      <div class="relative mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
-        <div class="grid items-center gap-10 lg:grid-cols-12 lg:gap-10">
-          <div class="lg:col-span-7">
-            <h2 class="font-display text-[1.9rem] sm:text-4xl font-extrabold leading-[1.08] tracking-[-0.025em] text-white">
-              Esta noche puedes estar recibiendo pedidos por WhatsApp
-            </h2>
-            <p class="mt-5 max-w-lg text-base leading-relaxed text-indigo-100">
-              Crea tu cuenta, carga tu carta y deja que el sistema haga el resto. Sin instalaciones y sin comisión por
-              venta.
-            </p>
-          </div>
-
-          <div class="lg:col-span-5 lg:pl-6">
-            <div class="flex flex-col gap-3 sm:flex-row lg:flex-col">
-              <a
-                routerLink="/register"
-                class="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-7 py-3.5 font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
-              >
-                Crear mi restaurante
-                <svg lucideArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-1"></svg>
-              </a>
-              <a
-                routerLink="/login"
-                class="inline-flex items-center justify-center rounded-lg border border-white/35 px-7 py-3.5 font-semibold text-white transition-colors hover:bg-white/10"
-              >
-                Ya tengo cuenta
-              </a>
-            </div>
-
-            <ul class="mt-7 flex flex-col gap-2.5 border-t border-white/20 pt-6 text-sm text-indigo-100">
-              @for (item of assurances; track item) {
-                <li class="inline-flex items-center gap-2.5">
-                  <svg lucideCircleCheck class="h-4 w-4 shrink-0 text-emerald-300"></svg>
-                  {{ item }}
-                </li>
-              }
-            </ul>
-          </div>
+    <section class="py-20 lg:py-24" aria-labelledby="cta-titulo">
+      <div class="mx-auto max-w-6xl px-5 sm:px-8">
+        <div class="relative overflow-hidden rounded-3xl bg-(--chile) px-6 py-14 text-center text-white sm:px-12 lg:py-16">
+          <h2 id="cta-titulo" class="lp-display mx-auto max-w-2xl text-3xl font-extrabold leading-tight sm:text-5xl text-balance">
+            Este fin de semana, que los pedidos lleguen solos.
+          </h2>
+          <p class="mx-auto mt-5 max-w-xl text-base text-white/85 sm:text-lg">
+            Crea tu cuenta, sube tu menú y comparte tu liga hoy mismo.
+          </p>
+          <a routerLink="/register"
+            class="group mt-9 inline-flex items-center justify-center gap-2 rounded-full bg-(--papel) px-8 py-3.5 text-base font-semibold text-(--tinta) transition-colors hover:bg-white">
+            Prueba 14 días gratis
+            <svg lucideArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-0.5"></svg>
+          </a>
+          <ul class="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-white/85">
+            @for (a of assurances; track a) {
+              <li class="flex items-center gap-1.5"><svg lucideCircleCheck class="h-4 w-4"></svg>{{ a }}</li>
+            }
+          </ul>
         </div>
       </div>
     </section>
@@ -58,5 +34,5 @@ import { LucideArrowRight, LucideCircleCheck } from '@lucide/angular';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LandingCtaComponent {
-  readonly assurances = ['14 días de prueba', 'Sin tarjeta', 'Cancelas cuando quieras'];
+  readonly assurances = ['Sin tarjeta', 'Sin comisión por pedido', 'Cancelas cuando quieras'];
 }

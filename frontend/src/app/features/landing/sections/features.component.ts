@@ -1,106 +1,44 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import {
-  LucideMessageCircle,
-  LucideQrCode,
-  LucideChefHat,
-  LucideBoxes,
-  LucideChartColumn,
-  LucideShieldCheck,
-  LucideCreditCard,
-  LucideBuilding2,
-} from '@lucide/angular';
 
-interface Feature {
-  readonly icon: string;
-  readonly title: string;
-  readonly description: string;
-  readonly accent: string;
+interface Grupo {
+  readonly numero: string;
+  readonly titulo: string;
+  readonly resumen: string;
+  readonly color: string;
+  readonly funciones: readonly { readonly nombre: string; readonly detalle: string }[];
 }
 
+/** Lo que hace el sistema, agrupado como lo vive un restaurante: vender, operar y controlar. */
 @Component({
   selector: 'app-landing-features',
   standalone: true,
-  imports: [
-    LucideMessageCircle,
-    LucideQrCode,
-    LucideChefHat,
-    LucideBoxes,
-    LucideChartColumn,
-    LucideShieldCheck,
-    LucideCreditCard,
-    LucideBuilding2,
-  ],
   template: `
-    <section id="funciones" class="scroll-mt-24 py-24 sm:py-32">
+    <section id="funciones" class="bg-(--papel-2) py-20 lg:py-28" aria-labelledby="funciones-titulo">
       <div class="mx-auto max-w-6xl px-5 sm:px-8">
-        <!-- Encabezado de sección -->
-        <div class="grid gap-6 lg:grid-cols-12 lg:gap-10">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-400 lg:col-span-3 lg:pt-2">
-            Todo en uno
-          </p>
-          <div class="lg:col-span-9">
-            <h2 class="font-display max-w-2xl text-[1.8rem] sm:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white">
-              Deja de saltar entre la libreta, el grupo de WhatsApp y la hoja de cálculo
-            </h2>
-            <p class="mt-5 max-w-xl text-base leading-relaxed text-slate-400">
-              Cada módulo de Pide Facil habla con los demás: un pedido que entra por WhatsApp descuenta inventario,
-              aparece en cocina y suma a tus reportes sin que nadie lo copie a mano.
-            </p>
-          </div>
+        <div class="max-w-2xl">
+          <p class="lp-mono text-xs uppercase tracking-[0.18em] text-(--chile)">Funciones</p>
+          <h2 id="funciones-titulo" class="lp-display mt-3 text-3xl font-extrabold leading-tight text-(--tinta) sm:text-4xl text-balance">
+            Todo lo que pasa entre el pedido y el corte de caja
+          </h2>
         </div>
 
-        <!-- Retícula de funciones: dos pilares y seis apoyos, sin cajas -->
-        <div class="mt-16 grid gap-x-10 gap-y-11 sm:grid-cols-2 lg:grid-cols-6">
-          @for (feature of features; track feature.title; let i = $index) {
-            <article
-              class="group border-t pt-7"
-              [class]="i < 2 ? 'lg:col-span-3 border-slate-700' : 'lg:col-span-2 border-slate-800'"
-            >
-              <span
-                class="inline-flex items-center justify-center rounded-md ring-1 transition-transform duration-300 group-hover:-translate-y-0.5"
-                [class]="feature.accent + (i < 2 ? ' w-11 h-11' : ' w-9 h-9')"
-              >
-                @switch (feature.icon) {
-                  @case ('whatsapp') {
-                    <svg lucideMessageCircle class="w-5 h-5"></svg>
-                  }
-                  @case ('qr') {
-                    <svg lucideQrCode class="w-5 h-5"></svg>
-                  }
-                  @case ('kitchen') {
-                    <svg lucideChefHat class="w-4 h-4"></svg>
-                  }
-                  @case ('stock') {
-                    <svg lucideBoxes class="w-4 h-4"></svg>
-                  }
-                  @case ('analytics') {
-                    <svg lucideChartColumn class="w-4 h-4"></svg>
-                  }
-                  @case ('roles') {
-                    <svg lucideShieldCheck class="w-4 h-4"></svg>
-                  }
-                  @case ('payments') {
-                    <svg lucideCreditCard class="w-4 h-4"></svg>
-                  }
-                  @default {
-                    <svg lucideBuilding2 class="w-4 h-4"></svg>
-                  }
+        <div class="mt-14 space-y-14">
+          @for (g of grupos; track g.titulo) {
+            <div class="grid gap-8 lg:grid-cols-[0.8fr_2fr] lg:gap-12">
+              <div>
+                <p class="lp-mono text-sm font-semibold" [style.color]="g.color">{{ g.numero }}</p>
+                <h3 class="lp-display mt-1 text-2xl font-extrabold text-(--tinta)">{{ g.titulo }}</h3>
+                <p class="mt-2 text-[15px] leading-relaxed text-(--tinta-2)">{{ g.resumen }}</p>
+              </div>
+              <ul class="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+                @for (f of g.funciones; track f.nombre) {
+                  <li class="border-t-2 pt-4" [style.border-color]="g.color">
+                    <h4 class="font-semibold text-(--tinta)">{{ f.nombre }}</h4>
+                    <p class="mt-1 text-sm leading-relaxed text-(--tinta-2)">{{ f.detalle }}</p>
+                  </li>
                 }
-              </span>
-
-              <h3
-                class="font-display font-bold text-white"
-                [class]="i < 2 ? 'mt-5 text-xl leading-snug' : 'mt-4 text-[15px] leading-snug'"
-              >
-                {{ feature.title }}
-              </h3>
-              <p
-                class="leading-relaxed text-slate-400"
-                [class]="i < 2 ? 'mt-3 text-[15px] max-w-md' : 'mt-2 text-[13.5px]'"
-              >
-                {{ feature.description }}
-              </p>
-            </article>
+              </ul>
+            </div>
           }
         </div>
       </div>
@@ -109,56 +47,42 @@ interface Feature {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LandingFeaturesComponent {
-  readonly features: readonly Feature[] = [
+  readonly grupos: readonly Grupo[] = [
     {
-      icon: 'whatsapp',
-      title: 'Pedidos automáticos por WhatsApp',
-      description:
-        'Un asistente atiende a tus clientes en tu propio número: muestra la carta, arma el pedido, confirma el total y lo manda directo a cocina. Sin apps que instalar ni comisiones por pedido.',
-      accent: 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
+      numero: '01',
+      titulo: 'Vender',
+      resumen: 'Recibe pedidos por donde tus clientes ya te buscan, sin pagar comisión por cada uno.',
+      color: 'var(--chile)',
+      funciones: [
+        { nombre: 'Asistente de WhatsApp', detalle: 'Responde en tu número, enseña el menú, arma el carrito y confirma total y cambio.' },
+        { nombre: 'Menú en línea', detalle: 'Liga y QR con fotos. El cliente guarda sus direcciones y ve el estado de su pedido.' },
+        { nombre: 'Combos y extras', detalle: 'Paquetes con precio especial y extras como "con todo" o "queso extra", con su costo.' },
+        { nombre: 'Envío por kilómetro', detalle: 'Tarifa con km incluidos, costo por km extra, distancia máxima, pedido mínimo y cuánto del envío absorbes tú.' },
+      ],
     },
     {
-      icon: 'qr',
-      title: 'Mesas con QR y carta digital',
-      description:
-        'Genera un QR por mesa desde el panel. El comensal escanea, ve la carta actualizada con fotos y precios, y pide sin esperar al mesero. Tú ves la mesa ocupada en tiempo real.',
-      accent: 'bg-indigo-500/10 text-indigo-400 ring-indigo-500/20',
+      numero: '02',
+      titulo: 'Operar',
+      resumen: 'Que cocina, salón y reparto trabajen con la misma información, al mismo tiempo.',
+      color: 'var(--aguacate)',
+      funciones: [
+        { nombre: 'Pantalla de cocina', detalle: 'Comandas en orden de llegada, con sonido. Marca "se acabó" y nadie lo puede pedir en el menú ni en WhatsApp.' },
+        { nombre: 'Mesas y meseros', detalle: 'Estado de cada mesa en vivo, cuenta abierta y cierre con el método de pago.' },
+        { nombre: 'Repartidores', detalle: 'Cada uno recibe sus entregas en una liga, sin instalar nada. Corte de efectivo y propinas al final.' },
+        { nombre: 'Inventario con recetas', detalle: 'Cada venta descuenta ingredientes. Compras, conteos, mermas, zonas y traspasos entre sucursales.' },
+      ],
     },
     {
-      icon: 'kitchen',
-      title: 'Pantalla de cocina en vivo',
-      description: 'Las comandas llegan ordenadas por antigüedad, con alerta sonora y cambio de estado en un toque.',
-      accent: 'bg-amber-500/10 text-amber-400 ring-amber-500/20',
-    },
-    {
-      icon: 'stock',
-      title: 'Inventario con recetas',
-      description: 'Cada plato descuenta sus ingredientes al venderse. Sabes qué falta antes de que se acabe.',
-      accent: 'bg-sky-500/10 text-sky-400 ring-sky-500/20',
-    },
-    {
-      icon: 'analytics',
-      title: 'Analítica de ventas',
-      description: 'Ticket promedio, horas pico y platos más rentables por sucursal, con historial completo.',
-      accent: 'bg-violet-500/10 text-violet-400 ring-violet-500/20',
-    },
-    {
-      icon: 'roles',
-      title: 'Roles y permisos finos',
-      description: 'Define qué ve y qué puede tocar cada empleado: mesero, cocina, caja o gerencia.',
-      accent: 'bg-rose-500/10 text-rose-400 ring-rose-500/20',
-    },
-    {
-      icon: 'payments',
-      title: 'Métodos de pago a tu medida',
-      description: 'Efectivo, transferencia o tarjeta: registra cómo cobró cada mesa y cuadra la caja al cierre.',
-      accent: 'bg-teal-500/10 text-teal-400 ring-teal-500/20',
-    },
-    {
-      icon: 'branches',
-      title: 'Multi-sucursal desde el día uno',
-      description: 'Una cuenta, varias sedes. Carta, stock y reportes independientes bajo un mismo administrador.',
-      accent: 'bg-fuchsia-500/10 text-fuchsia-400 ring-fuchsia-500/20',
+      numero: '03',
+      titulo: 'Controlar',
+      resumen: 'Decide con números del día, no con lo que te acuerdas al cerrar.',
+      color: '#b7791f',
+      funciones: [
+        { nombre: 'Utilidad y margen', detalle: 'Costo de cada platillo con tus compras reales y cuánto te dejó el día.' },
+        { nombre: 'Reportes', detalle: 'Ventas por canal, horas pico por día, meseros, mesas y tiempos de cocina. Exporta a Excel.' },
+        { nombre: 'Roles y permisos', detalle: 'El mesero ve el salón, cocina sus comandas y el encargado su sucursal.' },
+        { nombre: 'Varias sucursales', detalle: 'Cada una con su menú, existencias y equipo; tú las ves juntas o por separado.' },
+      ],
     },
   ];
 }

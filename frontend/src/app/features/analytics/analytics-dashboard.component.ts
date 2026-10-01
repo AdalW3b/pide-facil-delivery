@@ -12,10 +12,7 @@ import { EChartsOption } from 'echarts';
 import { Branch } from '../admin-core/models/admin.model';
 import { environment } from '../../../environments/environment';
 import {
-  LucideTrendingUp,
   LucideUsers,
-  LucideDollarSign,
-  LucideShoppingBag,
   LucideRefreshCw,
   LucideBarChart3,
   LucideCalendar,
@@ -130,7 +127,7 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
   standalone: true,
   imports: [
     TituloPaginaComponent, PesosPipe, CommonModule, FormsModule, NgxEchartsModule,
-    LucideTrendingUp, LucideUsers, LucideDollarSign, LucideShoppingBag, LucideRefreshCw, LucideBarChart3,
+    LucideUsers, LucideRefreshCw, LucideBarChart3,
     LucideCalendar, LucideClock, LucideFlame, LucideChefHat, LucideDownload, LucideTruck, LucideReceipt,
   ],
   template: `

@@ -1,130 +1,90 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { LucideCheck, LucideArrowRight, LucideSparkles } from '@lucide/angular';
+import { LucideCheck, LucideArrowRight } from '@lucide/angular';
 
 interface Plan {
   readonly id: string;
   readonly name: string;
   readonly tagline: string;
-  /** Precio mensual en la moneda del negocio. `null` = a convenir. */
+  /** Precio mensual por sucursal en USD; null = a medida. */
   readonly monthly: number | null;
-  readonly features: readonly string[];
   readonly highlighted: boolean;
   readonly cta: string;
+  readonly features: readonly string[];
 }
 
+/**
+ * Planes. Los límites deben coincidir con el enum Plan del backend:
+ * Inicial 1 sucursal / 5 usuarios sin domicilio; Pro hasta 5 sucursales con
+ * domicilio; Cadena sin límites.
+ */
 @Component({
   selector: 'app-landing-pricing',
   standalone: true,
-  imports: [RouterLink, LucideCheck, LucideArrowRight, LucideSparkles],
+  imports: [RouterLink, LucideCheck, LucideArrowRight],
   template: `
-    <section id="precios" class="scroll-mt-24 border-y border-slate-800 bg-slate-900/30 py-24 sm:py-32">
+    <section id="precios" class="py-20 lg:py-28" aria-labelledby="precios-titulo">
       <div class="mx-auto max-w-6xl px-5 sm:px-8">
-        <div class="grid gap-8 lg:grid-cols-12 lg:gap-10">
-          <div class="lg:col-span-5">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-400">Precios</p>
-            <h2 class="font-display mt-5 text-[1.8rem] sm:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white">
-              Una tarifa plana, sin comisión por pedido
+        <div class="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+          <div class="max-w-2xl">
+            <p class="lp-mono text-xs uppercase tracking-[0.18em] text-(--chile)">Precios</p>
+            <h2 id="precios-titulo" class="lp-display mt-3 text-3xl font-extrabold leading-tight text-(--tinta) sm:text-4xl text-balance">
+              Una cuota fija. Lo que vendes es tuyo.
             </h2>
-            <p class="mt-5 text-base leading-relaxed text-slate-400">
-              Pagas por sucursal. Todo lo que vendas es tuyo: Pide Facil no se lleva un porcentaje.
+            <p class="mt-4 text-[15px] leading-relaxed text-(--tinta-2)">
+              Pagas por sucursal y no cobramos comisión por pedido, ni en WhatsApp ni en tu menú en línea.
             </p>
           </div>
-
-          <!-- Conmutador mensual / anual -->
-          <div class="lg:col-span-7 lg:flex lg:items-end lg:justify-end">
-            <div class="inline-flex items-stretch overflow-hidden rounded-lg border border-slate-700">
-              <button
-                type="button"
-                (click)="annual.set(false)"
-                class="cursor-pointer px-5 py-2.5 text-sm font-semibold transition-colors"
-                [class]="!annual() ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-white'"
-                [attr.aria-pressed]="!annual()"
-              >
-                Mensual
-              </button>
-              <button
-                type="button"
-                (click)="annual.set(true)"
-                class="inline-flex cursor-pointer items-center gap-2 border-l border-slate-700 px-5 py-2.5 text-sm font-semibold transition-colors"
-                [class]="annual() ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-white'"
-                [attr.aria-pressed]="annual()"
-              >
-                Anual
-                <span
-                  class="rounded px-1.5 py-0.5 text-[11px] font-bold"
-                  [class]="annual() ? 'bg-emerald-600/15 text-emerald-700' : 'bg-emerald-500/15 text-emerald-400'"
-                  >-20%</span
-                >
-              </button>
-            </div>
+          <div class="inline-flex self-start rounded-full bg-(--papel-2) p-1 ring-1 ring-(--linea)" role="group" aria-label="Forma de pago">
+            <button type="button" (click)="annual.set(false)" [attr.aria-pressed]="!annual()"
+              class="rounded-full px-4 py-1.5 text-sm font-semibold transition-colors cursor-pointer"
+              [class]="!annual() ? 'bg-(--tinta) text-(--papel)' : 'text-(--tinta-2) hover:text-(--tinta)'">Mensual</button>
+            <button type="button" (click)="annual.set(true)" [attr.aria-pressed]="annual()"
+              class="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors cursor-pointer"
+              [class]="annual() ? 'bg-(--tinta) text-(--papel)' : 'text-(--tinta-2) hover:text-(--tinta)'">
+              Anual <span class="rounded-full bg-(--aguacate) px-1.5 py-0.5 text-[10px] font-bold text-white">-20%</span>
+            </button>
           </div>
         </div>
 
-        <!-- Planes -->
-        <div class="mt-14 grid gap-5 lg:grid-cols-3">
+        <div class="mt-12 grid gap-5 lg:grid-cols-3">
           @for (plan of plans; track plan.id) {
-            <article
-              class="relative flex flex-col rounded-lg p-7 sm:p-8"
-              [class]="
-                plan.highlighted
-                  ? 'border-gradient bg-slate-900 ring-1 ring-indigo-500/40'
-                  : 'bg-slate-950/40 ring-1 ring-slate-800'
-              "
-            >
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="font-display text-lg font-bold text-white">{{ plan.name }}</h3>
-                @if (plan.highlighted) {
-                  <span
-                    class="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-300"
-                  >
-                    <svg lucideSparkles class="h-3 w-3"></svg>
-                    Más elegido
-                  </span>
-                }
-              </div>
-              <p class="mt-2 min-h-[2.75rem] text-sm leading-snug text-slate-400">{{ plan.tagline }}</p>
-
-              <p class="mt-7 flex min-h-[3.5rem] items-baseline gap-2 border-t border-slate-800 pt-7">
+            <article class="relative flex flex-col rounded-2xl p-7"
+              [class]="plan.highlighted ? 'bg-(--tinta) text-(--papel) shadow-[0_30px_60px_-30px_rgba(36,25,15,0.8)]' : 'bg-[#fffdf8] text-(--tinta) ring-1 ring-(--linea)'">
+              @if (plan.highlighted) {
+                <span class="absolute -top-3 left-7 rounded-full bg-(--maiz) px-3 py-1 text-[11px] font-bold text-(--tinta)">Con domicilio y WhatsApp</span>
+              }
+              <h3 class="lp-display text-2xl font-extrabold">{{ plan.name }}</h3>
+              <p class="mt-1 text-sm" [class]="plan.highlighted ? 'text-(--papel)/70' : 'text-(--tinta-2)'">{{ plan.tagline }}</p>
+              <p class="mt-6 flex items-end gap-2">
                 @if (plan.monthly === null) {
-                  <span class="font-display text-3xl font-extrabold tracking-tight text-white">A medida</span>
+                  <span class="lp-display text-4xl font-extrabold">A medida</span>
                 } @else {
-                  <span class="font-display text-5xl font-extrabold tabular-nums tracking-[-0.04em] text-white">{{ price(plan) }}</span>
-                  <span class="text-[13px] leading-snug text-slate-500">/ mes<br />por sucursal</span>
+                  <span class="lp-display text-5xl font-extrabold tabular-nums">{{ price(plan) }}</span>
+                  <span class="pb-1.5 text-xs leading-tight" [class]="plan.highlighted ? 'text-(--papel)/70' : 'text-(--tinta-2)'">USD al mes<br />por sucursal</span>
                 }
               </p>
-              @if (plan.monthly !== null && annual()) {
-                <p class="mt-2 text-xs text-emerald-400">Facturado anualmente</p>
-              }
-
-              <ul class="mt-8 flex-1 space-y-3.5 border-t border-slate-800 pt-7">
-                @for (feature of plan.features; track feature) {
-                  <li class="flex items-start gap-3 text-[14px] leading-snug text-slate-300">
-                    <svg lucideCheck class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"></svg>
-                    <span>{{ feature }}</span>
+              <p class="mt-1 h-4 text-xs" [class]="plan.highlighted ? 'text-(--papel)/60' : 'text-(--tinta-2)'">
+                @if (plan.monthly !== null && annual()) { Pago anual }
+              </p>
+              <ul class="mt-6 flex-1 space-y-3 text-[15px]">
+                @for (f of plan.features; track f) {
+                  <li class="flex gap-2.5">
+                    <svg lucideCheck class="mt-0.5 h-4 w-4 shrink-0" [class]="plan.highlighted ? 'text-(--maiz)' : 'text-(--aguacate)'"></svg>
+                    <span>{{ f }}</span>
                   </li>
                 }
               </ul>
-
-              <a
-                routerLink="/register"
-                class="group mt-8 flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3.5 text-sm font-semibold transition-colors"
-                [class]="
-                  plan.highlighted
-                    ? 'bg-indigo-500 text-white hover:bg-indigo-400'
-                    : 'border border-slate-700 text-slate-200 hover:border-slate-500 hover:text-white'
-                "
-              >
+              <a routerLink="/register"
+                class="mt-8 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-colors"
+                [class]="plan.highlighted ? 'bg-(--chile) text-white hover:bg-(--chile-osc)' : 'border border-(--tinta)/25 hover:border-(--tinta)'">
                 {{ plan.cta }}
-                <svg lucideArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-1"></svg>
+                <svg lucideArrowRight class="h-4 w-4"></svg>
               </a>
             </article>
           }
         </div>
-
-        <p class="mt-10 max-w-2xl text-xs leading-relaxed text-slate-400">
-          Los importes son de referencia y se ajustan a tu país y moneda. Sin permanencia: cancelas cuando quieras.
-        </p>
+        <p class="mt-6 text-sm text-(--tinta-2)">Precios en dólares estadounidenses (USD). Sin plazo forzoso: cancelas cuando quieras. Los 14 días de prueba no piden tarjeta.</p>
       </div>
     </section>
   `,
@@ -137,47 +97,46 @@ export class LandingPricingComponent {
     {
       id: 'inicial',
       name: 'Inicial',
-      tagline: 'Para el local que empieza a ordenarse.',
+      tagline: 'Para el local que atiende en sus mesas.',
       monthly: 29,
       highlighted: false,
       cta: 'Empezar gratis',
       features: [
         '1 sucursal y hasta 5 usuarios',
-        'Carta digital con QR por mesa',
-        'Panel de mesas en tiempo real',
-        'Pantalla de cocina',
-        'Historial de ventas',
+        'Mesas, meseros y pantalla de cocina',
+        'Menú con combos y extras',
+        'Inventario con recetas',
+        'Reportes de ventas y utilidad',
       ],
     },
     {
       id: 'pro',
       name: 'Pro',
-      tagline: 'El paquete completo con bot de WhatsApp.',
+      tagline: 'Para vender también a domicilio.',
       monthly: 59,
       highlighted: true,
       cta: 'Probar 14 días gratis',
       features: [
         'Todo lo del plan Inicial',
-        'Bot de pedidos por WhatsApp',
-        'Inventario con recetas e ingredientes',
-        'Analítica avanzada y comparativas',
-        'Roles y permisos personalizados',
-        'Usuarios ilimitados',
+        'Hasta 5 sucursales y usuarios ilimitados',
+        'Pedidos ilimitados, 0% de comisión',
+        'Pedidos por WhatsApp, menú en línea y teléfono',
+        'Domicilio con envío por kilómetro y para llevar',
+        'Repartidores con su liga y corte de efectivo',
       ],
     },
     {
       id: 'cadena',
       name: 'Cadena',
-      tagline: 'Varias sedes bajo una misma administración.',
+      tagline: 'Para marcas con muchas sucursales.',
       monthly: null,
       highlighted: false,
       cta: 'Hablar con ventas',
       features: [
         'Todo lo del plan Pro',
         'Sucursales ilimitadas',
-        'Reportes consolidados por marca',
-        'Onboarding y migración asistidos',
-        'Soporte prioritario',
+        'Reportes de todas las sucursales juntas',
+        'Te ayudamos a cargar tu menú y tu equipo',
       ],
     },
   ];

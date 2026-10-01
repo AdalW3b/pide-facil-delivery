@@ -10,8 +10,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   template: `
     <span class="inline-flex items-center gap-2.5 select-none">
       <span
-        class="relative inline-flex items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/25"
-        [class]="markSize()"
+        class="relative inline-flex items-center justify-center rounded-xl"
+        [class]="markSize() + (tono() === 'claro' ? ' bg-[#c8381f]' : ' bg-gradient-to-tr from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/25')"
       >
         <!-- Isotipo: gorro de chef con señal de mensaje -->
         <svg [attr.width]="glyphSize()" [attr.height]="glyphSize()" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -27,8 +27,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       </span>
 
       @if (showWordmark()) {
-        <span class="font-display font-extrabold tracking-tight text-white" [class]="textSize()">
-          Pide <span class="text-indigo-400">Facil</span>
+        <span class="font-display font-extrabold tracking-tight" [class]="textSize() + (tono() === 'claro' ? ' text-[#24190f]' : ' text-white')">
+          Pide <span [class]="tono() === 'claro' ? 'text-[#c8381f]' : 'text-indigo-400'">Facil</span>
         </span>
       }
     </span>
@@ -39,6 +39,8 @@ export class BrandLogoComponent {
   /** `sm` para barras compactas, `md` por defecto, `lg` para cabeceras de página. */
   readonly size = input<'sm' | 'md' | 'lg'>('md');
   readonly showWordmark = input(true);
+  /** `oscuro` sobre fondos oscuros (panel); `claro` sobre el papel de la landing. */
+  readonly tono = input<'oscuro' | 'claro'>('oscuro');
 
   markSize(): string {
     return { sm: 'w-8 h-8', md: 'w-9 h-9', lg: 'w-12 h-12' }[this.size()];

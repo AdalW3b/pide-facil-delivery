@@ -18,7 +18,7 @@ interface NavLink {
       class="fixed top-0 inset-x-0 z-50 border-b transition-colors duration-300"
       [class]="
         scrolled()
-          ? 'border-slate-800 bg-slate-950/90 backdrop-blur-md'
+          ? 'border-(--linea) bg-(--papel)/92 backdrop-blur-md'
           : 'border-transparent bg-transparent'
       "
     >
@@ -27,16 +27,16 @@ interface NavLink {
           class="flex h-16 items-center justify-between gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
         >
           <a routerLink="/" class="shrink-0 lg:justify-self-start" aria-label="Pide Facil · Inicio">
-            <app-brand-logo size="sm" />
+            <app-brand-logo size="sm" tono="claro" />
           </a>
 
           <!-- Enlaces de escritorio -->
-          <ul class="hidden lg:flex items-center gap-8 lg:justify-self-center">
+          <ul class="hidden lg:flex items-center gap-7 lg:justify-self-center">
             @for (link of links; track link.fragment) {
               <li>
                 <a
                   [href]="'#' + link.fragment"
-                  class="relative text-sm font-medium text-slate-400 transition-colors hover:text-white after:absolute after:-bottom-1.5 after:left-0 after:h-px after:w-0 after:bg-indigo-400 after:transition-[width] after:duration-300 hover:after:w-full"
+                  class="relative text-sm font-medium text-(--tinta-2) transition-colors hover:text-(--tinta) after:absolute after:-bottom-1.5 after:left-0 after:h-0.5 after:w-0 after:bg-(--chile) after:transition-[width] after:duration-300 hover:after:w-full"
                 >
                   {{ link.label }}
                 </a>
@@ -49,7 +49,7 @@ interface NavLink {
             @if (isAuthenticated()) {
               <a
                 [routerLink]="panelRoute()"
-                class="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-400"
+                class="inline-flex items-center gap-2 rounded-full bg-(--chile) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--chile-osc)"
               >
                 <svg lucideLayoutDashboard class="w-4 h-4"></svg>
                 Ir al panel
@@ -57,15 +57,15 @@ interface NavLink {
             } @else {
               <a
                 routerLink="/login"
-                class="text-sm font-medium text-slate-400 transition-colors hover:text-white"
+                class="text-sm font-medium text-(--tinta-2) transition-colors hover:text-(--tinta) whitespace-nowrap"
               >
                 Iniciar sesión
               </a>
               <a
                 routerLink="/register"
-                class="group inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-400"
+                class="group inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-(--chile) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--chile-osc)"
               >
-                Crear cuenta gratis
+                Probar gratis
                 <svg lucideArrowRight class="w-4 h-4 transition-transform group-hover:translate-x-0.5"></svg>
               </a>
             }
@@ -74,7 +74,7 @@ interface NavLink {
           <!-- Botón menú móvil -->
           <button
             type="button"
-            class="lg:hidden -mr-1 inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+            class="lg:hidden -mr-1 inline-flex h-10 w-10 items-center justify-center rounded-lg text-(--tinta) transition-colors hover:bg-(--papel-2)"
             (click)="toggleMenu()"
             [attr.aria-expanded]="menuOpen()"
             aria-controls="landing-mobile-menu"
@@ -93,27 +93,27 @@ interface NavLink {
       @if (menuOpen()) {
         <div
           id="landing-mobile-menu"
-          class="animate-fade-in lg:hidden border-t border-slate-800 bg-slate-950"
+          class="animate-fade-in lg:hidden border-t border-(--linea) bg-(--papel)"
         >
-          <ul class="mx-auto max-w-6xl divide-y divide-slate-800/70 px-5 sm:px-8">
+          <ul class="mx-auto max-w-6xl divide-y divide-(--linea) px-5 sm:px-8">
             @for (link of links; track link.fragment) {
               <li>
                 <a
                   [href]="'#' + link.fragment"
                   (click)="closeMenu()"
-                  class="block py-4 text-[15px] font-medium text-slate-300 transition-colors hover:text-white"
+                  class="block py-4 text-[15px] font-medium text-(--tinta) transition-colors hover:text-(--chile)"
                 >
                   {{ link.label }}
                 </a>
               </li>
             }
           </ul>
-          <div class="mx-auto flex max-w-6xl flex-col gap-3 border-t border-slate-800 px-5 py-6 sm:px-8">
+          <div class="mx-auto flex max-w-6xl flex-col gap-3 border-t border-(--linea) px-5 py-6 sm:px-8">
             @if (isAuthenticated()) {
               <a
                 [routerLink]="panelRoute()"
                 (click)="closeMenu()"
-                class="rounded-lg bg-indigo-500 px-4 py-3 text-center text-sm font-semibold text-white"
+                class="rounded-full bg-(--chile) px-4 py-3 text-center text-sm font-semibold text-white"
               >
                 Ir al panel
               </a>
@@ -121,14 +121,14 @@ interface NavLink {
               <a
                 routerLink="/register"
                 (click)="closeMenu()"
-                class="rounded-lg bg-indigo-500 px-4 py-3 text-center text-sm font-semibold text-white"
+                class="rounded-full bg-(--chile) px-4 py-3 text-center text-sm font-semibold text-white"
               >
-                Crear cuenta gratis
+                Prueba 14 días gratis
               </a>
               <a
                 routerLink="/login"
                 (click)="closeMenu()"
-                class="rounded-lg border border-slate-700 px-4 py-3 text-center text-sm font-semibold text-slate-200 transition-colors hover:border-slate-500"
+                class="rounded-full border border-(--tinta)/25 px-4 py-3 text-center text-sm font-semibold text-(--tinta) transition-colors hover:border-(--tinta)"
               >
                 Iniciar sesión
               </a>
@@ -144,9 +144,9 @@ export class LandingNavComponent {
   private readonly auth = inject(AuthService);
 
   readonly links: readonly NavLink[] = [
+    { label: 'Calcula tu ahorro', fragment: 'ahorro' },
     { label: 'Funciones', fragment: 'funciones' },
-    { label: 'Cómo funciona', fragment: 'como-funciona' },
-    { label: 'Módulos', fragment: 'modulos' },
+    { label: 'El sistema', fragment: 'modulos' },
     { label: 'Precios', fragment: 'precios' },
     { label: 'Preguntas', fragment: 'faq' },
   ];

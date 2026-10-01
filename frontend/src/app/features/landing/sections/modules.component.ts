@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
-import { LucideLayoutDashboard, LucideChefHat, LucideBookOpen, LucideChartColumn, LucideCircleCheck } from '@lucide/angular';
+import { LucideCircleCheck } from '@lucide/angular';
 
-type ModuleId = 'mesas' | 'cocina' | 'carta' | 'analitica';
+type ModuleId = 'cocina' | 'domicilio' | 'inventario' | 'reportes';
 
 interface ModuleTab {
   readonly id: ModuleId;
@@ -11,206 +11,127 @@ interface ModuleTab {
   readonly bullets: readonly string[];
 }
 
+/** Recorrido por las pantallas del sistema, con maquetas hechas en HTML (sin capturas). */
 @Component({
   selector: 'app-landing-modules',
   standalone: true,
-  imports: [LucideLayoutDashboard, LucideChefHat, LucideBookOpen, LucideChartColumn, LucideCircleCheck],
+  imports: [LucideCircleCheck],
   template: `
-    <section id="modulos" class="scroll-mt-24 border-t border-slate-800 py-24 sm:py-32">
+    <section id="modulos" class="py-20 lg:py-28" aria-labelledby="modulos-titulo">
       <div class="mx-auto max-w-6xl px-5 sm:px-8">
-        <div class="grid gap-6 lg:grid-cols-12 lg:gap-10">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-400 lg:col-span-3 lg:pt-2">
-            El panel por dentro
-          </p>
-          <h2 class="font-display max-w-2xl text-[1.8rem] sm:text-4xl font-extrabold leading-[1.1] tracking-[-0.02em] text-white lg:col-span-9">
-            Un módulo para cada momento del servicio
+        <div class="max-w-2xl">
+          <p class="lp-mono text-xs uppercase tracking-[0.18em] text-(--chile)">El sistema</p>
+          <h2 id="modulos-titulo" class="lp-display mt-3 text-3xl font-extrabold leading-tight text-(--tinta) sm:text-4xl text-balance">
+            Así se ve un servicio de viernes en la noche
           </h2>
         </div>
 
-        <!-- Selector de módulo: riel subrayado -->
-        <div
-          class="mt-12 -mx-5 overflow-x-auto border-b border-slate-800 px-5 sm:mx-0 sm:px-0"
-          role="tablist"
-          aria-label="Módulos de Pide Facil"
-        >
-          <div class="flex min-w-max gap-7">
-            @for (tab of tabs; track tab.id) {
-              <button
-                type="button"
-                role="tab"
-                [id]="'tab-' + tab.id"
-                [attr.aria-selected]="active() === tab.id"
-                [attr.aria-controls]="'panel-' + tab.id"
-                [tabindex]="active() === tab.id ? 0 : -1"
-                (click)="select(tab.id)"
-                (keydown)="onTabKeydown($event)"
-                class="-mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 pb-3.5 text-sm font-semibold transition-colors"
-                [class]="
-                  active() === tab.id
-                    ? 'border-indigo-400 text-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-200'
-                "
-              >
-                @switch (tab.id) {
-                  @case ('mesas') {
-                    <svg lucideLayoutDashboard class="w-4 h-4"></svg>
-                  }
-                  @case ('cocina') {
-                    <svg lucideChefHat class="w-4 h-4"></svg>
-                  }
-                  @case ('carta') {
-                    <svg lucideBookOpen class="w-4 h-4"></svg>
-                  }
-                  @default {
-                    <svg lucideChartColumn class="w-4 h-4"></svg>
-                  }
-                }
-                {{ tab.label }}
-              </button>
-            }
-          </div>
+        <div class="mt-10 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Pantallas del sistema" (keydown)="onTabKeydown($event)">
+          @for (tab of tabs; track tab.id) {
+            <button type="button" role="tab" [id]="'tab-' + tab.id" [attr.aria-selected]="active() === tab.id"
+              [attr.aria-controls]="'panel-' + tab.id" [attr.tabindex]="active() === tab.id ? 0 : -1" (click)="select(tab.id)"
+              class="shrink-0 rounded-full px-5 py-2 text-sm font-semibold transition-colors cursor-pointer"
+              [class]="active() === tab.id ? 'bg-(--tinta) text-(--papel)' : 'bg-(--papel-2) text-(--tinta-2) hover:text-(--tinta)'">
+              {{ tab.label }}
+            </button>
+          }
         </div>
 
-        <!-- Contenido del módulo -->
         @for (tab of tabs; track tab.id) {
           @if (active() === tab.id) {
-            <div
-              [id]="'panel-' + tab.id"
-              role="tabpanel"
-              [attr.aria-labelledby]="'tab-' + tab.id"
-              class="animate-fade-in mt-12 grid items-start gap-10 lg:grid-cols-12 lg:gap-10"
-            >
-              <div class="lg:col-span-4">
-                <h3 class="font-display text-2xl font-bold leading-snug text-white">{{ tab.title }}</h3>
-                <p class="mt-4 text-[15px] leading-relaxed text-slate-400">{{ tab.description }}</p>
-                <ul class="mt-7 divide-y divide-slate-800 border-y border-slate-800">
-                  @for (bullet of tab.bullets; track bullet) {
-                    <li class="flex items-start gap-3 py-3.5 text-[13.5px] leading-snug text-slate-300">
-                      <svg lucideCircleCheck class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"></svg>
-                      <span>{{ bullet }}</span>
+            <div [id]="'panel-' + tab.id" role="tabpanel" [attr.aria-labelledby]="'tab-' + tab.id"
+              class="mt-8 grid items-start gap-10 lg:grid-cols-[0.85fr_1.15fr] animate-fade-in">
+              <div>
+                <h3 class="lp-display text-2xl font-extrabold text-(--tinta) sm:text-3xl text-balance">{{ tab.title }}</h3>
+                <p class="mt-4 text-[15px] leading-relaxed text-(--tinta-2)">{{ tab.description }}</p>
+                <ul class="mt-6 space-y-3">
+                  @for (b of tab.bullets; track b) {
+                    <li class="flex gap-2.5 text-[15px] text-(--tinta)">
+                      <svg lucideCircleCheck class="mt-0.5 h-4.5 w-4.5 shrink-0 text-(--aguacate)"></svg>
+                      {{ b }}
                     </li>
                   }
                 </ul>
               </div>
 
-              <!-- Maqueta del módulo -->
-              <div
-                class="overflow-hidden rounded-lg bg-slate-900 ring-1 ring-slate-800 lg:col-span-8"
-                aria-hidden="true"
-              >
-                <!-- Barra de ventana -->
-                <div class="flex items-center gap-1.5 border-b border-slate-800 bg-slate-900/60 px-4 py-3">
-                  <span class="h-2.5 w-2.5 rounded-full bg-slate-700"></span>
-                  <span class="h-2.5 w-2.5 rounded-full bg-slate-700"></span>
-                  <span class="h-2.5 w-2.5 rounded-full bg-slate-700"></span>
-                  <span class="ml-3 text-[11px] tracking-tight text-slate-500">pidefacil.app/{{ tab.id }}</span>
-                </div>
-
-                <div class="bg-slate-950/40 p-4 sm:p-6">
-                  @switch (tab.id) {
-                    @case ('mesas') {
-                      <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                        @for (table of tables; track table.n) {
-                          <div
-                            class="rounded-md p-3.5 ring-1"
-                            [class]="
-                              table.state === 'ocupada'
-                                ? 'bg-indigo-500/10 ring-indigo-500/30'
-                                : table.state === 'cuenta'
-                                  ? 'bg-amber-500/10 ring-amber-500/30'
-                                  : 'bg-slate-900/60 ring-slate-800'
-                            "
-                          >
-                            <p class="font-display text-sm font-bold text-white">Mesa {{ table.n }}</p>
-                            <p
-                              class="mt-1 text-[11px] font-semibold uppercase tracking-[0.1em]"
-                              [class]="
-                                table.state === 'ocupada'
-                                  ? 'text-indigo-300'
-                                  : table.state === 'cuenta'
-                                    ? 'text-amber-300'
-                                    : 'text-slate-500'
-                              "
-                            >
-                              {{ table.state }}
-                            </p>
-                            <p class="mt-2 text-[12px] text-slate-400">{{ table.total }}</p>
+              <div class="rounded-2xl bg-(--tinta) p-4 sm:p-6 shadow-[0_30px_60px_-30px_rgba(36,25,15,0.7)]" aria-hidden="true">
+                @switch (tab.id) {
+                  @case ('cocina') {
+                    <div class="grid gap-3 sm:grid-cols-3">
+                      @for (t of tickets; track t.id) {
+                        <div class="rounded-lg bg-[#fffdf8] p-3">
+                          <div class="flex items-center justify-between">
+                            <span class="lp-display text-lg font-extrabold text-(--tinta)">{{ t.id }}</span>
+                            <span class="lp-mono rounded-full px-2 py-0.5 text-[11px] font-semibold" [style.background]="t.fondo" [style.color]="t.color">{{ t.minutos }}</span>
                           </div>
-                        }
-                      </div>
-                    }
-
-                    @case ('cocina') {
-                      <div class="grid gap-3 sm:grid-cols-3">
-                        @for (ticket of tickets; track ticket.id) {
-                          <div class="rounded-md bg-slate-900/60 p-3.5 ring-1 ring-slate-800">
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="font-display text-sm font-bold text-white">{{ ticket.id }}</span>
-                              <span
-                                class="rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide"
-                                [class]="ticket.badgeClass"
-                                >{{ ticket.minutes }}</span
-                              >
-                            </div>
-                            <ul class="mt-3 space-y-1.5 text-[11.5px] text-slate-300">
-                              @for (line of ticket.items; track line) {
-                                <li class="truncate">{{ line }}</li>
-                              }
-                            </ul>
-                            <div class="mt-3.5 h-1 overflow-hidden rounded-full bg-slate-800">
-                              <div class="h-full rounded-full" [class]="ticket.barClass" [style.width.%]="ticket.progress"></div>
-                            </div>
+                          <p class="lp-mono mt-0.5 text-[10px] uppercase tracking-wider text-(--tinta-2)">{{ t.origen }}</p>
+                          <div class="lp-corte my-2"></div>
+                          <ul class="lp-mono space-y-1 text-[12px] text-(--tinta)">
+                            @for (i of t.items; track i) { <li>{{ i }}</li> }
+                          </ul>
+                          <div class="mt-3 rounded-md py-1.5 text-center text-[11px] font-semibold" [style.background]="t.color" style="color:#fff">Listo</div>
+                        </div>
+                      }
+                    </div>
+                  }
+                  @case ('domicilio') {
+                    <ul class="space-y-2.5">
+                      @for (p of entregas; track p.id) {
+                        <li class="flex items-center justify-between gap-3 rounded-lg bg-[#fffdf8] px-4 py-3">
+                          <div class="min-w-0">
+                            <p class="text-sm font-semibold text-(--tinta)"><span class="lp-mono">{{ p.id }}</span> · {{ p.cliente }}</p>
+                            <p class="lp-mono text-[11px] text-(--tinta-2)">{{ p.detalle }}</p>
                           </div>
-                        }
+                          <span class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" [style.background]="p.fondo" [style.color]="p.color">{{ p.estado }}</span>
+                        </li>
+                      }
+                    </ul>
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/15 px-4 py-3 text-(--papel)">
+                      <span class="text-sm">Corte de <b>Juan</b> · 9 entregas</span>
+                      <span class="lp-mono text-sm">Entrega <b class="text-(--maiz)">$1,840</b> · se queda $186</span>
+                    </div>
+                  }
+                  @case ('inventario') {
+                    <div class="overflow-hidden rounded-lg bg-[#fffdf8]">
+                      <div class="grid grid-cols-[1.4fr_1fr_1fr] gap-2 border-b border-(--linea) px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-(--tinta-2)">
+                        <span>Artículo</span><span>Hay</span><span>Zona</span>
                       </div>
-                    }
-
-                    @case ('carta') {
-                      <ul class="divide-y divide-slate-800 overflow-hidden rounded-md ring-1 ring-slate-800">
-                        @for (dish of dishes; track dish.name) {
-                          <li class="flex items-center gap-3.5 bg-slate-900/60 p-3.5">
-                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-800 text-base">{{ dish.emoji }}</span>
-                            <div class="min-w-0 flex-1">
-                              <p class="truncate text-[13.5px] font-semibold text-white">{{ dish.name }}</p>
-                              <p class="text-[11px] text-slate-500">{{ dish.category }}</p>
-                            </div>
-                            <span class="text-[13.5px] font-bold tabular-nums text-white">{{ dish.price }}</span>
-                            <span
-                              class="rounded px-1.5 py-0.5 text-[11px] font-semibold"
-                              [class]="dish.stock ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'"
-                              >{{ dish.stock ? 'Disponible' : 'Sin stock' }}</span
-                            >
+                      @for (a of articulos; track a.nombre) {
+                        <div class="grid grid-cols-[1.4fr_1fr_1fr] items-center gap-2 border-b border-(--linea)/70 px-4 py-2.5 text-sm last:border-0">
+                          <span class="font-medium text-(--tinta)">{{ a.nombre }}</span>
+                          <span>
+                            <span class="lp-mono" [style.color]="a.bajo ? 'var(--chile)' : 'var(--tinta)'">{{ a.hay }}</span>
+                            @if (a.bajo) { <span class="ml-1 rounded bg-(--chile)/10 px-1.5 py-0.5 text-[10px] font-semibold text-(--chile)">mínimo</span> }
+                          </span>
+                          <span class="text-(--tinta-2)">{{ a.zona }}</span>
+                        </div>
+                      }
+                    </div>
+                    <p class="mt-3 text-xs text-(--papel)/75">Taco al pastor: costo <span class="lp-mono text-(--maiz)">$7.40</span> · precio $22 · margen 66%</p>
+                  }
+                  @case ('reportes') {
+                    <div class="grid gap-3 sm:grid-cols-3">
+                      @for (k of kpis; track k.label) {
+                        <div class="rounded-lg bg-[#fffdf8] p-3">
+                          <p class="text-[11px] font-semibold uppercase tracking-wider text-(--tinta-2)">{{ k.label }}</p>
+                          <p class="lp-display mt-1 text-xl font-extrabold text-(--tinta)">{{ k.value }}</p>
+                          <p class="lp-mono text-[11px] text-(--aguacate)">{{ k.nota }}</p>
+                        </div>
+                      }
+                    </div>
+                    <div class="mt-3 rounded-lg bg-[#fffdf8] p-4">
+                      <p class="text-[11px] font-semibold uppercase tracking-wider text-(--tinta-2)">Por canal</p>
+                      <ul class="mt-3 space-y-2.5">
+                        @for (c of canales; track c.nombre) {
+                          <li>
+                            <div class="flex justify-between text-[13px] text-(--tinta)"><span>{{ c.nombre }}</span><span class="lp-mono">{{ c.pct }}%</span></div>
+                            <div class="mt-1 h-2 rounded-full bg-(--papel-2)"><div class="h-2 rounded-full" [style.width.%]="c.pct" [style.background]="c.color"></div></div>
                           </li>
                         }
                       </ul>
-                    }
-
-                    @default {
-                      <div class="space-y-3">
-                        <div class="grid grid-cols-3 divide-x divide-slate-800 overflow-hidden rounded-md bg-slate-900/60 ring-1 ring-slate-800">
-                          @for (kpi of kpis; track kpi.label) {
-                            <div class="p-3.5">
-                              <p class="text-[11px] uppercase tracking-[0.1em] text-slate-500">{{ kpi.label }}</p>
-                              <p class="font-display mt-1.5 text-lg font-extrabold tabular-nums text-white">{{ kpi.value }}</p>
-                              <p class="text-[11px] font-semibold text-emerald-400">{{ kpi.delta }}</p>
-                            </div>
-                          }
-                        </div>
-                        <div class="rounded-md bg-slate-900/60 p-4 ring-1 ring-slate-800">
-                          <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Ventas por hora</p>
-                          <div class="mt-4 flex h-28 items-end gap-1.5">
-                            @for (bar of chart; track $index) {
-                              <span class="flex-1 rounded-t-sm bg-indigo-500/70" [style.height.%]="bar"></span>
-                            }
-                          </div>
-                          <div class="mt-2.5 flex justify-between border-t border-slate-800 pt-2 text-[11px] tabular-nums text-slate-600">
-                            <span>12h</span><span>16h</span><span>20h</span><span>00h</span>
-                          </div>
-                        </div>
-                      </div>
-                    }
+                    </div>
                   }
-                </div>
+                }
               </div>
             </div>
           }
@@ -221,111 +142,89 @@ interface ModuleTab {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LandingModulesComponent {
-  readonly active = signal<ModuleId>('mesas');
+  readonly active = signal<ModuleId>('cocina');
 
   readonly tabs: readonly ModuleTab[] = [
-    {
-      id: 'mesas',
-      label: 'Mesas',
-      title: 'El salón completo en una pantalla',
-      description:
-        'Ve qué mesa está ocupada, cuánto lleva consumido y quién la atiende. Abre la comanda con un clic y cierra la cuenta con el método de pago que usó el cliente.',
-      bullets: [
-        'Estado de cada mesa en tiempo real vía WebSocket',
-        'QR por mesa para que el cliente pida solo',
-        'Cierre de cuenta con división por método de pago',
-      ],
-    },
     {
       id: 'cocina',
       label: 'Cocina',
       title: 'Comandas que nadie tiene que gritar',
       description:
-        'La pantalla de cocina ordena los pedidos por antigüedad, avisa con sonido cuando entra uno nuevo y colorea los que llevan demasiado tiempo esperando.',
+        'Los pedidos de todos los canales aparecen en orden de llegada, suenan al entrar y cambian de color cuando ya llevan rato esperando.',
       bullets: [
-        'Alerta sonora al recibir una comanda nueva',
-        'Semáforo de tiempos para detectar demoras',
-        'Marcar como listo notifica al salón al instante',
+        'Sonido al entrar cada comanda',
+        'Semáforo de tiempo por pedido',
+        '"Se acabó" con un toque: deja de ofrecerse ese día',
       ],
     },
     {
-      id: 'carta',
-      label: 'Carta',
-      title: 'Una carta que se actualiza sola',
+      id: 'domicilio',
+      label: 'Domicilio',
+      title: 'Del "¿ya viene?" al pedido rastreado',
       description:
-        'Categorías, platos, precios y recetas en un solo lugar. Si un ingrediente se agota, el plato se marca sin stock en la carta digital y en el bot de WhatsApp.',
+        'Confirmas, mandas a cocina y asignas repartidor desde un tablero. El cliente sigue su pedido y el repartidor ve la dirección y el mapa en su celular.',
       bullets: [
-        'Recetas que descuentan ingredientes al vender',
-        'Stock por sucursal, no por restaurante',
-        'Cambios de precio reflejados al instante en el QR',
+        'Envío calculado por distancia con tus tarifas',
+        'Liga para cada repartidor, sin app que instalar',
+        'Corte de efectivo, pago por entrega y propinas',
       ],
     },
     {
-      id: 'analitica',
-      label: 'Analítica',
-      title: 'Decide con números, no con memoria',
+      id: 'inventario',
+      label: 'Inventario',
+      title: 'Sabes qué hay antes de que se acabe',
       description:
-        'Ventas por día, ticket promedio, horas pico y ranking de platos. Compara sucursales y descubre qué conviene promocionar esta semana.',
+        'Cada platillo descuenta su receta al venderse. Registras compras con su costo, haces conteos por zona y ves la merma.',
       bullets: [
-        'Histórico de ventas exportable',
-        'Comparativa entre sucursales',
-        'Ranking de productos más y menos vendidos',
+        'Aviso cuando un ingrediente llega al mínimo',
+        'Costo promedio con cada compra',
+        'Preparaciones (salsas, marinados) y traspasos entre sucursales',
       ],
     },
-  ];
-
-  readonly tables = [
-    { n: 1, state: 'ocupada', total: '$48,00' },
-    { n: 2, state: 'libre', total: '—' },
-    { n: 3, state: 'cuenta', total: '$92,50' },
-    { n: 4, state: 'ocupada', total: '$21,00' },
-    { n: 5, state: 'libre', total: '—' },
-    { n: 6, state: 'ocupada', total: '$67,80' },
-    { n: 7, state: 'cuenta', total: '$35,20' },
-    { n: 8, state: 'libre', total: '—' },
+    {
+      id: 'reportes',
+      label: 'Reportes',
+      title: 'No solo cuánto vendiste: cuánto te dejó',
+      description:
+        'Ventas, utilidad y margen del periodo, por canal, por platillo y por mesero. Las horas pico por día de la semana te ayudan a armar turnos.',
+      bullets: [
+        'Utilidad y margen por platillo',
+        'Comparación contra el periodo anterior',
+        'Exporta a Excel ventas, platillos y meseros',
+      ],
+    },
   ];
 
   readonly tickets = [
-    {
-      id: '#1042',
-      minutes: '2 min',
-      items: ['2x Pizza Napolitana', '1x Ensalada Cesar'],
-      progress: 25,
-      badgeClass: 'bg-emerald-500/15 text-emerald-400',
-      barClass: 'bg-emerald-500',
-    },
-    {
-      id: '#1041',
-      minutes: '11 min',
-      items: ['1x Risotto', '2x Tiramisu', '1x Focaccia'],
-      progress: 65,
-      badgeClass: 'bg-amber-500/15 text-amber-400',
-      barClass: 'bg-amber-500',
-    },
-    {
-      id: '#1039',
-      minutes: '19 min',
-      items: ['3x Lasagna', '1x Sopa del dia'],
-      progress: 92,
-      badgeClass: 'bg-rose-500/15 text-rose-400',
-      barClass: 'bg-rose-500',
-    },
+    { id: '#1042', origen: 'WhatsApp', minutos: '3 min', items: ['4 Pastor con todo', '1 Gringa', '2 Jamaica'], color: '#2f6e45', fondo: '#2f6e4520' },
+    { id: '#1041', origen: 'Mesa 4', minutos: '12 min', items: ['2 Suadero', '1 Quesadilla', '1 Horchata'], color: '#b7791f', fondo: '#f0b42933' },
+    { id: '#1039', origen: 'Teléfono', minutos: '21 min', items: ['Orden de costilla', '3 Campechanos'], color: '#c8381f', fondo: '#c8381f1f' },
   ];
 
-  readonly dishes = [
-    { emoji: '🍕', name: 'Pizza Napolitana', category: 'Pizzas', price: '$12,50', stock: true },
-    { emoji: '🥗', name: 'Ensalada Cesar', category: 'Entradas', price: '$7,50', stock: true },
-    { emoji: '🍝', name: 'Lasagna de la casa', category: 'Pastas', price: '$14,00', stock: true },
-    { emoji: '🍰', name: 'Tiramisu', category: 'Postres', price: '$6,00', stock: false },
+  readonly entregas = [
+    { id: '#1042', cliente: 'Mariana R.', detalle: 'Col. Roma · 2.4 km · paga con $300', estado: 'En cocina', color: '#8a5a00', fondo: '#f0b42933' },
+    { id: '#1040', cliente: 'Luis G.', detalle: 'Narvarte · 3.1 km · paga con $500', estado: 'En camino · Juan', color: '#1f5f8f', fondo: '#1f5f8f1f' },
+    { id: '#1037', cliente: 'Andrea P.', detalle: 'Del Valle · 1.2 km · pago exacto', estado: 'Entregado', color: '#2f6e45', fondo: '#2f6e4520' },
+  ];
+
+  readonly articulos = [
+    { nombre: 'Carne de pastor', hay: '3.2 kg', zona: 'Refri', bajo: true },
+    { nombre: 'Tortilla de maíz', hay: '420 pz', zona: 'Almacén', bajo: false },
+    { nombre: 'Piña', hay: '2 pz', zona: 'Verduras', bajo: true },
+    { nombre: 'Queso Oaxaca', hay: '4.5 kg', zona: 'Refri', bajo: false },
   ];
 
   readonly kpis = [
-    { label: 'Ventas hoy', value: '$4.860', delta: '+23%' },
-    { label: 'Ticket prom.', value: '$28,4', delta: '+6%' },
-    { label: 'Pedidos', value: '171', delta: '+18%' },
+    { label: 'Ventas', value: '$18,420', nota: '↑ 12% vs. semana pasada' },
+    { label: 'Utilidad', value: '$11,260', nota: 'margen 61%' },
+    { label: 'Ticket', value: '$186', nota: '99 órdenes' },
   ];
 
-  readonly chart = [22, 34, 30, 48, 41, 62, 78, 95, 88, 70, 52, 30];
+  readonly canales = [
+    { nombre: 'Salón', pct: 46, color: 'var(--aguacate)' },
+    { nombre: 'Domicilio', pct: 38, color: 'var(--chile)' },
+    { nombre: 'Para llevar · teléfono', pct: 16, color: 'var(--maiz)' },
+  ];
 
   select(id: ModuleId): void {
     this.active.set(id);
@@ -335,7 +234,6 @@ export class LandingModulesComponent {
   onTabKeydown(event: KeyboardEvent): void {
     const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
     if (offset === 0) return;
-
     event.preventDefault();
     const index = this.tabs.findIndex((tab) => tab.id === this.active());
     const next = this.tabs[(index + offset + this.tabs.length) % this.tabs.length];

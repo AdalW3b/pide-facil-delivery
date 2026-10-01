@@ -184,3 +184,49 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   Landing pública · tema "fonda"
+   Papel de comanda, tinta, rojo chile, verde aguacate y maíz.
+   Todo cuelga de .lp para no tocar el panel (que sigue oscuro).
+   ============================================================ */
+.lp {
+  --papel: #fbf5ea;
+  --papel-2: #f4ead8;
+  --tinta: #24190f;
+  --tinta-2: #5b4a3a;
+  --linea: #e3d5bd;
+  --chile: #c8381f;
+  --chile-osc: #9f2a14;
+  --aguacate: #2f6e45;
+  --maiz: #f0b429;
+  --wa: #1f8f52;
+  background-color: var(--papel);
+  color: var(--tinta);
+  color-scheme: light;
+  font-family: var(--font-sans);
+}
+.lp :where(a, button, [tabindex]):focus-visible {
+  outline-color: var(--chile);
+}
+.lp-display {
+  font-family: "Bricolage Grotesque", var(--font-display);
+  letter-spacing: -0.025em;
+  font-optical-sizing: auto;
+}
+.lp-mono {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+/* Ticket de comanda: papel con orilla dentada abajo */
+.lp-ticket {
+  background: #fffdf8;
+  box-shadow: 0 1px 0 rgba(36, 25, 15, 0.06), 0 18px 40px -18px rgba(36, 25, 15, 0.35);
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  padding-bottom: 14px;
+}
+/* Línea punteada de ticket */
+.lp-corte {
+  border-top: 1.5px dashed var(--linea);
+}
