@@ -43,6 +43,7 @@ public class OperacionesInventarioService {
     private final MovimientoInventarioRepository movimientoRepository;
     private final CompraRepository compraRepository;
     private final SecurityValidationService securityValidationService;
+    private final ZonaInventarioRepository zonaRepository;
 
     // ------------------------------------------------------------------
     // Existencias: ingredientes y productos terminados en una sola lista
@@ -63,7 +64,8 @@ public class OperacionesInventarioService {
         for (Ingredient i : ingredientRepository.findByRestaurantId(restaurantId)) {
             lista.add(new Articulo("INGREDIENTE", i.getId(), i.getName(), i.getUnitOfMeasure(),
                     stockIng.getOrDefault(i.getId(), BigDecimal.ZERO), i.getMinimo(), Costos.deIngrediente(i),
-                    i.getZona(), !Boolean.FALSE.equals(i.getActive()), usos.getOrDefault(i.getId(), 0),
+                    i.getZona() != null ? i.getZona().getId() : null, i.getZona() != null ? i.getZona().getNombre() : null,
+                    !Boolean.FALSE.equals(i.getActive()), usos.getOrDefault(i.getId(), 0),
                     Boolean.TRUE.equals(i.getEsPreparado())));
         }
         for (Product p : productRepository.findByCategoryRestaurantId(restaurantId)) {
@@ -71,7 +73,8 @@ public class OperacionesInventarioService {
             lista.add(new Articulo("PRODUCTO", p.getId(), p.getName(), "pieza",
                     BigDecimal.valueOf(stockProd.getOrDefault(p.getId(), 0)),
                     p.getMinimo() != null ? BigDecimal.valueOf(p.getMinimo()) : null, p.getCostoPromedio(),
-                    p.getZona(), !Boolean.FALSE.equals(p.getActive()), 0, false));
+                    p.getZona() != null ? p.getZona().getId() : null, p.getZona() != null ? p.getZona().getNombre() : null,
+                    !Boolean.FALSE.equals(p.getActive()), 0, false));
         }
         lista.sort(Comparator.comparing(Articulo::nombre, String.CASE_INSENSITIVE_ORDER));
         return lista;
@@ -81,7 +84,7 @@ public class OperacionesInventarioService {
     @Transactional
     public void actualizar(UUID branchId, String tipo, UUID id, ActualizarArticulo datos) {
         UUID restaurantId = sucursal(branchId).getRestaurant().getId();
-        String zona = datos.zona() == null || datos.zona().isBlank() ? null : datos.zona().trim();
+        ZonaInventario zona = datos.zonaId() == null ? null : zona(datos.zonaId(), restaurantId);
         if ("PRODUCTO".equals(tipo)) {
             Product p = producto(id, restaurantId);
             if (datos.minimo() != null && datos.minimo().stripTrailingZeros().scale() > 0) {
@@ -98,6 +101,58 @@ public class OperacionesInventarioService {
         i.setZona(zona);
         i.setCostoPromedio(datos.costo() == null || datos.costo().signum() == 0 ? null : datos.costo());
         ingredientRepository.save(i);
+    }
+
+    // ------------------------------------------------------------------
+    // Zonas dadas de alta
+    // ------------------------------------------------------------------
+
+    @Transactional(readOnly = true)
+    public List<Zona> zonas(UUID branchId) {
+        UUID restaurantId = sucursal(branchId).getRestaurant().getId();
+        return zonaRepository.findByRestaurantIdOrderByOrdenAscNombreAsc(restaurantId).stream()
+                .map(z -> new Zona(z.getId(), z.getNombre(), z.getOrden(), zonaRepository.articulosEn(z.getId())))
+                .toList();
+    }
+
+    @Transactional
+    public Zona crearZona(UUID branchId, NuevaZona datos) {
+        UUID restaurantId = sucursal(branchId).getRestaurant().getId();
+        String nombre = datos.nombre().trim();
+        if (zonaRepository.existsByRestaurantIdAndNombreIgnoreCase(restaurantId, nombre)) {
+            throw new IllegalArgumentException("Ya existe la zona " + nombre + ".");
+        }
+        int orden = datos.orden() != null ? datos.orden()
+                : zonaRepository.findByRestaurantIdOrderByOrdenAscNombreAsc(restaurantId).size();
+        ZonaInventario z = zonaRepository.save(ZonaInventario.builder().restaurantId(restaurantId).nombre(nombre).orden(orden).build());
+        return new Zona(z.getId(), z.getNombre(), z.getOrden(), 0);
+    }
+
+    @Transactional
+    public Zona renombrarZona(UUID branchId, UUID zonaId, NuevaZona datos) {
+        UUID restaurantId = sucursal(branchId).getRestaurant().getId();
+        ZonaInventario z = zona(zonaId, restaurantId);
+        String nombre = datos.nombre().trim();
+        if (!z.getNombre().equalsIgnoreCase(nombre) && zonaRepository.existsByRestaurantIdAndNombreIgnoreCase(restaurantId, nombre)) {
+            throw new IllegalArgumentException("Ya existe la zona " + nombre + ".");
+        }
+        z.setNombre(nombre);
+        if (datos.orden() != null) z.setOrden(datos.orden());
+        zonaRepository.save(z);
+        return new Zona(z.getId(), z.getNombre(), z.getOrden(), zonaRepository.articulosEn(z.getId()));
+    }
+
+    /** Borra la zona; sus articulos quedan sin zona. */
+    @Transactional
+    public void borrarZona(UUID branchId, UUID zonaId) {
+        UUID restaurantId = sucursal(branchId).getRestaurant().getId();
+        zonaRepository.delete(zona(zonaId, restaurantId));
+    }
+
+    private ZonaInventario zona(UUID id, UUID restaurantId) {
+        ZonaInventario z = zonaRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Esa zona ya no existe."));
+        if (!z.getRestaurantId().equals(restaurantId)) throw new IllegalArgumentException("Esa zona no es de esta sucursal.");
+        return z;
     }
 
     // ------------------------------------------------------------------

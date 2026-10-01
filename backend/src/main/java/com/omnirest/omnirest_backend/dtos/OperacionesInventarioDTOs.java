@@ -29,6 +29,7 @@ public final class OperacionesInventarioDTOs {
             BigDecimal existencia,
             BigDecimal minimo,
             BigDecimal costo,
+            UUID zonaId,
             String zona,
             boolean activo,
             int usos,
@@ -38,8 +39,19 @@ public final class OperacionesInventarioDTOs {
     /** Minimo, zona y costo de un articulo (los demas datos se editan en el catalogo). */
     public record ActualizarArticulo(
             @DecimalMin(value = "0.0", message = "El mínimo no puede ser negativo.") BigDecimal minimo,
-            @Size(max = 40) String zona,
+            /** Una de las zonas dadas de alta; null = sin zona. */
+            UUID zonaId,
             @DecimalMin(value = "0.0", message = "El costo no puede ser negativo.") BigDecimal costo) {
+    }
+
+    /** Una zona dada de alta, con cuantos articulos tiene. */
+    public record Zona(UUID id, String nombre, Integer orden, long articulos) {
+    }
+
+    public record NuevaZona(
+            @jakarta.validation.constraints.NotBlank(message = "Escribe el nombre de la zona.")
+            @Size(max = 40, message = "Máximo 40 caracteres.") String nombre,
+            Integer orden) {
     }
 
     /** Un renglon de compra, conteo o transferencia. */

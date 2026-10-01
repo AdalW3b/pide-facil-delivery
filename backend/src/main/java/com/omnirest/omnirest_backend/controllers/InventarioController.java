@@ -90,6 +90,39 @@ public class InventarioController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/inventario/zonas")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'CATALOG_READ')")
+    public ResponseEntity<List<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Zona>> zonas(@PathVariable UUID branchId) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(operaciones.zonas(branchId));
+    }
+
+    @PostMapping("/inventario/zonas")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Zona> crearZona(
+            @PathVariable UUID branchId,
+            @Valid @RequestBody com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.NuevaZona datos) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(operaciones.crearZona(branchId, datos));
+    }
+
+    @PutMapping("/inventario/zonas/{zonaId}")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Zona> renombrarZona(
+            @PathVariable UUID branchId, @PathVariable UUID zonaId,
+            @Valid @RequestBody com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.NuevaZona datos) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(operaciones.renombrarZona(branchId, zonaId, datos));
+    }
+
+    @DeleteMapping("/inventario/zonas/{zonaId}")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<Void> borrarZona(@PathVariable UUID branchId, @PathVariable UUID zonaId) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        operaciones.borrarZona(branchId, zonaId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/inventario/compras")
     @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
     public ResponseEntity<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Lote> registrarCompra(

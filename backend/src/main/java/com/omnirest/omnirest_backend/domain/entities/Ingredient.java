@@ -44,9 +44,12 @@ public class Ingredient {
     @Column(name = "costo_promedio", precision = 12, scale = 4)
     private BigDecimal costoPromedio;
 
-    /** Donde se guarda, para contarlo por zona: "Refri", "Almacén". */
-    @Column(length = 40)
-    private String zona;
+    /** Donde se guarda, para contarlo por zona. Se elige de las zonas dadas de alta. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "zona_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private ZonaInventario zona;
 
     /** Se hace en la cocina con otros ingredientes (salsa, frijoles). */
     @Column(name = "es_preparado", nullable = false)

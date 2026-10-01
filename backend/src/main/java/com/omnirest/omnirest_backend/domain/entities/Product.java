@@ -83,6 +83,10 @@ public class Product {
     /** Productos terminados: por debajo de esto, "queda poco". */
     private Integer minimo;
 
-    @Column(length = 40)
-    private String zona;
+    /** Donde se guarda, para contarlo por zona. Se elige de las zonas dadas de alta. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "zona_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private ZonaInventario zona;
 }

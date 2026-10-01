@@ -22,10 +22,19 @@ interface Articulo {
   existencia: number;
   minimo: number | null;
   costo: number | null;
+  zonaId: string | null;
   zona: string | null;
   activo: boolean;
   usos: number;
   esPreparado: boolean;
+}
+
+/** Una zona dada de alta: "Refri", "Almacén". */
+interface Zona {
+  id: string;
+  nombre: string;
+  orden: number;
+  articulos: number;
 }
 
 interface Renglon {
@@ -138,8 +147,11 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
               <select [value]="zonaFiltro()" (change)="zonaFiltro.set($any($event.target).value)" aria-label="Zona"
                 class="bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-sm text-white cursor-pointer [color-scheme:dark]">
                 <option value="">Todas las zonas</option>
-                @for (z of zonas(); track z) { <option [value]="z">{{ z }}</option> }
+                @for (z of zonas(); track z.id) { <option [value]="z.id">{{ z.nombre }}</option> }
               </select>
+              @if (puedeMover()) {
+                <button type="button" (click)="administrandoZonas.set(true)" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 cursor-pointer">Administrar zonas</button>
+              }
               <div class="inline-flex p-1 bg-slate-900 border border-slate-800 rounded-lg" role="group" aria-label="Estado">
                 @for (f of filtros; track f.id) {
                   <button type="button" (click)="filtro.set(f.id)" [attr.aria-pressed]="filtro() === f.id"
@@ -265,7 +277,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
               <select [value]="zonaConteo()" (change)="zonaConteo.set($any($event.target).value)" aria-label="Zona a contar"
                 class="bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-sm text-white cursor-pointer [color-scheme:dark]">
                 <option value="">Todas las zonas</option>
-                @for (z of zonas(); track z) { <option [value]="z">{{ z }}</option> }
+                @for (z of zonas(); track z.id) { <option [value]="z.id">{{ z.nombre }}</option> }
                 <option value="__sin">Sin zona</option>
               </select>
               <input [ngModel]="notaConteo()" (ngModelChange)="notaConteo.set($event)" maxlength="300" placeholder="Nota (opcional)" aria-label="Nota del conteo"
@@ -504,6 +516,41 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
         <app-historial-inventario [branchId]="branchId()" [objetivo]="o" (cerrar)="historialDe.set(null)" />
       }
 
+      <!-- Zonas dadas de alta -->
+      @if (administrandoZonas()) {
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="zonas-titulo">
+          <div (click)="administrandoZonas.set(false)" class="absolute inset-0 bg-slate-950/70"></div>
+          <div class="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 id="zonas-titulo" class="text-base font-bold text-white">Zonas del inventario</h3>
+              <p class="text-xs text-slate-400 mt-0.5">Los lugares donde guardas la mercancía. Se dan de alta una vez y luego se eligen en cada artículo.</p>
+            </div>
+            <ul class="space-y-2">
+              @for (z of zonas(); track z.id) {
+                <li class="flex items-center gap-2">
+                  <input [value]="z.nombre" #nombreZona maxlength="40" [attr.aria-label]="'Nombre de ' + z.nombre"
+                    (keydown.enter)="renombrarZona(z, nombreZona.value)" (blur)="renombrarZona(z, nombreZona.value)"
+                    class="flex-1 ${INPUT}" />
+                  <span class="text-[11px] text-slate-500 w-20 text-right">{{ z.articulos }} {{ z.articulos === 1 ? 'artículo' : 'artículos' }}</span>
+                  <button type="button" (click)="borrarZona(z)" [attr.aria-label]="'Borrar ' + z.nombre" class="text-slate-500 hover:text-rose-400 cursor-pointer px-1">✕</button>
+                </li>
+              } @empty {
+                <li class="text-xs text-slate-500">Todavía no hay zonas.</li>
+              }
+            </ul>
+            <div class="flex gap-2">
+              <input [ngModel]="zonaNueva()" (ngModelChange)="zonaNueva.set($event)" (keydown.enter)="crearZona()" maxlength="40"
+                placeholder="Nueva zona (ej. Refri, Almacén, Barra)" aria-label="Nueva zona" class="flex-1 ${INPUT}" />
+              <button type="button" (click)="crearZona()" [disabled]="!zonaNueva().trim()"
+                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-40">Agregar</button>
+            </div>
+            <div class="flex justify-end">
+              <button (click)="administrandoZonas.set(false)" class="text-xs text-slate-400 hover:text-white cursor-pointer">Listo</button>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Editar mínimo, zona y costo -->
       @if (editando(); as e) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="ed-titulo">
@@ -516,8 +563,13 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
             </div>
             <div>
               <label for="ed-zona" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Zona</label>
-              <input id="ed-zona" list="zonas-conocidas" maxlength="40" [ngModel]="e.zona" (ngModelChange)="e.zona = $event" placeholder="Ej. Refri, Almacén, Barra" class="${INPUT}" />
-              <datalist id="zonas-conocidas">@for (z of zonas(); track z) { <option [value]="z"></option> }</datalist>
+              <select id="ed-zona" [ngModel]="e.zonaId ?? ''" (ngModelChange)="e.zonaId = $event || null" class="${INPUT} [color-scheme:dark]">
+                <option value="">Sin zona</option>
+                @for (z of zonas(); track z.id) { <option [value]="z.id">{{ z.nombre }}</option> }
+              </select>
+              <button type="button" (click)="administrandoZonas.set(true)" class="mt-1 text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer">
+                {{ zonas().length ? 'Administrar zonas' : 'Todavía no hay zonas: dalas de alta' }}
+              </button>
             </div>
             <div>
               <label for="ed-costo" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Costo por {{ unidadCorta(e) }} ($)</label>
@@ -561,12 +613,15 @@ export class InventarioComponent {
   readonly editando = signal<Articulo | null>(null);
 
   readonly activos = computed(() => this.articulos().filter((a) => a.activo));
-  readonly zonas = computed(() => [...new Set(this.articulos().map((a) => a.zona).filter((z): z is string => !!z))].sort());
+  /** Las zonas dadas de alta en el restaurante. */
+  readonly zonas = signal<Zona[]>([]);
+  readonly administrandoZonas = signal(false);
+  readonly zonaNueva = signal('');
   readonly visibles = computed(() => {
     const q = this.busqueda().trim().toLowerCase();
     return this.articulos().filter((a) =>
       (!q || a.nombre.toLowerCase().includes(q)) &&
-      (!this.zonaFiltro() || a.zona === this.zonaFiltro()) &&
+      (!this.zonaFiltro() || a.zonaId === this.zonaFiltro()) &&
       this.cumple(a, this.filtro()));
   });
 
@@ -584,7 +639,7 @@ export class InventarioComponent {
   readonly contados = computed(() => Object.values(this.contado()).filter((v) => v !== null && `${v}` !== '').length);
   readonly paraContar = computed(() => this.activos().filter((a) => {
     const z = this.zonaConteo();
-    return !z || (z === '__sin' ? !a.zona : a.zona === z);
+    return !z || (z === '__sin' ? !a.zonaId : a.zonaId === z);
   }));
 
   // Preparaciones
@@ -624,7 +679,57 @@ export class InventarioComponent {
 
   // ------------------------------------------------------------------ existencias
 
+  cargarZonas(): void {
+    this.http.get<Zona[]>(this.api('zonas')).subscribe({ next: (z) => this.zonas.set(z) });
+  }
+
+  crearZona(): void {
+    const nombre = this.zonaNueva().trim();
+    if (!nombre) return;
+    this.http.post<Zona>(this.api('zonas'), { nombre }).subscribe({
+      next: () => {
+        this.zonaNueva.set('');
+        this.cargarZonas();
+      },
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo agregar la zona.'),
+    });
+  }
+
+  renombrarZona(z: Zona, nombre: string): void {
+    const nuevo = nombre.trim();
+    if (!nuevo || nuevo === z.nombre) return;
+    this.http.put<Zona>(this.api(`zonas/${z.id}`), { nombre: nuevo, orden: z.orden }).subscribe({
+      next: () => {
+        this.avisos.exito(`La zona ahora se llama ${nuevo}.`);
+        this.cargarZonas();
+        this.cargarExistencias();
+      },
+      error: (err) => {
+        this.avisos.error(err.error?.error || 'No se pudo cambiar el nombre.');
+        this.cargarZonas();
+      },
+    });
+  }
+
+  async borrarZona(z: Zona): Promise<void> {
+    const ok = await this.avisos.confirmar({
+      titulo: `¿Borrar la zona ${z.nombre}?`,
+      mensaje: z.articulos ? `Sus ${z.articulos} artículos quedarán sin zona.` : 'No tiene artículos.',
+      confirmar: 'Borrar zona',
+      peligro: true,
+    });
+    if (!ok) return;
+    this.http.delete(this.api(`zonas/${z.id}`)).subscribe({
+      next: () => {
+        this.cargarZonas();
+        this.cargarExistencias();
+      },
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo borrar.'),
+    });
+  }
+
   cargarExistencias(): void {
+    this.cargarZonas();
     this.http.get<Articulo[]>(this.api('existencias')).subscribe({
       next: (lista) => this.articulos.set(lista),
       error: (err) => this.avisos.error(err.error?.error || 'No se pudo cargar el inventario.'),
@@ -688,7 +793,7 @@ export class InventarioComponent {
     this.guardando.set(true);
     this.http.put(this.api(`articulos/${e.tipo}/${e.id}`), {
       minimo: e.minimo === null || `${e.minimo}` === '' ? null : Number(e.minimo),
-      zona: e.zona?.trim() || null,
+      zonaId: e.zonaId || null,
       costo: e.costo === null || `${e.costo}` === '' ? null : Number(e.costo),
     }).subscribe({
       next: () => {
