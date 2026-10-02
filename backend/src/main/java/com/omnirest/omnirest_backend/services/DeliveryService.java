@@ -526,6 +526,13 @@ public class DeliveryService {
             }
         }
 
+        // Un pedido de plataforma llega sin descontar inventario: se descuenta al
+        // aceptarlo. Si algo se acabo, aqui se frena y el mostrador lo rechaza.
+        if (actual == DeliveryStatus.NUEVO && nuevo != DeliveryStatus.CANCELADO
+                && Boolean.TRUE.equals(order.getDescontarAlAceptar())) {
+            descontarAlAceptar(order, branchId);
+        }
+
         order.setDeliveryStatus(nuevo);
 
         switch (nuevo) {
@@ -548,7 +555,9 @@ public class DeliveryService {
         // Empacado: si nadie lo ha tomado se ofrece en el grupo; si ya tiene
         // dueno se le avisa a el directo, que es quien esta esperando. Sin este
         // aviso el repartidor no tiene como enterarse mas que preguntando.
-        if (nuevo == DeliveryStatus.LISTO && order.getOrderType() == OrderType.DOMICILIO) {
+        // Con repartidor de la plataforma no hay a quien avisar: lo recoge el suyo.
+        if (nuevo == DeliveryStatus.LISTO && order.getOrderType() == OrderType.DOMICILIO
+                && !Boolean.TRUE.equals(order.getRepartoExterno())) {
             if (order.getDriver() == null) {
                 publicarEnGrupoDeRepartidores(order, config);
             } else {
@@ -590,19 +599,40 @@ public class DeliveryService {
      * se cancela un platillo en cocina: lo que no se sirvio no se descuenta.
      */
     private void cancelarPedido(Order order) {
+        // Si nunca se acepto, nunca se desconto: no hay nada que devolver.
+        boolean seDesconto = !Boolean.TRUE.equals(order.getDescontarAlAceptar());
         for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
             if (item.getKitchenStatus() == KitchenStatus.CANCELLED) {
                 continue;
             }
-            boolean yaPreparado = item.getKitchenStatus() != KitchenStatus.PENDING;
-            inventoryService.devolverLinea(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
-            inventoryService.devolverAdicionales(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
+            if (seDesconto) {
+                boolean yaPreparado = item.getKitchenStatus() != KitchenStatus.PENDING;
+                inventoryService.devolverLinea(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
+                inventoryService.devolverAdicionales(item, order.getBranch().getId(), yaPreparado, "pedido cancelado");
+            }
             item.setKitchenStatus(KitchenStatus.CANCELLED);
             orderItemRepository.save(item);
         }
         order.setStatus(OrderStatus.CANCELLED);
         order.setClosedAt(LocalDateTime.now());
         order.setTotalAmount(BigDecimal.ZERO);
+    }
+
+    /**
+     * Descuenta el inventario de un pedido que llego sin descontar. Si algo se
+     * acabo, el error sale tal cual hacia el boton de aceptar: el pedido sigue
+     * en NUEVO y el mostrador decide si lo rechaza.
+     */
+    private void descontarAlAceptar(Order order, UUID branchId) {
+        for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
+            if (item.getKitchenStatus() == KitchenStatus.CANCELLED) {
+                continue;
+            }
+            inventoryService.venderLinea(item, branchId);
+            inventoryService.descontarAdicionales(item, branchId);
+            orderItemRepository.save(item);
+        }
+        order.setDescontarAlAceptar(false);
     }
 
     /**
@@ -681,6 +711,9 @@ public class DeliveryService {
         if (order.getDriver() != null) {
             throw new IllegalStateException(
                     "Esta entrega ya la tomó " + order.getDriver().getNombre() + ".");
+        }
+        if (Boolean.TRUE.equals(order.getRepartoExterno())) {
+            throw new IllegalStateException("Este pedido lo recoge un repartidor de la plataforma.");
         }
 
         BranchDeliverySettings config = deliverySettingsRepository.findById(branchId).orElse(null);
@@ -855,7 +888,7 @@ public class DeliveryService {
                 KitchenSummary.resumir(vivos),
                 order.getCreatedAt(),
                 order.getMinutosEstimados(),
-                order.getCustomer() != null ? order.getCustomer().getName() : null,
+                order.getCustomer() != null ? order.getCustomer().getName() : order.getClienteExterno(),
                 order.getCustomer() != null ? order.getCustomer().getPhoneNumber() : null,
                 order.getDireccionEntrega(),
                 order.getReferenciasEntrega(),
@@ -885,7 +918,9 @@ public class DeliveryService {
                 order.getPagoRepartidor(),
                 order.getRecogidoEn(),
                 order.getEntregadoEn(),
-                order.getOrigen());
+                order.getOrigen(),
+                order.getPedidoExterno(),
+                Boolean.TRUE.equals(order.getRepartoExterno()));
     }
 
     // ------------------------------------------------------------------
@@ -1032,7 +1067,8 @@ public class DeliveryService {
         return pagaCon.subtract(total);
     }
 
-    private String nuevoToken() {
+    /** El codigo del pedido: tambien abre el enlace del repartidor, por eso es al azar. */
+    static String nuevoToken() {
         StringBuilder sb = new StringBuilder(LARGO_TOKEN);
         for (int i = 0; i < LARGO_TOKEN; i++) {
             sb.append(ALFABETO_TOKEN.charAt(AZAR.nextInt(ALFABETO_TOKEN.length())));

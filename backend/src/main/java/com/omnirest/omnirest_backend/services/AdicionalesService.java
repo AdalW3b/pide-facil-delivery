@@ -382,6 +382,62 @@ public class AdicionalesService {
         return new EleccionBot(new Eleccion(extra, desglose), avisos);
     }
 
+    // ------------------------------------------------------------------
+    // Plataformas de reparto
+    // ------------------------------------------------------------------
+
+    /** Un adicional como lo manda otra plataforma, con el precio que cobro. */
+    public record OpcionExterna(String sku, String nombre, BigDecimal precio, int cantidad) {
+    }
+
+    /**
+     * Lo que el cliente eligio en otra plataforma, como Rappi.
+     *
+     * La plataforma ya valido minimos y maximos y ya cobro, asi que aqui no se
+     * rechaza nada: se liga cada opcion por su SKU (que es nuestro id) o por
+     * su nombre, con el precio que cobro la plataforma, y lo que no se
+     * reconoce llega a cocina como aviso.
+     */
+    public EleccionBot resolverExterno(Product producto, Collection<OpcionExterna> elegidas, List<GrupoAdicional> grupos) {
+        List<GrupoAdicional> aplicables = grupos.stream().filter(g -> g.aplicaA(producto)).toList();
+        List<String> avisos = new ArrayList<>();
+        BigDecimal extra = BigDecimal.ZERO;
+        List<OrderItemAdicional> desglose = new ArrayList<>();
+
+        for (OpcionExterna elegida : elegidas == null ? List.<OpcionExterna>of() : elegidas) {
+            GrupoAdicional grupo = null;
+            Adicional opcion = null;
+            for (GrupoAdicional g : aplicables) {
+                for (Adicional o : g.getOpciones()) {
+                    if (esLaMisma(o, elegida)) {
+                        grupo = g;
+                        opcion = o;
+                    }
+                }
+            }
+            if (opcion == null) {
+                avisos.add("Pidió \"" + elegida.nombre() + "\", que no está en los adicionales: confirmar");
+                continue;
+            }
+            int cantidad = Math.max(1, elegida.cantidad());
+            BigDecimal precio = elegida.precio() != null ? elegida.precio() : opcion.getPrecio();
+            for (int i = 0; i < cantidad; i++) {
+                OrderItemAdicional congelado = congelar(grupo, opcion);
+                congelado.setPrecio(precio);
+                desglose.add(congelado);
+            }
+            extra = extra.add(precio.multiply(BigDecimal.valueOf(cantidad)));
+        }
+        return new EleccionBot(new Eleccion(extra, desglose), avisos);
+    }
+
+    private static boolean esLaMisma(Adicional opcion, OpcionExterna elegida) {
+        if (elegida.sku() != null && elegida.sku().equalsIgnoreCase(opcion.getId().toString())) {
+            return true;
+        }
+        return elegida.nombre() != null && normalizar(opcion.getNombre()).equals(normalizar(elegida.nombre()));
+    }
+
     /**
      * Los adicionales de un platillo como texto, para el menu del bot:
      * "Tortilla (obligatorio, elige 1): Maíz, Harina +$5". Vacio si no tiene.
@@ -407,7 +463,7 @@ public class AdicionalesService {
     }
 
     /** "Maíz", "maiz " y "MAIZ" son lo mismo para quien escribe por WhatsApp. */
-    private static String normalizar(String texto) {
+    static String normalizar(String texto) {
         return Normalizer.normalize(texto.trim().toLowerCase(), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .replaceAll("\\s+", " ");

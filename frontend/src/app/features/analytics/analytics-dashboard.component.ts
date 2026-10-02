@@ -688,7 +688,7 @@ export class AnalyticsDashboardComponent implements OnInit {
   }
 
   nombreCanal(c: Canal): string {
-    const por: Record<string, string> = { WEB: 'menú en línea', TELEFONO: 'teléfono', WHATSAPP: 'WhatsApp' };
+    const por: Record<string, string> = { WEB: 'menú en línea', TELEFONO: 'teléfono', WHATSAPP: 'WhatsApp', RAPPI: 'Rappi' };
     if (c.tipo === 'SALON') return 'Salón';
     const base = c.tipo === 'PARA_LLEVAR' ? 'Para llevar' : 'Domicilio';
     return c.origen ? `${base} · ${por[c.origen] ?? c.origen.toLowerCase()}` : base;

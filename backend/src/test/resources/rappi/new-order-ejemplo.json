@@ -1,0 +1,150 @@
+{
+  "order_detail": {
+    "order_id": "392625",
+    "delivery_operation_type": "turbo",
+    "cooking_time": 10,
+    "min_cooking_time": 5,
+    "max_cooking_time": 20,
+    "created_at": "2019-04-10T11:12:57.000Z",
+    "delivery_method": "delivery",
+    "payment_method": "cc",
+    "delivery_information": {
+      "city": "Ciudad de México",
+      "complete_address": "Nombre de la calle 5050. Barrio. 12345. Ciudad De México",
+      "street_number": "5050",
+      "neighborhood": "Barrio",
+      "complement": "Portón verde",
+      "postal_code": "12345",
+      "street_name": "Nombre de la calle"
+    },
+    "billing_information": {
+      "address": "148  Davis Court",
+      "billing_type": "Bill",
+      "document_number": "32432342",
+      "document_type": "DNI",
+      "email": "client@gmail.com",
+      "name": "John Doe",
+      "phone": "43333222"
+    },
+    "totals": {
+      "total_products": 204000,
+      "total_discounts": 173685,
+      "total_order": 204180,
+      "total_to_pay": 0,
+      "discount_by_support": 0,
+      "charges": {
+        "shipping": 50,
+        "service_fee": 100
+      },
+      "other_totals": {
+        "tip": 30,
+        "total_rappi_pay": 0,
+        "total_rappi_credits": 0
+      }
+    },
+    "items": [
+      {
+        "sku": "1234",
+        "id": "2089918083",
+        "name": "Chicken and Apple Salad",
+        "type": "PRODUCT",
+        "comments": "No vinegar",
+        "price": 28900,
+        "quantity": 3,
+        "subitems": [
+          {
+            "sku": "11",
+            "id": "10005260",
+            "name": "Burrata Cheese",
+            "type": "TOPPING",
+            "price": 13500,
+            "quantity": 1
+          }
+        ]
+      },
+      {
+        "id": "2089918082",
+        "name": "Seafood Salad",
+        "comments": "",
+        "price": 34900,
+        "quantity": 2,
+        "subitems": [
+          {
+            "id": "9928277",
+            "name": "With white vinaigrette",
+            "price": 0,
+            "quantity": 1
+          },
+          {
+            "id": "10005257",
+            "name": "Ricotta Cheese",
+            "price": 3500,
+            "quantity": 1
+          }
+        ]
+      }
+    ],
+    "delivery_discount": {
+      "total_percentage_discount": 100,
+      "total_value_discount": 50
+    },
+    "discounts": [
+      {
+        "value": 7600,
+        "description": "Envío gratis",
+        "title": "Envío gratis",
+        "product_id": null,
+        "sku": null,
+        "type": "shipping",
+        "raw_value": 100,
+        "value_type": "percentage",
+        "max_value": null,
+        "includes_toppings": false,
+        "percentage_by_rappi": 100,
+        "percentage_by_partners": 0,
+        "amount_by_rappi": 7600,
+        "amount_by_partner": 0,
+        "discount_product_units": 0,
+        "discount_product_unit_value": null
+      },
+      {
+        "value": 100,
+        "description": "Disfruta de 20% de descuento en productos seleccionados.",
+        "title": "Disfruta de 20% de descuento en productos seleccionados.",
+        "product_id": 2089918082,
+        "sku": 2089918082,
+        "type": "offer_by_product",
+        "raw_value": 20,
+        "value_type": "percentage",
+        "max_value": null,
+        "includes_toppings": false,
+        "percentage_by_rappi": 0,
+        "percentage_by_partners": 100,
+        "amount_by_rappi": 0,
+        "amount_by_partner": 100,
+        "discount_product_units": 1,
+        "discount_product_unit_value": 100
+      }
+    ],
+    "vendors": [
+      {
+        "id": 100200300,
+        "type": "tuweb",
+        "vendor_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "flow_type": "ai-agent"
+      }
+    ]
+  },
+  "customer": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone_number": "3163535",
+    "document_number": "34545678",
+    "user_type": "USER_VIP"
+  },
+  "store": {
+    "internal_id": "30000011",
+    "external_id": "123445",
+    "name": "Store 1"
+  }
+}

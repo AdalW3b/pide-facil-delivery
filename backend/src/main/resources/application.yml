@@ -79,6 +79,11 @@ stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
+# Pedidos de Rappi. El secreto lo da Rappi al registrar los webhooks; vacio
+# apaga la integracion (los avisos se rechazan).
+rappi:
+  webhook-secret: ${RAPPI_WEBHOOK_SECRET:}
+
 n8n:
   webhook-url: ${N8N_WEBHOOK_URL:https://automata.bitend.ai/webhook/omnirest-whatsapp}
 

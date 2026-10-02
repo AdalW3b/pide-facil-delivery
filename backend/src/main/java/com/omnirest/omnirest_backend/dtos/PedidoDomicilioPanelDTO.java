@@ -54,6 +54,10 @@ public record PedidoDomicilioPanelDTO(
 
         LocalDateTime recogidoEn,
         LocalDateTime entregadoEn,
-        /** Por donde entro: WEB, TELEFONO, WHATSAPP. Null en pedidos viejos. */
-        String origen) {
+        /** Por donde entro: WEB, TELEFONO, WHATSAPP, RAPPI. Null en pedidos viejos. */
+        String origen,
+        /** El numero del pedido en la plataforma (Rappi). Null en los propios. */
+        String pedidoExterno,
+        /** Lo lleva el repartidor de la plataforma: no se ofrece al grupo. */
+        boolean repartoExterno) {
 }

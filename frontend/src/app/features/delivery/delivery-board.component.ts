@@ -405,6 +405,9 @@ interface Columna {
                         @if (p.origen === 'TELEFONO') {
                           <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-bold uppercase tracking-wider">Teléfono</span>
                         }
+                        @if (p.origen === 'RAPPI') {
+                          <span class="px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300 text-[11px] font-bold uppercase tracking-wider">Rappi{{ p.pedidoExterno ? ' #' + p.pedidoExterno : '' }}</span>
+                        }
                       </p>
                       <p class="text-xs text-slate-300 truncate">{{ p.clienteNombre || 'Cliente' }}</p>
                     </div>
@@ -427,8 +430,11 @@ interface Columna {
                     @if (p.referencias) {
                       <p class="text-slate-500 pl-5">{{ p.referencias }}</p>
                     }
+                    @if (p.repartoExterno) {
+                      <p class="text-orange-300/90 pl-5">Lo recoge un repartidor de Rappi.</p>
+                    }
                     @if (p.notas) {
-                      <p class="text-amber-400/90 pl-5">Nota: {{ p.notas }}</p>
+                      <p class="text-amber-400/90 pl-5 whitespace-pre-line">Nota: {{ p.notas }}</p>
                     }
                     <div class="flex items-center gap-3 pl-5 text-slate-500">
                       @if (p.distanciaKm !== null) {
@@ -760,10 +766,12 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
 
   /**
    * Se puede ofrecer en el grupo mientras el restaurante ya lo aceptó y nadie
-   * lo ha tomado. Antes de aceptarlo no hay nada que repartir.
+   * lo ha tomado. Antes de aceptarlo no hay nada que repartir, y si lo recoge
+   * el repartidor de Rappi tampoco.
    */
   sePuedePublicar(p: DeliveryOrder): boolean {
-    return p.orderType !== 'PARA_LLEVAR' && !p.repartidorNombre && p.deliveryStatus !== 'NUEVO';
+    return p.orderType !== 'PARA_LLEVAR' && !p.repartidorNombre && p.deliveryStatus !== 'NUEVO'
+      && !p.repartoExterno;
   }
 
   /** Le quita la entrega al repartidor para que la lleve otro. */

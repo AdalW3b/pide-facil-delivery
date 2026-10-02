@@ -141,9 +141,33 @@ public class Order {
     @Column(name = "corte_id")
     private UUID corteId;
 
-    /** Por donde entro: WEB, TELEFONO, WHATSAPP o SALON. Null en pedidos viejos. */
+    /** Por donde entro: WEB, TELEFONO, WHATSAPP, SALON o RAPPI. Null en pedidos viejos. */
     @Column(length = 15)
     private String origen;
+
+    /**
+     * El cliente de un pedido que llega de otra plataforma. No es nuestro
+     * cliente: no se guarda en customers ni se le escribe por WhatsApp.
+     */
+    @Column(name = "cliente_externo", length = 120)
+    private String clienteExterno;
+
+    /** El numero del pedido en la plataforma, el que se dicta al repartidor. */
+    @Column(name = "pedido_externo", length = 40)
+    private String pedidoExterno;
+
+    /**
+     * El inventario se descuenta al aceptar el pedido y no al recibirlo. Vuelve
+     * a false en cuanto se descuenta.
+     */
+    @Column(name = "descontar_al_aceptar", nullable = false)
+    @Builder.Default
+    private Boolean descontarAlAceptar = false;
+
+    /** Lo lleva el repartidor de la plataforma, no uno de la sucursal. */
+    @Column(name = "reparto_externo", nullable = false)
+    @Builder.Default
+    private Boolean repartoExterno = false;
 
     @Column(name = "token_seguimiento", length = 40)
     private String tokenSeguimiento;

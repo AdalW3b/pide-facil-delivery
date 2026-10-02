@@ -60,8 +60,12 @@ export interface DeliveryOrder {
 
   recogidoEn: string | null;
   entregadoEn: string | null;
-  /** Por dónde entró: WEB, TELEFONO, WHATSAPP. Null en pedidos viejos. */
+  /** Por dónde entró: WEB, TELEFONO, WHATSAPP, RAPPI. Null en pedidos viejos. */
   origen?: string | null;
+  /** El número del pedido en la plataforma (Rappi). Null en los propios. */
+  pedidoExterno?: string | null;
+  /** Lo recoge el repartidor de la plataforma: no se ofrece al grupo. */
+  repartoExterno?: boolean;
 }
 
 export interface CambiarEstadoEntrega {
