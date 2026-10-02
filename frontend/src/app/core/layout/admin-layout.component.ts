@@ -23,7 +23,8 @@ import {
   LucideCreditCard,
   LucideChevronDown,
   LucideX,
-  LucideBarChart3
+  LucideBarChart3,
+  LucideWallet
 } from '@lucide/angular';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
 
@@ -73,6 +74,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideChevronDown,
     LucideX,
     LucideBarChart3,
+    LucideWallet,
     NgTemplateOutlet
   ],
   template: `
@@ -82,6 +84,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('cocina') { <svg lucideChefHat class="w-5 h-5 shrink-0"></svg> }
         @case ('domicilio') { <svg lucideBike class="w-5 h-5 shrink-0"></svg> }
         @case ('historial') { <svg lucideReceipt class="w-5 h-5 shrink-0"></svg> }
+        @case ('caja') { <svg lucideWallet class="w-5 h-5 shrink-0"></svg> }
         @case ('reportes') { <svg lucideBarChart3 class="w-5 h-5 shrink-0"></svg> }
         @case ('catalogo') { <svg lucideBookOpen class="w-5 h-5 shrink-0"></svg> }
         @case ('inventario') { <svg lucideBoxes class="w-5 h-5 shrink-0"></svg> }
@@ -94,7 +97,10 @@ const NOMBRES_DE_ROL: Record<string, string> = {
       }
     </ng-template>
 
-    <div class="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
+    <!-- Fijo a la ventana y sin desplazamiento propio (overflow-clip): lo único que
+         se desplaza es <main>. Con h-screen + overflow-hidden, un foco o un scroll de
+         la ventana recorría todo el panel y dejaba una franja vacía abajo. -->
+    <div class="fixed inset-0 flex bg-slate-950 text-slate-100 font-sans overflow-clip select-none">
       <!-- Menú lateral -->
       <!-- En celular y tablet el menú es un cajón encima del contenido -->
       @if (esMovil() && menuMovil()) {
@@ -398,6 +404,7 @@ export class AdminLayoutComponent {
     {
       titulo: 'Ventas',
       items: [
+        { ruta: '/caja', nombre: 'Caja', icono: 'caja', exacta: false, visible: () => this.hasPermission('CAJA_OPERAR') },
         {
           ruta: '/sales-history', nombre: 'Historial de ventas', corto: 'Ventas', icono: 'historial', exacta: false,
           visible: () => this.hasPermission('TABLES_READ') || this.hasPermission('ORDERS_READ'),

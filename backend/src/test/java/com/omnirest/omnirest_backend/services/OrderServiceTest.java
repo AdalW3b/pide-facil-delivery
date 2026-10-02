@@ -71,6 +71,9 @@ class OrderServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventos;
 
+    @Mock
+    private com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
+
     @InjectMocks
     private OrderService orderService;
 
@@ -288,6 +291,27 @@ class OrderServiceTest {
         assertEquals(TableStatus.AVAILABLE, table.getStatus());
         assertNotNull(order.getClosedAt());
         verify(tableRepository).save(table);
+    }
+
+    @Test
+    @DisplayName("closeOrder no cierra una mesa con saldo sin cobrarla (tampoco desde el bot)")
+    void closeOrder_SinCobrar_Rechaza() {
+        OrderItem servido = OrderItem.builder()
+                .id(UUID.randomUUID())
+                .kitchenStatus(KitchenStatus.DELIVERED)
+                .unitPrice(new java.math.BigDecimal("120"))
+                .quantity(2)
+                .build();
+        order.setOrderItems(List.of(servido));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderItemRepository.findByOrderId(orderId)).thenReturn(List.of(servido));
+        when(pagoRepository.pagadoDe(orderId)).thenReturn(new java.math.BigDecimal("100"));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> orderService.closeOrder(branchId, orderId));
+        assertTrue(ex.getMessage().contains("faltan $140.00"), ex.getMessage());
+        assertEquals(OrderStatus.OPEN, order.getStatus());
+        verify(orderRepository, never()).save(any());
     }
 
     @Test

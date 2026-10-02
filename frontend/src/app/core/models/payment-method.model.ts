@@ -4,5 +4,7 @@ export interface PaymentMethod {
   active: boolean;
   branchId?: string;
   instructions?: string;
+  /** Entra al cajón y se cuenta en el arqueo. */
+  esEfectivo?: boolean;
 }
 

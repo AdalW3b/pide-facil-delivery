@@ -2,7 +2,7 @@ import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
-import { PesosPipe } from '../../shared/utils/pesos';
+import { PesosPipe, formatearPesos } from '../../shared/utils/pesos';
 import { Component, ChangeDetectionStrategy, signal, computed, inject, OnInit, OnDestroy, effect, untracked } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -16,6 +16,10 @@ import { environment } from '../../../environments/environment';
 import { Restaurant } from '../admin-core/models/admin.model';
 import { QRCodeComponent } from 'angularx-qrcode';
 import { DeliveryOrder, DeliveryStatus, ReporteRepartidor } from './models/delivery.model';
+import { CobroComponent } from '../tables/components/cobro.component';
+import { CLAVE_KIOSKO, KioskoGuardado } from '../kiosko/kiosko.component';
+import { DatePipe } from '@angular/common';
+import { Router } from '@angular/router';
 import {
   LucideBike,
   LucideMapPin,
@@ -44,7 +48,7 @@ interface Columna {
 @Component({
   selector: 'app-delivery-board',
   standalone: true,
-  imports: [TituloPaginaComponent, PesosPipe, EstadoEnVivoComponent, PedidoTelefonicoComponent, CuadreCajaComponent, 
+  imports: [TituloPaginaComponent, PesosPipe, EstadoEnVivoComponent, PedidoTelefonicoComponent, CuadreCajaComponent, CobroComponent, DatePipe, 
     LucideBike,
     LucideMapPin,
     LucidePhone,
@@ -181,6 +185,32 @@ interface Columna {
                   </div>
                 }
               </div>
+
+              <!-- Kiosko: esta misma tablet se vuelve el kiosko de la sucursal -->
+              @if (puedeActivarKiosko()) {
+                <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="text-xs font-bold text-slate-200">Kiosko en la sucursal</p>
+                      <p class="mt-0.5 text-[11px] text-slate-400">Una tablet donde el cliente pide solo (comer aquí o para llevar) y paga en caja con su turno. Ábrelo en la tablet que vas a usar.</p>
+                    </div>
+                    <button (click)="activarKiosko()" [disabled]="activandoKiosko()"
+                      class="shrink-0 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer disabled:opacity-50">
+                      {{ activandoKiosko() ? 'Activando...' : 'Activar este dispositivo como kiosko' }}
+                    </button>
+                  </div>
+                  @if (kioscos().length) {
+                    <ul class="text-[11px] text-slate-300 divide-y divide-slate-800">
+                      @for (k of kioscos(); track k.id) {
+                        <li class="flex items-center justify-between gap-2 py-1.5">
+                          <span>{{ k.nombre }} <span class="text-slate-500">· {{ k.ultimoUso ? 'último pedido ' + (k.ultimoUso | date: 'dd/MM HH:mm') : 'sin pedidos' }}</span></span>
+                          <button (click)="apagarKiosko(k)" class="text-rose-400 hover:text-rose-300 font-bold cursor-pointer">Apagar</button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </div>
+              }
 
               @if (esEnlaceLocal()) {
                 <p class="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200" role="note">
@@ -405,6 +435,15 @@ interface Columna {
                         @if (p.origen === 'TELEFONO') {
                           <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-bold uppercase tracking-wider">Teléfono</span>
                         }
+                        @if (p.turno) {
+                          <span class="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200 text-[11px] font-black tracking-wider">Turno {{ p.turno }}</span>
+                        }
+                        @if (p.consumo === 'AQUI') {
+                          <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">Comer aquí</span>
+                        }
+                        @if (p.origen === 'KIOSKO') {
+                          <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-bold uppercase tracking-wider">Kiosko</span>
+                        }
                         @if (p.origen === 'RAPPI') {
                           <span class="px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300 text-[11px] font-bold uppercase tracking-wider">Rappi{{ p.pedidoExterno ? ' #' + p.pedidoExterno : '' }}</span>
                         }
@@ -491,6 +530,12 @@ interface Columna {
                     <div class="flex justify-between font-bold text-white">
                       <span>Total</span><span class="tabular-nums">{{ p.total | pesos }}</span>
                     </div>
+                    @if ((p.porCobrar ?? 0) > 0) {
+                      <p class="flex justify-between font-bold text-amber-300 pt-1">
+                        <span>{{ p.origen === 'KIOSKO' && p.deliveryStatus === 'NUEVO' ? 'Por cobrar (luego entra a cocina)' : 'Por cobrar en caja' }}</span>
+                        <span class="tabular-nums">{{ p.porCobrar! | pesos }}</span>
+                      </p>
+                    }
                     @if (p.cambio !== null) {
                       <p class="flex items-center gap-1.5 text-emerald-400 font-semibold pt-1">
                         <svg lucideBanknote class="w-3.5 h-3.5 shrink-0"></svg>
@@ -527,6 +572,15 @@ interface Columna {
 
                   <!-- Acciones -->
                   <div class="flex gap-2 pt-1">
+                    @if ((p.porCobrar ?? 0) > 0) {
+                      <button
+                        (click)="cobrandoPedido.set(p)"
+                        [disabled]="enviando().has(p.orderId)"
+                        class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Cobrar {{ p.porCobrar! | pesos }}
+                      </button>
+                    }
                     @if (siguientePaso(p); as paso) {
                       <button
                         (click)="avanzar(p, paso.estado)"
@@ -565,6 +619,18 @@ interface Columna {
             </section>
           }
         </div>
+      }
+
+      @if (cobrandoPedido(); as c) {
+        <app-cobro
+          [branchId]="activeBranchId()!"
+          [orderId]="c.orderId"
+          [total]="c.porCobrar ?? 0"
+          [titulo]="'Cobrar ' + (c.turno ? 'turno ' + c.turno : c.tokenSeguimiento)"
+          [accion]="c.origen === 'KIOSKO' && c.deliveryStatus === 'NUEVO' ? 'Cobrar y mandar a cocina' : 'Cobrar'"
+          (cerrar)="cobrandoPedido.set(null)"
+          (cobrado)="alCobrarPedido($event)"
+        />
       }
     </div>
   `,
@@ -629,6 +695,83 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
   readonly mostrarQr = signal(false);
   /** Cuál liga se acaba de copiar: 'menu', 'clientes' o 'repartidores'. */
   readonly copiado = signal<string | null>(null);
+
+  // ------------------------------------------------------------------
+  // Mostrador: cobrar pedidos y kioscos
+  // ------------------------------------------------------------------
+
+  private readonly router = inject(Router);
+
+  /** El pedido de mostrador que se está cobrando. */
+  readonly cobrandoPedido = signal<DeliveryOrder | null>(null);
+  readonly kioscos = signal<{ id: string; nombre: string; ultimoUso: string | null }[]>([]);
+  readonly activandoKiosko = signal(false);
+  readonly puedeActivarKiosko = computed(() =>
+    this.authService.hasPermission('BRANCH_UPDATE') || this.authService.hasPermission('CAJA_OPERAR'));
+
+  private readonly cargarKioscos = effect(() => {
+    const branchId = this.activeBranchId();
+    if (!branchId || !untracked(() => this.puedeActivarKiosko())) return;
+    this.http.get<{ id: string; nombre: string; ultimoUso: string | null }[]>(
+      `${environment.apiUrl}/branches/${branchId}/kioscos`).subscribe({ next: (k) => this.kioscos.set(k) });
+  });
+
+  alCobrarPedido(r: { cambio: number }): void {
+    this.cobrandoPedido.set(null);
+    this.avisos.exito(r.cambio > 0 ? `Cobrado. Cambio: ${formatearPesos(r.cambio)}` : 'Cobrado.');
+    this.recargar();
+  }
+
+  /**
+   * Convierte esta tablet en el kiosko de la sucursal: el panel recibe el
+   * token, lo deja en el navegador y abre la pantalla del kiosko.
+   */
+  async activarKiosko(): Promise<void> {
+    const branchId = this.activeBranchId();
+    if (!branchId) return;
+    const ok = await this.avisos.confirmar({
+      titulo: '¿Usar este dispositivo como kiosko?',
+      mensaje: 'Esta pantalla se convierte en el kiosko de la sucursal. Para salir del kiosko, mantén presionado el nombre del restaurante 3 segundos.',
+      confirmar: 'Activar kiosko',
+    });
+    if (!ok) return;
+    this.activandoKiosko.set(true);
+    const nombre = `Kiosko ${this.kioscos().length + 1}`;
+    this.http.post<{ branchId: string; token: string; nombre: string }>(
+      `${environment.apiUrl}/branches/${branchId}/kioscos`, { nombre }).subscribe({
+      next: (k) => {
+        this.activandoKiosko.set(false);
+        const guardado: KioskoGuardado = { branchId: k.branchId, token: k.token, nombre: k.nombre };
+        try {
+          localStorage.setItem(CLAVE_KIOSKO, JSON.stringify(guardado));
+        } catch {
+          this.avisos.error('Este navegador no deja guardar datos: no puede funcionar como kiosko.');
+          return;
+        }
+        this.router.navigateByUrl('/kiosko');
+      },
+      error: (err) => {
+        this.activandoKiosko.set(false);
+        this.avisos.error(err.error?.error || 'No se pudo activar el kiosko.');
+      },
+    });
+  }
+
+  async apagarKiosko(k: { id: string; nombre: string }): Promise<void> {
+    const branchId = this.activeBranchId();
+    if (!branchId) return;
+    const ok = await this.avisos.confirmar({
+      titulo: `¿Apagar ${k.nombre}?`,
+      mensaje: 'Esa tablet deja de recibir pedidos en este momento. Para volver a usarla hay que activarla de nuevo.',
+      confirmar: 'Apagar',
+      peligro: true,
+    });
+    if (!ok) return;
+    this.http.delete(`${environment.apiUrl}/branches/${branchId}/kioscos/${k.id}`).subscribe({
+      next: () => this.kioscos.update((ks) => ks.filter((x) => x.id !== k.id)),
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo apagar el kiosko.'),
+    });
+  }
 
   readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
 
@@ -749,7 +892,8 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
   siguientePaso(p: DeliveryOrder): { estado: DeliveryStatus; texto: string } | null {
     switch (p.deliveryStatus) {
       case 'NUEVO':
-        return { estado: 'CONFIRMADO', texto: 'Aceptar' };
+        // Lo del kiosko entra a cocina al cobrarse: el botón es "Cobrar".
+        return p.origen === 'KIOSKO' ? null : { estado: 'CONFIRMADO', texto: 'Aceptar' };
       case 'CONFIRMADO':
         return { estado: 'LISTO', texto: p.orderType === 'PARA_LLEVAR' ? 'Marcar listo' : 'Marcar empacado' };
       case 'LISTO':

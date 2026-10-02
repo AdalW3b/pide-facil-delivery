@@ -100,7 +100,7 @@ public class DemoSeederService implements CommandLineRunner {
 
                 // 2. Métodos de Pago
                 paymentMethodRepository.saveAll(List.of(
-                                PaymentMethod.builder().branch(branch).name("Efectivo").active(true).build(),
+                                PaymentMethod.builder().branch(branch).name("Efectivo").active(true).esEfectivo(true).build(),
                                 PaymentMethod.builder().branch(branch).name("Tarjeta Terminal BBVA")
                                                 .instructions("Aceptar chip o contactless").active(true).build(),
                                 PaymentMethod.builder().branch(branch).name("Transferencia SPEI")

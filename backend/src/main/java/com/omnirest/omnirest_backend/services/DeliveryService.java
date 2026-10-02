@@ -78,6 +78,9 @@ public class DeliveryService {
     private final ColaWhatsapp colaWhatsapp;
     private final SimpMessagingTemplate messagingTemplate;
     private final AgotadosService agotadosService;
+    private final CajaService cajaService;
+    private final com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
+    private final Turnos turnos;
 
     /** Desde donde se sirve el sitio del cliente y del repartidor. */
     @org.springframework.beans.factory.annotation.Value("${omnirest.url-publica:http://localhost:4200}")
@@ -327,6 +330,15 @@ public class DeliveryService {
      */
     private BigDecimal armarPlatillos(Order order, List<PedidoDomicilioItemDTO> lineas, UUID restaurantId,
                                       UUID branchId, List<OrderItem> items) {
+        return armarPlatillos(order, lineas, restaurantId, branchId, items, true);
+    }
+
+    /**
+     * Con {@code descontar = false} no toca el inventario (se descuenta al
+     * aceptar el pedido), pero igual rechaza lo que se marco como agotado.
+     */
+    private BigDecimal armarPlatillos(Order order, List<PedidoDomicilioItemDTO> lineas, UUID restaurantId,
+                                      UUID branchId, List<OrderItem> items, boolean descontar) {
         List<com.omnirest.omnirest_backend.domain.entities.GrupoAdicional> grupos =
                 adicionalesService.gruposActivos(restaurantId);
 
@@ -354,10 +366,16 @@ public class DeliveryService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(linea.specialInstructions())
                     .build();
-            inventoryService.venderLinea(item, branchId);
+            if (descontar) {
+                inventoryService.venderLinea(item, branchId);
+            } else if (agotadosService.estaAgotado(branchId, product)) {
+                throw new IllegalStateException(product.getName() + " se acabó por hoy.");
+            }
             adicionalesService.aplicarALinea(item,
                     adicionalesService.resolver(product, linea.adicionales(), grupos));
-            inventoryService.descontarAdicionales(item, branchId);
+            if (descontar) {
+                inventoryService.descontarAdicionales(item, branchId);
+            }
 
             subtotal = subtotal.add(item.getUnitPrice().multiply(BigDecimal.valueOf(linea.quantity())));
             items.add(item);
@@ -470,6 +488,71 @@ public class DeliveryService {
     }
 
     // ------------------------------------------------------------------
+    // Mostrador: kiosko y paso a recoger
+    // ------------------------------------------------------------------
+
+    /**
+     * Un pedido de mostrador con su turno.
+     *
+     * Del kiosko ({@code kiosko != null}) nace por cobrar: no descuenta
+     * inventario ni entra a cocina hasta que caja lo cobra. Para pasar a
+     * recoger (desde el celular) nace como los del menu web: el mostrador lo
+     * acepta y se paga al recogerlo.
+     */
+    @Transactional
+    public com.omnirest.omnirest_backend.dtos.PedidoMostradorDTOs.Creado crearPedidoMostrador(
+            UUID branchId, com.omnirest.omnirest_backend.dtos.PedidoMostradorDTOs.Crear p,
+            com.omnirest.omnirest_backend.domain.entities.Kiosko kiosko) {
+        Branch branch = buscarSucursal(branchId);
+        UUID restaurantId = branch.getRestaurant().getId();
+        boolean delKiosko = kiosko != null;
+        // Pasar a recoger es parte del servicio para llevar, como el domicilio.
+        if (!delKiosko) {
+            planLimitService.checkDeliveryAvailable(restaurantId);
+        }
+
+        String consumo = delKiosko && "AQUI".equals(p.consumo()) ? "AQUI" : "LLEVAR";
+        String telefono = p.telefono() != null ? p.telefono().trim() : "";
+        if (!delKiosko && telefono.isEmpty()) {
+            throw new IllegalArgumentException("Escribe tu WhatsApp para avisarte cuando esté listo.");
+        }
+        Customer customer = telefono.isEmpty() ? null : buscarOCrearCliente(branch, telefono, p.nombre());
+        BranchDeliverySettings config = deliverySettingsRepository.findById(branchId).orElse(null);
+
+        Order order = orderRepository.save(Order.builder()
+                .branch(branch)
+                .table(null)
+                .customer(customer)
+                .clienteExterno(p.nombre().trim())
+                .status(OrderStatus.OPEN)
+                .orderType(OrderType.PARA_LLEVAR)
+                .deliveryStatus(DeliveryStatus.NUEVO)
+                .totalAmount(BigDecimal.ZERO)
+                .notasEntrega(p.notas() != null && !p.notas().isBlank() ? p.notas().trim() : null)
+                .envioCobrado(BigDecimal.ZERO)
+                .minutosEstimados(config != null ? config.getMinutosEstimados() : null)
+                .tokenSeguimiento(nuevoToken())
+                .turno(turnos.siguiente(branchId))
+                .consumo(consumo)
+                .origen(delKiosko ? "KIOSKO" : "WEB")
+                .descontarAlAceptar(delKiosko)
+                .build());
+
+        List<OrderItem> items = new ArrayList<>();
+        BigDecimal subtotal = armarPlatillos(order, p.items(), restaurantId, branchId, items, !delKiosko);
+        orderItemRepository.saveAll(items);
+        order.setTotalAmount(subtotal);
+        orderRepository.save(order);
+
+        publicarTablero(branchId);
+        log.info("Pedido de mostrador {} ({}, {}) en sucursal {}{}: ${}", order.getTurno(), consumo,
+                delKiosko ? "kiosko" : "para recoger", branchId,
+                delKiosko ? " desde " + kiosko.getNombre() : "", subtotal);
+        return new com.omnirest.omnirest_backend.dtos.PedidoMostradorDTOs.Creado(
+                order.getId(), order.getTurno(), order.getTokenSeguimiento(), consumo, subtotal, delKiosko);
+    }
+
+    // ------------------------------------------------------------------
     // Tablero de reparto
     // ------------------------------------------------------------------
 
@@ -526,6 +609,12 @@ public class DeliveryService {
             }
         }
 
+        // Lo del kiosko se paga antes de prepararse: no entra a cocina sin cobrarse.
+        if (actual == DeliveryStatus.NUEVO && nuevo != DeliveryStatus.CANCELADO
+                && "KIOSKO".equals(order.getOrigen()) && faltaPorCobrar(order).signum() > 0) {
+            throw new IllegalStateException("Cobra el turno " + order.getTurno() + " antes de mandarlo a cocina.");
+        }
+
         // Un pedido de plataforma llega sin descontar inventario: se descuenta al
         // aceptarlo. Si algo se acabo, aqui se frena y el mostrador lo rechaza.
         if (actual == DeliveryStatus.NUEVO && nuevo != DeliveryStatus.CANCELADO
@@ -538,6 +627,12 @@ public class DeliveryService {
         switch (nuevo) {
             case EN_CAMINO -> order.setRecogidoEn(LocalDateTime.now());
             case ENTREGADO -> {
+                // Para llevar se paga en mostrador al recogerlo: entra a la caja
+                // como efectivo. Lo de Rappi ya lo cobro Rappi; lo de domicilio
+                // llega a la caja con el corte del repartidor.
+                if (order.getOrderType() == OrderType.PARA_LLEVAR && !"RAPPI".equals(order.getOrigen())) {
+                    cajaService.cobrarEnEfectivoAlEntregar(order);
+                }
                 order.setEntregadoEn(LocalDateTime.now());
                 // Entregado y cobrado: la cuenta se cierra sola, no hay mesa que
                 // liberar ni mesero que pase a cobrar.
@@ -831,22 +926,24 @@ public class DeliveryService {
 
         final String texto;
         switch (estado) {
-            case CONFIRMADO -> texto = "✅ Confirmamos tu pedido " + order.getTokenSeguimiento() + "."
+            case CONFIRMADO -> texto = "✅ Confirmamos tu pedido " + codigoParaCliente(order) + "."
                     + (order.getMinutosEstimados() != null
                             ? " Calculamos unos " + order.getMinutosEstimados() + " minutos."
                             : "");
-            case EN_CAMINO -> texto = "🛵 Tu pedido " + order.getTokenSeguimiento() + " ya va en camino.";
+            case EN_CAMINO -> texto = "🛵 Tu pedido " + codigoParaCliente(order) + " ya va en camino.";
             // Para llevar, "listo" es justo lo que el cliente espera oir.
             case LISTO -> {
                 if (order.getOrderType() != OrderType.PARA_LLEVAR) return;
-                texto = "🛍️ Tu pedido " + order.getTokenSeguimiento() + " ya está listo. ¡Pasa por él cuando quieras!";
+                texto = "AQUI".equals(order.getConsumo())
+                        ? "🍽️ Tu turno " + codigoParaCliente(order) + " ya está listo. Pásalo a recoger al mostrador."
+                        : "🛍️ Tu pedido " + codigoParaCliente(order) + " ya está listo. ¡Pasa por él cuando quieras!";
             }
             case ENTREGADO -> {
                 // Para llevar lo recoge en persona: no hace falta avisarle.
                 if (order.getOrderType() == OrderType.PARA_LLEVAR) return;
                 texto = "📦 Tu pedido fue entregado. ¡Buen provecho!";
             }
-            case CANCELADO -> texto = "❌ Tu pedido " + order.getTokenSeguimiento() + " fue cancelado."
+            case CANCELADO -> texto = "❌ Tu pedido " + codigoParaCliente(order) + " fue cancelado."
                     + (motivo != null && !motivo.isBlank() ? " Motivo: " + motivo : "");
             // LISTO es un paso interno del mostrador: al cliente no le dice nada
             // util saber que su comida esta empacada esperando repartidor.
@@ -860,6 +957,11 @@ public class DeliveryService {
         colaWhatsapp.encolar(order.getBranch().getId(), order.getCustomer().getPhoneNumber(), texto,
                 estado == DeliveryStatus.CANCELADO ? com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.CANCELACION : com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.ESTADO_PEDIDO,
                 "estado:" + order.getId());
+    }
+
+    /** Como conoce el cliente su pedido: el turno en mostrador, el codigo en domicilio. */
+    private static String codigoParaCliente(Order order) {
+        return order.getTurno() != null ? order.getTurno() : order.getTokenSeguimiento();
     }
 
     private PedidoDomicilioPanelDTO aPanel(Order order) {
@@ -920,7 +1022,32 @@ public class DeliveryService {
                 order.getEntregadoEn(),
                 order.getOrigen(),
                 order.getPedidoExterno(),
-                Boolean.TRUE.equals(order.getRepartoExterno()));
+                Boolean.TRUE.equals(order.getRepartoExterno()),
+                order.getTurno(),
+                order.getConsumo(),
+                porCobrar(order, subtotal));
+    }
+
+    /**
+     * Lo que falta cobrar de un pedido de mostrador (kiosko o para llevar). Cero
+     * en domicilio y Rappi: esos se cobran por otro lado.
+     */
+    private BigDecimal porCobrar(Order order, BigDecimal subtotal) {
+        if (order.getOrderType() != OrderType.PARA_LLEVAR || "RAPPI".equals(order.getOrigen())
+                || (order.getDeliveryStatus() != null && order.getDeliveryStatus().esFinal())) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal pagado = pagoRepository.pagadoDe(order.getId());
+        return subtotal.subtract(pagado != null ? pagado : BigDecimal.ZERO).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal faltaPorCobrar(Order order) {
+        BigDecimal total = orderItemRepository.findByOrderId(order.getId()).stream()
+                .filter(i -> i.getKitchenStatus() != KitchenStatus.CANCELLED && i.getUnitPrice() != null)
+                .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity() != null ? i.getQuantity() : 1)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal pagado = pagoRepository.pagadoDe(order.getId());
+        return total.subtract(pagado != null ? pagado : BigDecimal.ZERO);
     }
 
     // ------------------------------------------------------------------

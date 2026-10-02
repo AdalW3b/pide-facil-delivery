@@ -122,6 +122,8 @@ interface PedidoCreado {
   total: number;
   minutosEstimados: number | null;
   cambioSugerido: number | null;
+  /** Paso a recoger: el código es el turno y no hay envío. */
+  paraRecoger?: boolean;
 }
 
 /**
@@ -155,17 +157,23 @@ interface PedidoCreado {
           <svg lucideCheckCircle class="w-16 h-16 text-emerald-600 mx-auto"></svg>
           <h1 class="text-2xl font-bold mt-4">¡Pedido recibido!</h1>
           <p class="text-stone-600 mt-2 text-sm">
-            El restaurante lo va a confirmar en un momento y te avisamos por WhatsApp.
+            @if (p.paraRecoger) {
+              Te avisamos por WhatsApp cuando esté listo. Pasa a recogerlo y págalo en caja.
+            } @else {
+              El restaurante lo va a confirmar en un momento y te avisamos por WhatsApp.
+            }
           </p>
 
           <div class="mt-8 bg-white border border-stone-200 rounded-2xl p-6 text-left space-y-3">
             <div>
-              <p class="text-[11px] uppercase tracking-wider text-stone-500 font-bold">Tu código</p>
+              <p class="text-[11px] uppercase tracking-wider text-stone-500 font-bold">{{ p.paraRecoger ? 'Tu turno' : 'Tu código' }}</p>
               <p class="text-3xl font-black tracking-widest tabular-nums">{{ p.tokenSeguimiento }}</p>
             </div>
             <div class="border-t border-stone-200 pt-3 text-sm space-y-1">
               <div class="flex justify-between"><span class="text-stone-600">Comida</span><span class="tabular-nums">{{ p.subtotal | pesos }}</span></div>
-              <div class="flex justify-between"><span class="text-stone-600">Envío</span><span class="tabular-nums">{{ p.envioCobrado | pesos }}</span></div>
+              @if (!p.paraRecoger) {
+                <div class="flex justify-between"><span class="text-stone-600">Envío</span><span class="tabular-nums">{{ p.envioCobrado | pesos }}</span></div>
+              }
               <div class="flex justify-between font-bold text-base pt-1"><span>Total</span><span class="tabular-nums">{{ p.total | pesos }}</span></div>
               @if (p.cambioSugerido !== null) {
                 <p class="text-emerald-700 text-xs pt-1">El repartidor te lleva {{ p.cambioSugerido | pesos }} de cambio.</p>
@@ -462,7 +470,22 @@ interface PedidoCreado {
             <!-- Datos de entrega: solo cuando ya hay algo en el carrito -->
             @if (totalArticulos() > 0) {
               <section class="bg-white border border-stone-200 rounded-2xl p-4 space-y-4">
-                <h2 class="font-bold text-sm">¿A dónde te lo llevamos?</h2>
+                <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cómo lo quieres">
+                  <button type="button" role="radio" [attr.aria-checked]="modo() === 'DOMICILIO'" (click)="modo.set('DOMICILIO')"
+                    class="rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer"
+                    [class]="modo() === 'DOMICILIO' ? 'border-orange-600 bg-orange-50 text-orange-800' : 'border-stone-200 text-stone-600'">
+                    🛵 A domicilio
+                  </button>
+                  <button type="button" role="radio" [attr.aria-checked]="modo() === 'RECOGER'" (click)="modo.set('RECOGER')"
+                    class="rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer"
+                    [class]="modo() === 'RECOGER' ? 'border-orange-600 bg-orange-50 text-orange-800' : 'border-stone-200 text-stone-600'">
+                    🛍️ Paso a recoger
+                  </button>
+                </div>
+                <h2 class="font-bold text-sm">{{ modo() === 'RECOGER' ? '¿A nombre de quién?' : '¿A dónde te lo llevamos?' }}</h2>
+                @if (modo() === 'RECOGER' && info()?.direccion) {
+                  <p class="text-xs text-stone-600">Lo recoges en <strong>{{ info()!.direccion }}</strong> y lo pagas en caja.</p>
+                }
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -475,9 +498,11 @@ interface PedidoCreado {
                     <input id="po-tel" type="tel" inputmode="tel" [ngModel]="telefono()" (ngModelChange)="telefono.set($event)" name="telefono" autocomplete="tel"
                       placeholder="5215512345678"
                       class="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-500" />
-                    <p class="text-[11px] text-stone-500 mt-1">Por aquí te avisamos cuando salga tu pedido.</p>
+                    <p class="text-[11px] text-stone-500 mt-1">{{ modo() === 'RECOGER' ? 'Por aquí te avisamos cuando esté listo.' : 'Por aquí te avisamos cuando salga tu pedido.' }}</p>
                   </div>
                 </div>
+
+                @if (modo() === 'DOMICILIO') {
 
                 @if (direccionesGuardadas().length > 0) {
                   <div>
@@ -581,6 +606,7 @@ interface PedidoCreado {
                     placeholder="Para llevarte cambio"
                     class="w-full sm:w-48 border border-stone-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-500" />
                 </div>
+                }
               </section>
             }
           }
@@ -938,7 +964,17 @@ export class PublicOrderComponent implements OnInit {
     return null;
   });
 
+  /** A domicilio o paso a recoger. Recoger no lleva dirección, mapa ni envío. */
+  readonly modo = signal<'DOMICILIO' | 'RECOGER'>('DOMICILIO');
+
+  /** Si la sucursal no reparte, lo que queda es pasar a recoger. */
+  private readonly sinReparto = effect(() => {
+    const i = this.info();
+    if (i && !i.entregaActiva) this.modo.set('RECOGER');
+  });
+
   readonly envio = computed(() => {
+    if (this.modo() === 'RECOGER') return null;
     const c = this.cotizacion();
     if (!c || !c.disponible || c.fueraDeCobertura) return null;
     return c.pagaCliente;
@@ -960,6 +996,9 @@ export class PublicOrderComponent implements OnInit {
     if (this.totalArticulos() === 0) return 'Agrega algo al carrito';
     if (!this.telefono().trim()) return 'Falta tu WhatsApp';
     if (this.telefono().replace(/\D/g, '').length < 10) return 'Tu WhatsApp debe tener 10 dígitos';
+    if (this.modo() === 'RECOGER') {
+      return this.nombre().trim() ? null : 'Escribe tu nombre para llamarte';
+    }
     if (!this.direccion().trim()) return 'Falta tu dirección';
     if (!this.tienePin()) return 'Marca tu ubicación en el mapa';
 
@@ -1393,6 +1432,26 @@ export class PublicOrderComponent implements OnInit {
       adicionales: l.adicionales,
     }));
 
+    if (this.modo() === 'RECOGER') {
+      this.http
+        .post<{ orderId: string; turno: string; total: number }>(
+          `${this.api}/public/branches/${this.branchId()}/recoger/orders`, {
+            nombre: this.nombre().trim(),
+            telefono: this.telefono().trim(),
+            consumo: 'LLEVAR',
+            notas: this.notas().trim() || null,
+            items,
+          })
+        .subscribe({
+          next: (r) => this.alCrear({
+            orderId: r.orderId, tokenSeguimiento: r.turno, subtotal: r.total, envioCobrado: 0, total: r.total,
+            minutosEstimados: this.info()?.minutosEstimados ?? null, cambioSugerido: null, paraRecoger: true,
+          }),
+          error: (err) => this.alFallar(err),
+        });
+      return;
+    }
+
     this.http
       .post<PedidoCreado>(`${this.api}/public/branches/${this.branchId()}/delivery/orders`, {
         phoneNumber: this.telefono().trim(),
@@ -1407,25 +1466,29 @@ export class PublicOrderComponent implements OnInit {
         items,
       })
       .subscribe({
-        next: (p) => {
-          this.enviando.set(false);
-          this.pedidoCreado.set(p);
-          // Ya se pidio: si recarga, no debe volver a ver el mismo carrito.
-          try {
-            localStorage.removeItem(`pidefacil.carrito.${this.branchId()}`);
-          } catch {
-            /* sin almacenamiento no hay nada que borrar */
-          }
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0 });
-          }
-        },
-        error: (err) => {
-          this.enviando.set(false);
-          console.error('Error al crear el pedido', err);
-          this.errorEnvio.set(err.error?.error || 'No pudimos enviar tu pedido. Intenta de nuevo.');
-        },
+        next: (p) => this.alCrear(p),
+        error: (err) => this.alFallar(err),
       });
+  }
+
+  private alCrear(p: PedidoCreado): void {
+    this.enviando.set(false);
+    this.pedidoCreado.set(p);
+    // Ya se pidio: si recarga, no debe volver a ver el mismo carrito.
+    try {
+      localStorage.removeItem(`pidefacil.carrito.${this.branchId()}`);
+    } catch {
+      /* sin almacenamiento no hay nada que borrar */
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0 });
+    }
+  }
+
+  private alFallar(err: { error?: { error?: string } }): void {
+    this.enviando.set(false);
+    console.error('Error al crear el pedido', err);
+    this.errorEnvio.set(err.error?.error || 'No pudimos enviar tu pedido. Intenta de nuevo.');
   }
 
   empezarDeNuevo(): void {

@@ -66,6 +66,12 @@ export interface DeliveryOrder {
   pedidoExterno?: string | null;
   /** Lo recoge el repartidor de la plataforma: no se ofrece al grupo. */
   repartoExterno?: boolean;
+  /** Turno de mostrador (A-023): kiosko y paso a recoger. */
+  turno?: string | null;
+  /** AQUI o LLEVAR en pedidos de mostrador. */
+  consumo?: 'AQUI' | 'LLEVAR' | null;
+  /** Lo que falta cobrar en caja (mostrador). 0 si ya se pagó o no aplica. */
+  porCobrar?: number;
 }
 
 export interface CambiarEstadoEntrega {

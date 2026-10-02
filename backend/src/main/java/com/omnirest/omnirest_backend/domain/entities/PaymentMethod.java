@@ -32,4 +32,9 @@ public class PaymentMethod {
     @Builder.Default
     @Column(nullable = false)
     private Boolean active = true;
+
+    /** Lo que se cobra con este metodo entra al cajon y se cuenta en el arqueo. */
+    @Builder.Default
+    @Column(name = "es_efectivo", nullable = false)
+    private Boolean esEfectivo = false;
 }

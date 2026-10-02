@@ -30,6 +30,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/delivery/public-order.component').then((m) => m.PublicOrderComponent),
   },
+  // Kiosko de la sucursal: una tablet donde el cliente pide solo. Pública: la
+  // tablet se identifica con el token que le deja el panel al activarla.
+  {
+    path: 'kiosko',
+    loadComponent: () => import('./features/kiosko/kiosko.component').then((m) => m.KioskoComponent),
+  },
   // Pantalla del repartidor: se abre desde el enlace que se publica en el grupo
   // de WhatsApp. Sin cuenta; el token del pedido es lo que autoriza.
   {
@@ -77,6 +83,13 @@ export const routes: Routes = [
         component: SalesHistoryComponent,
         canActivate: [permissionGuard],
         data: { requiredPermission: 'TABLES_READ' },
+      },
+      {
+        // Abrir, cerrar y arquear la caja. Cobrar una mesa se hace desde Mesas.
+        path: 'caja',
+        loadComponent: () => import('./features/caja/caja.component').then((m) => m.CajaComponent),
+        canActivate: [permissionGuard],
+        data: { requiredPermission: 'CAJA_OPERAR' },
       },
       {
         path: 'kitchen',

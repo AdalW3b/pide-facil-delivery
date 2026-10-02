@@ -7,5 +7,7 @@ public record PaymentMethodDTO(
     UUID id,
     @NotBlank String name,
     Boolean active,
-    String instructions
+    String instructions,
+    /** Entra al cajon y se cuenta en el arqueo. Null al crear: se deduce del nombre. */
+    Boolean esEfectivo
 ) {}

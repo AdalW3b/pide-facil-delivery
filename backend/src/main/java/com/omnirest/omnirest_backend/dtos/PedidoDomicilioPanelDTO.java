@@ -59,5 +59,11 @@ public record PedidoDomicilioPanelDTO(
         /** El numero del pedido en la plataforma (Rappi). Null en los propios. */
         String pedidoExterno,
         /** Lo lleva el repartidor de la plataforma: no se ofrece al grupo. */
-        boolean repartoExterno) {
+        boolean repartoExterno,
+        /** Turno de mostrador (A-023). Null en domicilio. */
+        String turno,
+        /** AQUI o LLEVAR en pedidos de mostrador. */
+        String consumo,
+        /** Lo que falta cobrar en caja (pedidos de mostrador); cero si ya se pago o no aplica. */
+        BigDecimal porCobrar) {
 }

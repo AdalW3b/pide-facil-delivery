@@ -13,4 +13,9 @@ public interface CorteRepartidorRepository extends JpaRepository<CorteRepartidor
 
     @EntityGraph(attributePaths = "driver")
     List<CorteRepartidor> findTop50ByBranchIdOrderByCreadoEnDesc(UUID branchId);
+
+    @EntityGraph(attributePaths = "driver")
+    List<CorteRepartidor> findByTurnoIdOrderByCreadoEnAsc(UUID turnoId);
+
+    long countByTurnoId(UUID turnoId);
 }

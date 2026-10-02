@@ -44,6 +44,7 @@ public class OrderService {
     private final ColaWhatsapp colaWhatsapp;
     private final PaymentMethodService paymentMethodService;
     private final org.springframework.context.ApplicationEventPublisher eventos;
+    private final com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
 
     public OrderResponseDTO openOrder(UUID branchId, Integer tableNumber) {
         return openOrder(branchId, tableNumber, null);
@@ -333,6 +334,18 @@ public class OrderService {
             }
         }
 
+        // Una cuenta con saldo no se cierra sin cobrarla: lo que no pasa por la
+        // caja no aparece en el arqueo. Aplica tambien al bot, que ya no puede
+        // cerrar una mesa sin que alguien la cobre.
+        if (order.getOrderType() == null || order.getOrderType() == OrderType.SALON) {
+            BigDecimal pagado = pagoRepository.pagadoDe(orderId);
+            BigDecimal falta = totalVivo(orderId).subtract(pagado != null ? pagado : BigDecimal.ZERO);
+            if (falta.signum() > 0) {
+                throw new IllegalStateException("Cobra la cuenta antes de cerrar la mesa: faltan $"
+                        + falta.setScale(2, java.math.RoundingMode.HALF_UP) + ".");
+            }
+        }
+
         Table table = order.getTable();
         if (table != null && table.getAssignedUsers() != null && !table.getAssignedUsers().isEmpty()) {
             String waiterNames = table.getAssignedUsers().stream()
@@ -371,6 +384,16 @@ public class OrderService {
         messagingTemplate.convertAndSend("/topic/branches/" + branchId + "/kitchen",
                 getKitchenTickets(branchId));
         return mapToResponse(savedOrder);
+    }
+
+    /** Lo que suma la cuenta con los platillos vivos (sin cancelados), igual que el ticket. */
+    private BigDecimal totalVivo(UUID orderId) {
+        return orderItemRepository.findByOrderId(orderId).stream()
+                .filter(item -> item.getKitchenStatus() != KitchenStatus.CANCELLED)
+                .filter(item -> item.getUnitPrice() != null)
+                .map(item -> item.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(item.getQuantity() != null ? item.getQuantity() : 1)))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     public OrderResponseDTO closeTable(UUID branchId, Integer tableNumber) {
@@ -686,6 +709,11 @@ public class OrderService {
     private String etiquetaDeCocina(Order order, Integer mesa) {
         if (order.getOrderType() == null || order.getOrderType() == OrderType.SALON) {
             return mesa != null ? "Mesa " + mesa : "Sin mesa";
+        }
+        // Mostrador (kiosko o para recoger): se llama por turno y cocina necesita
+        // saber si emplata o empaca.
+        if (order.getTurno() != null) {
+            return "Turno " + order.getTurno() + ("AQUI".equals(order.getConsumo()) ? " · Aquí" : " · Para llevar");
         }
         String base = order.getOrderType() == OrderType.DOMICILIO ? "Domicilio" : "Para llevar";
         return order.getTokenSeguimiento() != null ? base + " " + order.getTokenSeguimiento() : base;

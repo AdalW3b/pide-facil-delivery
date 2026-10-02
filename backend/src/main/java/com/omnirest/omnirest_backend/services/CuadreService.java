@@ -35,6 +35,7 @@ public class CuadreService {
     private final CorteRepartidorRepository corteRepository;
     private final DriverRepository driverRepository;
     private final BranchRepository branchRepository;
+    private final CajaService cajaService;
 
     @Transactional(readOnly = true)
     public List<CuadreDTOs.Pendiente> pendientes(UUID branchId) {
@@ -48,6 +49,9 @@ public class CuadreService {
         Driver repartidor = driverRepository.findById(peticion.driverId())
                 .filter(d -> d.getRestaurant().getId().equals(branch.getRestaurant().getId()))
                 .orElseThrow(() -> new IllegalArgumentException("Ese repartidor no es de este restaurante."));
+        // El efectivo que entrega va al cajon: tiene que haber caja abierta
+        // para que el arqueo lo cuente.
+        var turno = cajaService.exigirAbierta(branchId);
 
         // Primero se guarda el corte vacio para tener su id, luego se reclaman
         // las entregas con un solo UPDATE y se suman solo las que quedaron en el:
@@ -62,6 +66,7 @@ public class CuadreService {
                 .pagoDescontado(descontado)
                 .esperado(BigDecimal.ZERO).recibido(peticion.recibido()).diferencia(BigDecimal.ZERO)
                 .notas(peticion.notas() != null && !peticion.notas().isBlank() ? peticion.notas().trim() : null)
+                .turnoId(turno.getId())
                 .build());
 
         int liquidadas = orderRepository.liquidar(branchId, repartidor.getId(), corte.getId());

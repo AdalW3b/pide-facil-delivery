@@ -52,6 +52,9 @@ class DeliveryServiceDescontarAlAceptarTest {
     @Mock PlanLimitService planLimitService;
     @Mock WhatsappIntegrationService whatsappIntegrationService;
     @Mock AgotadosService agotadosService;
+    @Mock CajaService cajaService;
+    @Mock com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
+    @Mock Turnos turnos;
     @InjectMocks DeliveryService servicio;
 
     private final UUID branchId = UUID.randomUUID();

@@ -58,4 +58,8 @@ public class CorteRepartidor {
 
     @Column(length = 300)
     private String notas;
+
+    /** El turno de caja al que entro el efectivo que entrego. */
+    @Column(name = "turno_id")
+    private UUID turnoId;
 }

@@ -8,6 +8,7 @@ import { Table, TableStatus } from '../models/table.model';
 import { AuthService } from '../../../core/services/auth.service';
 import { LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan } from '@lucide/angular';
 import { environment } from '../../../../environments/environment';
+import { CobroComponent } from './cobro.component';
 
 export interface OrderItem {
   id: string;
@@ -57,7 +58,7 @@ export interface GrupoAdicional {
 @Component({
   selector: 'app-order-panel',
   standalone: true,
-  imports: [PesosPipe, CommonModule, FormsModule, LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan],
+  imports: [CobroComponent, PesosPipe, CommonModule, FormsModule, LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan],
   template: `
     <!-- Panel wrapper overlay -->
     <div
@@ -395,20 +396,34 @@ export interface GrupoAdicional {
                   </button>
                 }
 
+                <!-- Cobrar cierra la mesa. Sin consumo no hay nada que cobrar: se libera directo. -->
                 <button
-                  (click)="closeCurrentTable()"
+                  (click)="bill()!.totalAmount > 0 ? cobrando.set(true) : closeCurrentTable()"
                   [disabled]="isActionLoading()"
-                  class="w-full py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-rose-600/15 hover:shadow-rose-500/25 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-600/15 hover:shadow-emerald-500/25 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   @if (isActionLoading()) {
                     <svg lucideLoader2 class="animate-spin h-5 w-5 text-white"></svg>
                     <span>Cerrando Mesa...</span>
+                  } @else if (bill()!.totalAmount > 0) {
+                    <svg lucideCheckSquare class="w-4 h-4"></svg>
+                    <span>Cobrar · {{ bill()!.totalAmount | pesos }}</span>
                   } @else {
                     <svg lucideCheckSquare class="w-4 h-4"></svg>
-                    <span>Cerrar Mesa (Liberar)</span>
+                    <span>Liberar mesa (sin consumo)</span>
                   }
                 </button>
               </div>
+            }
+            @if (cobrando() && table.activeOrderId && bill()) {
+              <app-cobro
+                [branchId]="table.branchId"
+                [orderId]="table.activeOrderId"
+                [mesa]="table.tableNumber"
+                [total]="bill()!.totalAmount"
+                (cerrar)="cobrando.set(false)"
+                (cobrado)="alCobrar($event)"
+              />
             }
           }
         </div>
@@ -452,6 +467,9 @@ export class OrderPanelComponent implements OnChanges {
   readonly pidiendoTelefono = signal(false);
   readonly telefonoCuenta = signal('');
   readonly errorCuenta = signal<string | null>(null);
+
+  /** La ventana de cobro está abierta. */
+  readonly cobrando = signal(false);
 
   /** productId -> sus grupos de adicionales. Vacío si el platillo no tiene. */
   readonly gruposPorProducto = signal<Map<string, GrupoAdicional[]>>(new Map());
@@ -671,7 +689,7 @@ export class OrderPanelComponent implements OnChanges {
     const orderId = this.table?.activeOrderId;
     if (!orderId) return;
 
-    if (!(await this.avisos.confirmar({ titulo: '¿Cerrar la mesa?', mensaje: 'La cuenta queda pagada y la mesa vuelve a estar libre.', confirmar: 'Cerrar mesa' }))) {
+    if (!(await this.avisos.confirmar({ titulo: '¿Liberar la mesa?', mensaje: 'No tiene consumo: la mesa vuelve a estar libre.', confirmar: 'Liberar mesa' }))) {
       return;
     }
 
@@ -686,9 +704,17 @@ export class OrderPanelComponent implements OnChanges {
       error: (err) => {
         this.isActionLoading.set(false);
         console.error('Failed to close order', err);
-        this.avisos.error(err.error?.message || 'Error al cerrar la mesa.');
+        this.avisos.error(err.error?.error || err.error?.message || 'Error al cerrar la mesa.');
       },
     });
+  }
+
+  /** Se cobró: la mesa ya quedó cerrada en el servidor. */
+  alCobrar(r: { cambio: number; propinas: number }): void {
+    this.cobrando.set(false);
+    this.avisos.exito(r.cambio > 0 ? `Cobrado. Cambio: ${formatearPesos(r.cambio)}` : 'Cobrado. La mesa quedó libre.');
+    this.onClose();
+    this.refreshNeeded.emit();
   }
 
   /**

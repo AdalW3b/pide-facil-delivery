@@ -164,6 +164,14 @@ public class Order {
     @Builder.Default
     private Boolean descontarAlAceptar = false;
 
+    /** El numero con que se llama al cliente en mostrador (A-023). Solo pedidos de mostrador. */
+    @Column(length = 10)
+    private String turno;
+
+    /** AQUI o LLEVAR: si cocina emplata o empaca. Solo pedidos de mostrador. */
+    @Column(length = 10)
+    private String consumo;
+
     /** Lo lleva el repartidor de la plataforma, no uno de la sucursal. */
     @Column(name = "reparto_externo", nullable = false)
     @Builder.Default

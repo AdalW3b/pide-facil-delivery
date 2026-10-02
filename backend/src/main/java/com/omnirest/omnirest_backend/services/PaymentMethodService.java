@@ -43,6 +43,7 @@ public class PaymentMethodService {
                 .name(dto.name())
                 .instructions(dto.instructions())
                 .active(dto.active() != null ? dto.active() : true)
+                .esEfectivo(dto.esEfectivo() != null ? dto.esEfectivo() : pareceEfectivo(dto.name()))
                 .build();
 
         PaymentMethod saved = paymentMethodRepository.save(paymentMethod);
@@ -64,6 +65,9 @@ public class PaymentMethodService {
         paymentMethod.setInstructions(dto.instructions());
         if (dto.active() != null) {
             paymentMethod.setActive(dto.active());
+        }
+        if (dto.esEfectivo() != null) {
+            paymentMethod.setEsEfectivo(dto.esEfectivo());
         }
 
         PaymentMethod saved = paymentMethodRepository.save(paymentMethod);
@@ -91,7 +95,13 @@ public class PaymentMethodService {
                 paymentMethod.getId(),
                 paymentMethod.getName(),
                 paymentMethod.getActive(),
-                paymentMethod.getInstructions()
+                paymentMethod.getInstructions(),
+                paymentMethod.getEsEfectivo()
         );
+    }
+
+    /** "Efectivo", "Efectivo (pesos)"...: lo mismo que marca la migracion V28. */
+    static boolean pareceEfectivo(String nombre) {
+        return nombre != null && nombre.toLowerCase().contains("efectivo");
     }
 }
