@@ -90,14 +90,14 @@ public class UserService {
         Role role = roleRepository.findById(request.roleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rol no encontrado."));
 
-        boolean isSuperAdmin = "SUPER_ADMIN".equalsIgnoreCase(userDetails.roleName()) || "SYSTEM_ADMIN".equalsIgnoreCase(userDetails.roleName());
+        boolean isSuperAdmin = ReglasDeRoles.esDueno(userDetails) || ReglasDeRoles.esOperador(userDetails);
         UUID finalBranchId = request.branchId();
 
+        // Ni roles de otro restaurante, ni de plataforma, ni con mas permisos que
+        // los de quien lo asigna.
+        ReglasDeRoles.exigirPuedeAsignar(userDetails, role, restaurantId);
+
         if (!isSuperAdmin) {
-            if (role.getName().equalsIgnoreCase("SUPER_ADMIN")) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "No tienes permisos para asignar el rol de SUPER_ADMIN.");
-            }
             if (userDetails.branchId() == null) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Branch manager no tiene sucursal asignada.");
             }
@@ -177,12 +177,27 @@ public class UserService {
         return mapToResponseDTO(savedUser);
     }
 
+    /**
+     * Solo se toca a empleados del propio restaurante. Uno de otro restaurante
+     * responde "no encontrado", sin confirmar que existe. El operador, que no
+     * tiene restaurante, puede con todos.
+     */
+    private static void exigirMismoRestaurante(User user, CustomUserDetails quien) {
+        if (ReglasDeRoles.esOperador(quien)) return;
+        UUID propio = quien != null ? quien.restaurantId() : null;
+        UUID delEmpleado = user.getRestaurant() != null ? user.getRestaurant().getId() : null;
+        if (propio == null || !propio.equals(delEmpleado)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado.");
+        }
+    }
+
     @Transactional
     public UserResponseDTO updateUser(UUID targetUserId, UpdateUserDTO request, CustomUserDetails userDetails) {
         User user = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado."));
 
-        boolean isSuperAdmin = "SUPER_ADMIN".equalsIgnoreCase(userDetails.roleName()) || "SYSTEM_ADMIN".equalsIgnoreCase(userDetails.roleName());
+        exigirMismoRestaurante(user, userDetails);
+        boolean isSuperAdmin = ReglasDeRoles.esDueno(userDetails) || ReglasDeRoles.esOperador(userDetails);
         Role role = roleRepository.findById(request.roleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rol no encontrado."));
 
@@ -193,11 +208,12 @@ public class UserService {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "No tienes permisos para modificar usuarios fuera de tu sucursal.");
             }
-            if (role.getName().equalsIgnoreCase("SUPER_ADMIN")) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "No tienes permisos para asignar el rol de SUPER_ADMIN.");
-            }
             finalBranchId = userDetails.branchId();
+        }
+        // Cambiarle el rol a alguien pasa por las mismas reglas que darselo al crearlo.
+        if (user.getRole() == null || !user.getRole().getId().equals(role.getId())) {
+            ReglasDeRoles.exigirPuedeAsignar(userDetails, role,
+                    user.getRestaurant() != null ? user.getRestaurant().getId() : userDetails.restaurantId());
         }
 
         if (!user.getUsername().equalsIgnoreCase(request.username())
@@ -277,7 +293,8 @@ public class UserService {
         User user = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado."));
 
-        boolean isSuperAdmin = "SUPER_ADMIN".equalsIgnoreCase(userDetails.roleName()) || "SYSTEM_ADMIN".equalsIgnoreCase(userDetails.roleName());
+        exigirMismoRestaurante(user, userDetails);
+        boolean isSuperAdmin = ReglasDeRoles.esDueno(userDetails) || ReglasDeRoles.esOperador(userDetails);
 
         if (!isSuperAdmin) {
             if (user.getBranch() == null || !user.getBranch().getId().equals(userDetails.branchId())) {

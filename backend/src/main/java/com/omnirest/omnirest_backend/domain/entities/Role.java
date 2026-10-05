@@ -17,7 +17,8 @@ public class Role {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true, length = 100)
+    /** Unico por restaurante (y entre los del sistema), no en toda la plataforma. */
+    @Column(nullable = false, length = 100)
     private String name;
 
     @Column(length = 255)

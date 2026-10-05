@@ -28,7 +28,9 @@ public class AdminRestaurantController {
         return ResponseEntity.ok(adminService.getAllRestaurantsWithBranches(userDetails));
     }
 
+    /** Dar de alta un restaurante es del operador de la plataforma, no de un dueño. */
     @PostMapping
+    @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<RestaurantWithBranchesDTO> create(
             @Valid @RequestBody RestaurantRequestDTO request) {
         return ResponseEntity.ok(adminService.createRestaurant(request));

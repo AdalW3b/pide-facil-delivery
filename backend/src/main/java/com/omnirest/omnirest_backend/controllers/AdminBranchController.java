@@ -22,7 +22,15 @@ public class AdminBranchController {
     @PostMapping
     public ResponseEntity<BranchResponseDTO> createBranch(
             @PathVariable UUID restaurantId,
-            @Valid @RequestBody BranchRequestDTO request) {
+            @Valid @RequestBody BranchRequestDTO request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.omnirest.omnirest_backend.security.CustomUserDetails userDetails) {
+        // Un dueño solo abre sucursales en su restaurante; el operador, en cualquiera.
+        if (!"SYSTEM_ADMIN".equalsIgnoreCase(userDetails != null ? userDetails.roleName() : null)
+                && (userDetails == null || !restaurantId.equals(userDetails.restaurantId()))) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Restaurante no encontrado con id: " + restaurantId);
+        }
         return ResponseEntity.ok(adminService.createBranch(restaurantId, request));
     }
 }

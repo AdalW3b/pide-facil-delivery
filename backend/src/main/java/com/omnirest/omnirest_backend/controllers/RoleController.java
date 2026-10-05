@@ -24,8 +24,8 @@ public class RoleController {
 
     @GetMapping("/permissions")
     @PreAuthorize("hasAuthority('USERS_READ')")
-    public ResponseEntity<List<PermissionDTO>> listPermissions() {
-        return ResponseEntity.ok(roleService.listPermissions());
+    public ResponseEntity<List<PermissionDTO>> listPermissions(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.ok(roleService.listPermissions(userDetails));
     }
 
     @GetMapping("/roles")
@@ -53,8 +53,9 @@ public class RoleController {
 
     @DeleteMapping("/roles/{roleId}")
     @PreAuthorize("hasAuthority('USERS_DELETE')")
-    public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
-        roleService.deleteRole(roleId);
+    public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId,
+                                           @AuthenticationPrincipal CustomUserDetails userDetails) {
+        roleService.deleteRole(roleId, userDetails);
         return ResponseEntity.noContent().build();
     }
 }

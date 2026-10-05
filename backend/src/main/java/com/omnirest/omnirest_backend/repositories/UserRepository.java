@@ -18,6 +18,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     long countByRestaurantId(UUID restaurantId);
 
+    /** Cuantos empleados tienen este rol: un rol en uso no se puede borrar. */
+    long countByRoleId(UUID roleId);
+
     List<User> findByBranchId(UUID branchId);
 
     Optional<User> findByIdAndRestaurantId(UUID id, UUID restaurantId);

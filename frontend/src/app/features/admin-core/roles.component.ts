@@ -307,13 +307,16 @@ const PERMISSION_MODULES: PermissionModule[] = [
                 />
               </div>
               <div>
-                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Ruta de Inicio</label>
-                <input aria-label="Pantalla de inicio"
-                  type="text"
-                  placeholder="Ej. /dashboard"
+                <label for="rol-inicio" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Pantalla de inicio</label>
+                <!-- Solo pantallas que existen: el backend rechaza cualquier otra ruta. -->
+                <select id="rol-inicio"
                   [(ngModel)]="roleForm.defaultRoute"
-                  class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
-                />
+                  class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                >
+                  @for (p of pantallas; track p.ruta) {
+                    <option [value]="p.ruta" class="bg-slate-950">{{ p.nombre }}</option>
+                  }
+                </select>
               </div>
             </div>
 
@@ -394,6 +397,23 @@ export class RolesComponent implements OnInit {
   readonly isModalOpen = signal(false);
 
   roleForm: Role = { name: '', description: '', defaultRoute: '/dashboard' };
+
+  /** Las pantallas a las que puede mandar un rol al entrar (las mismas que acepta el backend). */
+  readonly pantallas = [
+    { ruta: '/dashboard', nombre: 'Mesas' },
+    { ruta: '/kitchen', nombre: 'Cocina' },
+    { ruta: '/delivery', nombre: 'Domicilio' },
+    { ruta: '/caja', nombre: 'Caja' },
+    { ruta: '/sales-history', nombre: 'Historial de ventas' },
+    { ruta: '/analytics', nombre: 'Reportes' },
+    { ruta: '/catalog', nombre: 'Catálogo' },
+    { ruta: '/inventario', nombre: 'Inventario' },
+    { ruta: '/settings', nombre: 'Métodos de pago' },
+    { ruta: '/settings/sucursales', nombre: 'Sucursales' },
+    { ruta: '/settings/whatsapp', nombre: 'WhatsApp' },
+    { ruta: '/admin/employees', nombre: 'Empleados' },
+    { ruta: '/admin/roles', nombre: 'Roles y permisos' },
+  ];
   readonly selectedPermissionIds = new Set<string>();
   private permByName = new Map<string, Permission>();
 
@@ -493,7 +513,8 @@ export class RolesComponent implements OnInit {
       id: role.id,
       name: role.name,
       description: role.description,
-      defaultRoute: role.defaultRoute || '/dashboard'
+      // Un rol viejo puede apuntar a una pantalla que ya no existe: se propone Mesas.
+      defaultRoute: this.pantallas.some((p) => p.ruta === role.defaultRoute) ? role.defaultRoute : '/dashboard'
     };
 
     this.selectedPermissionIds.clear();
@@ -534,7 +555,7 @@ export class RolesComponent implements OnInit {
 
     request$.subscribe({
       next: () => { this.isSaving.set(false); this.isModalOpen.set(false); this.loadRoles(); },
-      error: (err) => { this.isSaving.set(false); this.errorMessage.set(err.error?.message || 'Error al guardar.'); }
+      error: (err) => { this.isSaving.set(false); this.errorMessage.set(err.error?.error || err.error?.message || 'Error al guardar.'); }
     });
   }
 
@@ -542,7 +563,7 @@ export class RolesComponent implements OnInit {
     if (!role.id) return;
     if (this.isSystemRole(role)) return;
 
-    const confirmDelete = (await this.avisos.confirmar({ titulo: `¿Eliminar el rol ${role.name}?`, mensaje: 'Los empleados con este rol se quedarán sin permisos hasta que les asignes otro.', confirmar: 'Eliminar rol', peligro: true }));
+    const confirmDelete = (await this.avisos.confirmar({ titulo: `¿Eliminar el rol ${role.name}?`, mensaje: 'Solo se puede eliminar si ningún empleado lo tiene. Si alguno lo tiene, primero asígnale otro rol.', confirmar: 'Eliminar rol', peligro: true }));
     if (!confirmDelete) return;
 
     this.isLoading.set(true);
@@ -555,7 +576,7 @@ export class RolesComponent implements OnInit {
       error: (err) => {
         this.isLoading.set(false);
         console.error('Error deleting role', err);
-        this.errorMessage.set(err.error?.message || 'No se pudo eliminar el rol.');
+        this.errorMessage.set(err.error?.error || err.error?.message || 'No se pudo eliminar el rol.');
       }
     });
   }

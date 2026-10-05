@@ -70,8 +70,11 @@ public class User implements UserDetails {
         List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
 
         if (role != null) {
-            // 1. Inyectar el rol crudo para que pasen los filtros de AnalyticsController
-            if (role.getName() != null) {
+            // 1. El nombre de un rol del sistema (SUPER_ADMIN, BRANCH_MANAGER...)
+            // cuenta como permiso: varios controladores lo piden asi. El de un rol
+            // de restaurante no: un rol llamado "CAJA_OPERAR" daria ese permiso
+            // sin tenerlo marcado.
+            if (role.getName() != null && role.getRestaurant() == null && !Boolean.TRUE.equals(role.getIsCustom())) {
                 authorities.add(new SimpleGrantedAuthority(role.getName()));
             }
 
