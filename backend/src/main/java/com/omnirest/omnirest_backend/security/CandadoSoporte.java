@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerMapping;
 
 import java.util.List;
@@ -58,9 +59,31 @@ public class CandadoSoporte implements HandlerInterceptor {
         // Los reportes de toda la plataforma (sin restaurante ni sucursal) no son de nadie en particular.
         if (!cambio && restaurante == null && ruta.startsWith("/api/v1/analytics/")) return true;
 
-        SesionSoporte sesion = soporteService.exigir(operador.id(), restaurante, cambio);
+        SesionSoporte sesion;
+        try {
+            sesion = soporteService.exigir(operador.id(), restaurante, cambio);
+        } catch (ResponseStatusException e) {
+            negar(response, e);
+            return false;
+        }
         if (cambio) request.setAttribute(SESION, sesion.getId());
         return true;
+    }
+
+    /**
+     * El 403 del candado lleva "modoSoporte": el panel no saca al operador a
+     * "sin autorización" (es que falta la sesión o el código, no un permiso),
+     * y la franja de soporte le dice qué hacer.
+     */
+    private static void negar(HttpServletResponse response, ResponseStatusException e) {
+        try {
+            response.setStatus(e.getStatusCode().value());
+            response.setContentType("application/json;charset=UTF-8");
+            String mensaje = e.getReason() != null ? e.getReason().replace("\\", "\\\\").replace("\"", "\\\"") : "";
+            response.getWriter().write("{\"error\":\"" + mensaje + "\",\"message\":\"" + mensaje + "\",\"modoSoporte\":true}");
+        } catch (java.io.IOException io) {
+            throw new IllegalStateException(io);
+        }
     }
 
     @Override

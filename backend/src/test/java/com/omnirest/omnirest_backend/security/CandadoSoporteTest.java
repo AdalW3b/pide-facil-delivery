@@ -83,13 +83,17 @@ class CandadoSoporteTest {
     }
 
     @Test
-    @DisplayName("Si el servicio lo niega, la petición no pasa")
-    void negado() {
+    @DisplayName("Si el servicio lo niega, la petición no pasa y el 403 dice que es del modo soporte")
+    void negado() throws Exception {
         comoRol("SYSTEM_ADMIN");
         when(soporte.exigir(any(), any(), anyBoolean()))
-                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Abre una sesión"));
-        assertThrows(ResponseStatusException.class, () -> candado.preHandle(
-                peticion("GET", "/api/v1/tables", null), new MockHttpServletResponse(), null));
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Abre una sesión \"de soporte\""));
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        assertFalse(candado.preHandle(peticion("GET", "/api/v1/tables", null), resp, null));
+        assertEquals(403, resp.getStatus());
+        assertTrue(resp.getContentAsString().contains("\"modoSoporte\":true"));
+        // El mensaje va como JSON valido aunque traiga comillas.
+        new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.getContentAsString());
     }
 
     @Test

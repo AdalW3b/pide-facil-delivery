@@ -392,6 +392,9 @@ export class AdminLayoutComponent {
 
   readonly isSuperAdmin = computed(() => this.userRole() === 'SUPER_ADMIN' || this.userRole() === 'SYSTEM_ADMIN');
 
+  /** El operador de la plataforma: ve los restaurantes en modo soporte. */
+  readonly esOperador = computed(() => this.userRole() === 'SYSTEM_ADMIN');
+
   readonly userInitial = computed(() => {
     const name = this.username();
     return name ? name.charAt(0) : 'U';
@@ -434,7 +437,9 @@ export class AdminLayoutComponent {
     {
       titulo: 'Menú',
       items: [
-        { ruta: '/catalog', nombre: 'Catálogo', icono: 'catalogo', exacta: false, visible: () => this.hasPermission('CATALOG_READ') },
+        // El catálogo se filtra por el restaurante del usuario, no por la sucursal
+        // elegida: en modo soporte el operador vería otro, así que no se le muestra.
+        { ruta: '/catalog', nombre: 'Catálogo', icono: 'catalogo', exacta: false, visible: () => this.hasPermission('CATALOG_READ') && !this.esOperador() },
         { ruta: '/inventario', nombre: 'Inventario', icono: 'inventario', exacta: false,
           visible: () => this.hasPermission('INVENTORY_READ') || this.hasPermission('CATALOG_READ') },
       ],
@@ -443,8 +448,8 @@ export class AdminLayoutComponent {
       titulo: 'Ajustes',
       items: [
         { ruta: '/settings/sucursales', nombre: 'Sucursales', icono: 'sucursales', exacta: false, visible: () => this.hasPermission('BRANCH_UPDATE') },
-        { ruta: '/settings', nombre: 'Métodos de pago', icono: 'pagos', exacta: true, visible: () => this.isBranchManagerOrHigher() },
-        { ruta: '/settings/whatsapp', nombre: 'WhatsApp', icono: 'whatsapp', exacta: false, visible: () => this.isBranchManagerOrHigher() },
+        { ruta: '/settings', nombre: 'Métodos de pago', icono: 'pagos', exacta: true, visible: () => this.isBranchManagerOrHigher() || this.esOperador() },
+        { ruta: '/settings/whatsapp', nombre: 'WhatsApp', icono: 'whatsapp', exacta: false, visible: () => this.isBranchManagerOrHigher() || this.esOperador() },
         { ruta: '/admin/employees', nombre: 'Empleados', icono: 'empleados', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/admin/roles', nombre: 'Roles y permisos', icono: 'roles', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/soporte', nombre: 'Soporte', icono: 'soporte', exacta: false, visible: () => this.userRole() === 'SUPER_ADMIN' },

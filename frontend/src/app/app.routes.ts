@@ -120,20 +120,20 @@ export const routes: Routes = [
         path: 'settings',
         component: SettingsComponent,
         canActivate: [roleGuard],
-        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'SYSTEM_ADMIN'] },
       },
       {
         path: 'settings/sucursales',
         loadComponent: () =>
           import('./features/settings/branch-settings.component').then((m) => m.BranchSettingsComponent),
         canActivate: [roleGuard],
-        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'SYSTEM_ADMIN'] },
       },
       {
         path: 'settings/whatsapp',
         component: WhatsappConfigComponent,
         canActivate: [roleGuard],
-        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
+        data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'SYSTEM_ADMIN'] },
       },
       {
         path: 'admin',

@@ -28,8 +28,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
           if (error.status === 401) {
             // 401 Unauthorized: token missing/expired -> logout and redirect to /login
             authService.logout();
-          } else if (error.status === 403) {
+          } else if (error.status === 403 && !error.error?.modoSoporte) {
             // 403 Forbidden: authenticated user lacks permission -> redirect to /unauthorized (do NOT logout)
+            // Los 403 del modo soporte (falta abrir sesión o el código del dueño)
+            // no sacan al operador de la pantalla: la franja de soporte se lo dice.
             router.navigate(['/unauthorized']);
           }
         }

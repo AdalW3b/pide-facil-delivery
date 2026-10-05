@@ -127,11 +127,13 @@ export class AuthService {
 
   /**
    * Returns true if the current user has the given permission string.
-   * Falls back to true for SUPER_ADMIN to guarantee full access.
+   * Falls back to true for SUPER_ADMIN to guarantee full access. El operador
+   * de la plataforma también pasa: lo que ve de un restaurante lo controla el
+   * modo soporte en el backend (sesión con motivo y código del dueño).
    */
   public hasPermission(permission: string): boolean {
     if (!permission) return true;
-    if (this.userRole() === 'SUPER_ADMIN') return true;
+    if (this.userRole() === 'SUPER_ADMIN' || this.userRole() === 'SYSTEM_ADMIN') return true;
     const targetPerm = permission.toUpperCase();
     return this.permissions().includes(targetPerm);
   }
