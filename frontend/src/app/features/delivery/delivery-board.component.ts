@@ -773,7 +773,8 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
     });
   }
 
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
 
   /**
    * El enlace que el restaurante comparte. Se arma con el origen desde el que

@@ -24,9 +24,12 @@ import {
   LucideChevronDown,
   LucideX,
   LucideBarChart3,
-  LucideWallet
+  LucideWallet,
+  LucideLifeBuoy
 } from '@lucide/angular';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
+import { FranjaSoporteComponent } from '../../shared/components/franja-soporte.component';
+import { CampanaAvisosComponent } from '../../shared/components/campana-avisos.component';
 
 /** Una opción del menú lateral. */
 interface OpcionMenu {
@@ -75,7 +78,10 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideX,
     LucideBarChart3,
     LucideWallet,
-    NgTemplateOutlet
+    LucideLifeBuoy,
+    NgTemplateOutlet,
+    FranjaSoporteComponent,
+    CampanaAvisosComponent
   ],
   template: `
     <ng-template #icono let-nombre>
@@ -85,6 +91,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('domicilio') { <svg lucideBike class="w-5 h-5 shrink-0"></svg> }
         @case ('historial') { <svg lucideReceipt class="w-5 h-5 shrink-0"></svg> }
         @case ('caja') { <svg lucideWallet class="w-5 h-5 shrink-0"></svg> }
+        @case ('soporte') { <svg lucideLifeBuoy class="w-5 h-5 shrink-0"></svg> }
         @case ('reportes') { <svg lucideBarChart3 class="w-5 h-5 shrink-0"></svg> }
         @case ('catalogo') { <svg lucideBookOpen class="w-5 h-5 shrink-0"></svg> }
         @case ('inventario') { <svg lucideBoxes class="w-5 h-5 shrink-0"></svg> }
@@ -244,6 +251,10 @@ const NOMBRES_DE_ROL: Record<string, string> = {
             }
           </div>
 
+          <div class="flex items-center gap-1 shrink-0">
+          @if (userRole() === 'SUPER_ADMIN') {
+            <app-campana-avisos />
+          }
           <button
             (click)="onLogout()"
             class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 font-medium text-sm transition-colors duration-200 cursor-pointer shrink-0"
@@ -252,7 +263,11 @@ const NOMBRES_DE_ROL: Record<string, string> = {
             <svg lucideLogOut class="w-4 h-4"></svg>
             <span class="hidden sm:inline">Cerrar sesión</span>
           </button>
+          </div>
         </header>
+
+        <!-- Modo soporte: solo el operador, cuando ve un restaurante -->
+        <app-franja-soporte />
 
         <!-- Main Content (Scrollable & Ultrawide Optimized) -->
         <main class="flex-1 overflow-y-auto bg-slate-950">
@@ -432,11 +447,13 @@ export class AdminLayoutComponent {
         { ruta: '/settings/whatsapp', nombre: 'WhatsApp', icono: 'whatsapp', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/admin/employees', nombre: 'Empleados', icono: 'empleados', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/admin/roles', nombre: 'Roles y permisos', icono: 'roles', exacta: false, visible: () => this.isBranchManagerOrHigher() },
+        { ruta: '/soporte', nombre: 'Soporte', icono: 'soporte', exacta: false, visible: () => this.userRole() === 'SUPER_ADMIN' },
       ],
     },
     {
       titulo: 'Plataforma',
       items: [
+        { ruta: '/system', nombre: 'Plataforma', icono: 'admin', exacta: true, visible: () => this.userRole() === 'SYSTEM_ADMIN' },
         { ruta: '/admin', nombre: 'Super Admin', icono: 'admin', exacta: true, visible: () => this.isSuperAdmin() },
       ],
     },

@@ -518,7 +518,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   // Computed signals for role checks and dropdown listings
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
   readonly hasFullAccess = computed(() => ['SYSTEM_ADMIN', 'SUPER_ADMIN', 'BRANCH_MANAGER'].includes(this.authService.userRole() ?? ''));
 
   // Assign Waiters Modal State

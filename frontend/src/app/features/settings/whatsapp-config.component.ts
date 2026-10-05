@@ -378,7 +378,8 @@ export class WhatsappConfigComponent implements OnInit, OnDestroy {
   // ─── Multitenant State & Auth Signals ─────────────────────────────────────
   
   readonly userRole = computed(() => this.authService.userRole());
-  readonly isSuperAdmin = computed(() => this.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.userRole() === 'SUPER_ADMIN' || this.userRole() === 'SYSTEM_ADMIN');
   
   // Writable signal for SUPER_ADMIN branch selection
 

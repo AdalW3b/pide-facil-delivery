@@ -14,6 +14,11 @@ export const roleGuard: CanActivateFn = (route, state) => {
   const router = inject(Router);
   if (!authService.isAuthenticated()) return router.createUrlTree(['/login']);
   const userRole = authService.userRole();
+  // Las pantallas de la plataforma son solo del operador: ahí el dueño no pasa.
+  const soloOperador = route.data?.['soloOperador'] === true;
+  if (soloOperador) {
+    return userRole === 'SYSTEM_ADMIN' ? true : router.createUrlTree(['/unauthorized']);
+  }
   if (userRole === 'SUPER_ADMIN') return true;
   const expectedRoles = (route.data?.['roles'] || route.data?.['expectedRoles']) as string[] | undefined;
   if (!expectedRoles || expectedRoles.length === 0) return true;

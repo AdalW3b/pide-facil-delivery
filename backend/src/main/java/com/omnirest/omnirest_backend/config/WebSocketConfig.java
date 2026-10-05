@@ -45,6 +45,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Lazy
     private final UserDetailsService userDetailsService;
 
+    /** El mismo candado del modo soporte que las peticiones HTTP. */
+    @Lazy
+    private final com.omnirest.omnirest_backend.services.SoporteService soporteService;
+
     @Value("${cors.allowed-origins:http://localhost:4200}")
     private String allowedOrigins;
 
@@ -140,7 +144,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
         String role = user.roleName();
         if ("SYSTEM_ADMIN".equalsIgnoreCase(role)) {
-            return; // SYSTEM_ADMIN tiene acceso global de auditoria a todas las sucursales
+            // El operador solo escucha en vivo una sucursal del restaurante de su
+            // sesion de soporte abierta, igual que en las peticiones HTTP.
+            UUID restaurante = branchRepository.findById(topicBranchId)
+                    .map(b -> b.getRestaurant() != null ? b.getRestaurant().getId() : null)
+                    .orElse(null);
+            try {
+                soporteService.exigir(user.id(), restaurante, false);
+            } catch (org.springframework.web.server.ResponseStatusException e) {
+                throw new AccessDeniedException(e.getReason());
+            }
+            return;
         }
         boolean isSuperAdmin = "SUPER_ADMIN".equalsIgnoreCase(role);
 

@@ -429,7 +429,8 @@ export class BranchSettingsComponent implements OnInit {
   readonly pagoFijo = signal<number>(12);
   readonly pagoKm = signal<number>(6);
 
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
 
   readonly activeBranchId = computed<string | null>(() => {
     if (this.isSuperAdmin()) {

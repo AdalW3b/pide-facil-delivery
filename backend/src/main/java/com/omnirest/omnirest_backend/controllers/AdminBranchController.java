@@ -2,6 +2,7 @@ package com.omnirest.omnirest_backend.controllers;
 
 import com.omnirest.omnirest_backend.dtos.BranchRequestDTO;
 import com.omnirest.omnirest_backend.dtos.BranchResponseDTO;
+import com.omnirest.omnirest_backend.dtos.CreateUserResponseDTO;
 import com.omnirest.omnirest_backend.services.AdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,5 +33,20 @@ public class AdminBranchController {
                     org.springframework.http.HttpStatus.NOT_FOUND, "Restaurante no encontrado con id: " + restaurantId);
         }
         return ResponseEntity.ok(adminService.createBranch(restaurantId, request));
+    }
+
+    public record NuevoGerente(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(min = 3, max = 50) String username,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(min = 6) String password) {
+    }
+
+    /** El paso 3 del asistente de "Crear restaurante": el gerente de la sucursal nueva. Solo el operador. */
+    @PostMapping("/{branchId}/manager")
+    @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
+    public ResponseEntity<CreateUserResponseDTO> crearGerente(
+            @PathVariable UUID restaurantId,
+            @PathVariable UUID branchId,
+            @Valid @RequestBody NuevoGerente request) {
+        return ResponseEntity.ok(adminService.crearGerente(restaurantId, branchId, request.username(), request.password()));
     }
 }

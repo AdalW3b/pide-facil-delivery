@@ -10,6 +10,9 @@ import java.util.UUID;
 public interface RestaurantRepository extends JpaRepository<Restaurant, UUID> {
     Optional<Restaurant> findByIdAndActiveTrue(UUID id);
 
+    /** El restaurante de un cliente de Stripe: asi se ubica cada factura que llega por webhook. */
+    Optional<Restaurant> findFirstByStripeCustomerId(String stripeCustomerId);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @org.springframework.data.jpa.repository.Query(value = "UPDATE restaurants SET menu_pdf = :pdfData WHERE id = :id", nativeQuery = true)

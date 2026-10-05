@@ -747,7 +747,8 @@ export class KitchenComponent implements OnInit, OnDestroy {
     return tokenBranch ? String(tokenBranch) : null;
   });
 
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
 
   readonly availableBranches = computed(() => {
     const rId = this.selectedRestaurantId();

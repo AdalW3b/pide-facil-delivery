@@ -139,7 +139,21 @@ export const routes: Routes = [
         path: 'admin',
         component: SuperAdminDashboardComponent,
         canActivate: [roleGuard],
+        data: { expectedRoles: ['SUPER_ADMIN', 'SYSTEM_ADMIN'] },
+      },
+      {
+        // El dueño frente a soporte: su código de autorización y la bitácora.
+        path: 'soporte',
+        loadComponent: () => import('./features/admin-core/soporte-dueno.component').then((m) => m.SoporteDuenoComponent),
+        canActivate: [roleGuard],
         data: { expectedRoles: ['SUPER_ADMIN'] },
+      },
+      {
+        // La pantalla del operador de la plataforma; el dueño no entra.
+        path: 'system',
+        loadComponent: () => import('./features/admin-core/plataforma.component').then((m) => m.PlataformaComponent),
+        canActivate: [roleGuard],
+        data: { soloOperador: true },
       },
       {
         path: 'admin/roles',

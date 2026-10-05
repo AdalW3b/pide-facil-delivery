@@ -30,6 +30,7 @@ import java.util.UUID;
 public class StripeBillingService {
 
     private final RestaurantRepository restaurantRepository;
+    private final RentaService rentaService;
 
     @Value("${stripe.secret-key:}")
     private String stripeSecretKey;
@@ -227,14 +228,77 @@ public class StripeBillingService {
             case "checkout.session.completed":
                 handleCheckoutCompleted(event);
                 break;
+            case "invoice.paid":
+                registrarFactura(event, true);
+                break;
+            case "invoice.payment_failed":
+                registrarFactura(event, false);
+                break;
             case "customer.subscription.updated":
             case "customer.subscription.deleted":
-                log.info("[StripeBillingService] Evento de suscripción recibido: {}", event.getType());
+                actualizarSuscripcion(event);
                 break;
             default:
                 log.debug("[StripeBillingService] Evento no manejado: {}", event.getType());
                 break;
         }
+    }
+
+    /**
+     * Cada factura de la renta, pagada o fallida, queda en el historial del
+     * restaurante. El restaurante se ubica por su cliente de Stripe.
+     */
+    private void registrarFactura(Event event, boolean pagada) {
+        event.getDataObjectDeserializer().getObject().ifPresent(objeto -> {
+            if (!(objeto instanceof com.stripe.model.Invoice factura)) return;
+            UUID restaurantId = restauranteDeCliente(factura.getCustomer());
+            if (restaurantId == null) {
+                log.warn("[StripeBillingService] Factura {} de un cliente sin restaurante ({})", factura.getId(), factura.getCustomer());
+                return;
+            }
+            Long centavos = pagada ? factura.getAmountPaid() : factura.getAmountDue();
+            java.math.BigDecimal monto = java.math.BigDecimal.valueOf(centavos != null ? centavos : 0L)
+                    .movePointLeft(2);
+            Long desde = factura.getPeriodStart();
+            Long hasta = factura.getPeriodEnd();
+            // El periodo que cubre la suscripcion viene en la linea de la factura.
+            if (factura.getLines() != null && factura.getLines().getData() != null
+                    && !factura.getLines().getData().isEmpty()
+                    && factura.getLines().getData().get(0).getPeriod() != null) {
+                desde = factura.getLines().getData().get(0).getPeriod().getStart();
+                hasta = factura.getLines().getData().get(0).getPeriod().getEnd();
+            }
+            rentaService.registrarStripe(restaurantId, factura.getId(), pagada, monto, factura.getCurrency(),
+                    fecha(desde), fecha(hasta));
+        });
+    }
+
+    /** Cambio de estado de la suscripcion (activa, vencida, cancelada) desde Stripe. */
+    private void actualizarSuscripcion(Event event) {
+        event.getDataObjectDeserializer().getObject().ifPresent(objeto -> {
+            if (!(objeto instanceof com.stripe.model.Subscription suscripcion)) return;
+            UUID restaurantId = restauranteDeCliente(suscripcion.getCustomer());
+            if (restaurantId == null) return;
+            restaurantRepository.findById(restaurantId).ifPresent(r -> {
+                String estado = "customer.subscription.deleted".equals(event.getType())
+                        ? "CANCELED"
+                        : suscripcion.getStatus() != null ? suscripcion.getStatus().toUpperCase() : r.getSubscriptionStatus();
+                r.setSubscriptionStatus(estado);
+                r.setStripeSubscriptionId(suscripcion.getId());
+                restaurantRepository.save(r);
+                log.info("[StripeBillingService] Suscripción de {} ahora {}", r.getName(), estado);
+            });
+        });
+    }
+
+    private UUID restauranteDeCliente(String customerId) {
+        if (customerId == null) return null;
+        return restaurantRepository.findFirstByStripeCustomerId(customerId).map(Restaurant::getId).orElse(null);
+    }
+
+    private static java.time.LocalDate fecha(Long segundos) {
+        return segundos == null ? null
+                : Instant.ofEpochSecond(segundos).atZone(java.time.ZoneId.of("America/Mexico_City")).toLocalDate();
     }
 
     private void handleCheckoutCompleted(Event event) {

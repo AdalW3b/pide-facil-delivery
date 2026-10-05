@@ -343,7 +343,8 @@ export class SalesHistoryComponent implements OnInit {
   readonly ticketText = signal<string | null>(null);
 
   // SUPER_ADMIN dropdown bindings
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
   // Restaurante y sucursal: los mismos para todo el panel (se eligen en la barra superior).
   private readonly sucursalActiva = inject(SucursalActivaService);
   readonly restaurants = this.sucursalActiva.restaurantes;

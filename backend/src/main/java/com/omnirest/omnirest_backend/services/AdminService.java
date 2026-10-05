@@ -196,6 +196,22 @@ public class AdminService {
         return mapToUserResponse(saved);
     }
 
+    /**
+     * El gerente de la sucursal que se acaba de dar de alta con el asistente
+     * de "Crear restaurante": un BRANCH_MANAGER del sistema, en esa sucursal.
+     */
+    @Transactional
+    public CreateUserResponseDTO crearGerente(UUID restaurantId, UUID branchId, String username, String password) {
+        Branch branch = branchRepository.findById(branchId)
+                .filter(b -> b.getRestaurant() != null && restaurantId.equals(b.getRestaurant().getId()))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Sucursal no encontrada en ese restaurante."));
+        Role gerente = roleRepository.findByName("BRANCH_MANAGER")
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "Falta el rol BRANCH_MANAGER del sistema."));
+        return createUser(new CreateUserRequestDTO(username, password, gerente.getId(), restaurantId, branch.getId()));
+    }
+
     // ─── Mappers ──────────────────────────────────────────────────────────────
 
     private RestaurantWithBranchesDTO mapToRestaurantWithBranches(Restaurant restaurant) {

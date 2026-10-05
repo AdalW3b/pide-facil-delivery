@@ -361,7 +361,8 @@ export class SettingsComponent {
   readonly selectedBranchId = this.sucursalActiva.branchId;
 
   // Role computations
-  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN');
+  // El operador de la plataforma también elige sucursal: entra en modo soporte.
+  readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
 
   // Resolved Branch ID (dynamic from token or SUPER_ADMIN dropdown)
   readonly activeBranchId = computed<string | null>(() => {
