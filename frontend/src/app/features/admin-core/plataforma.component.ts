@@ -155,6 +155,7 @@ type Pestana = 'restaurantes' | 'renta' | 'bitacora';
                     <th class="py-2 pr-3 font-semibold">Dueño</th>
                     <th class="py-2 pr-3 font-semibold">Plan</th>
                     <th class="py-2 pr-3 font-semibold">Estado</th>
+                    <th class="py-2 pr-3 font-semibold">Asistente IA</th>
                     <th class="py-2 font-semibold text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -177,6 +178,19 @@ type Pestana = 'restaurantes' | 'renta' | 'bitacora';
                           [class]="d.active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'">
                           {{ d.active ? 'Activo' : 'Desactivado' }}
                         </span>
+                      </td>
+                      <td class="py-3 pr-3">
+                        @if (d.restaurantId; as rid) {
+                          <!-- Complemento: el restaurante pone su propia llave del proveedor de IA -->
+                          <button type="button" role="switch" [attr.aria-checked]="conAsistente().has(rid)"
+                            [attr.aria-label]="'Asistente IA de ' + (d.restaurantName || d.username)"
+                            (click)="alternarAsistente(d)" [disabled]="ocupado() === d.userId"
+                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                            [class]="conAsistente().has(rid) ? 'bg-indigo-600' : 'bg-slate-700'">
+                            <span class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                              [class]="conAsistente().has(rid) ? 'translate-x-4.5' : 'translate-x-0.5'"></span>
+                          </button>
+                        }
                       </td>
                       <td class="py-3 text-right whitespace-nowrap space-x-3">
                         @if (d.restaurantId) {
@@ -476,6 +490,8 @@ export class PlataformaComponent implements OnInit {
   efectivo = { restaurantId: '', monto: 0, periodoDesde: '', periodoHasta: '', referencia: '', notas: '' };
 
   readonly bitacora = signal<Bitacora[]>([]);
+  /** Restaurantes con el complemento del asistente contratado. */
+  readonly conAsistente = signal<Set<string>>(new Set());
 
   readonly activos = computed(() => this.duenos().filter((d) => d.active).length);
   readonly demos = computed(() => this.duenos().filter((d) => d.isDemo).length);
@@ -488,6 +504,7 @@ export class PlataformaComponent implements OnInit {
 
   ngOnInit(): void {
     this.cargarDuenos();
+    this.http.get<string[]>(`${this.api}/asistente`).subscribe({ next: (ids) => this.conAsistente.set(new Set(ids)) });
   }
 
   cambiarPestana(p: Pestana): void {
@@ -582,6 +599,37 @@ export class PlataformaComponent implements OnInit {
       error: (err) => {
         this.reiniciando.set(false);
         this.avisos.error(this.mensaje(err, 'No se pudo reiniciar la demo.'));
+      },
+    });
+  }
+
+  async alternarAsistente(d: Dueno): Promise<void> {
+    const rid = d.restaurantId;
+    if (!rid) return;
+    const activar = !this.conAsistente().has(rid);
+    const ok = await this.avisos.confirmar({
+      titulo: `¿${activar ? 'Activar' : 'Quitar'} el asistente IA a ${d.restaurantName}?`,
+      mensaje: activar
+        ? 'El dueño podrá elegir su proveedor de IA, poner su llave y habilitarlo a su personal. Le llega un aviso.'
+        : 'Dejan de poder usar el asistente y de recibir el resumen diario. Su configuración se conserva.',
+      confirmar: activar ? 'Activar' : 'Quitar',
+      peligro: !activar,
+    });
+    if (!ok) return;
+    this.ocupado.set(d.userId);
+    this.http.put<{ activo: boolean }>(`${this.api}/asistente/${rid}`, { activo: activar }).subscribe({
+      next: (r) => {
+        this.ocupado.set(null);
+        this.conAsistente.update((s) => {
+          const n = new Set(s);
+          if (r.activo) n.add(rid);
+          else n.delete(rid);
+          return n;
+        });
+      },
+      error: (err) => {
+        this.ocupado.set(null);
+        this.avisos.error(this.mensaje(err, 'No se pudo cambiar el asistente.'));
       },
     });
   }

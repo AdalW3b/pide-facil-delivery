@@ -24,6 +24,7 @@ public class PlataformaController {
 
     private final SoporteService soporteService;
     private final RentaService rentaService;
+    private final com.omnirest.omnirest_backend.services.asistente.AsistenteService asistenteService;
 
     // ------------------------------------------------------------------
     // Modo soporte
@@ -92,5 +93,23 @@ public class PlataformaController {
     public ResponseEntity<RentaService.CobroDTO> anular(@PathVariable UUID cobroId, @RequestBody Anular peticion,
                                                         @AuthenticationPrincipal CustomUserDetails operador) {
         return ResponseEntity.ok(rentaService.anular(operador, cobroId, peticion.motivo()));
+    }
+
+    // ------------------------------------------------------------------
+    // Asistente (complemento)
+    // ------------------------------------------------------------------
+
+    public record Complemento(boolean activo) {
+    }
+
+    /** Los restaurantes que tienen el asistente contratado. */
+    @GetMapping("/asistente")
+    public ResponseEntity<java.util.Set<UUID>> conAsistente() {
+        return ResponseEntity.ok(asistenteService.conComplemento());
+    }
+
+    @PutMapping("/asistente/{restaurantId}")
+    public ResponseEntity<Complemento> activarAsistente(@PathVariable UUID restaurantId, @RequestBody Complemento peticion) {
+        return ResponseEntity.ok(new Complemento(asistenteService.activarComplemento(restaurantId, peticion.activo())));
     }
 }

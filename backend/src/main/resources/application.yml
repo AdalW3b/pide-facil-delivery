@@ -79,6 +79,12 @@ stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
+# Asistente operativo. La llave maestra (32 bytes en base64) cifra las llaves
+# de IA que pone cada restaurante. Si se pierde, esas llaves no se pueden
+# descifrar y cada restaurante tendra que volver a ponerlas.
+asistente:
+  llave-maestra: ${ASISTENTE_LLAVE_MAESTRA:}
+
 # Pedidos de Rappi. El secreto lo da Rappi al registrar los webhooks; vacio
 # apaga la integracion (los avisos se rechazan).
 rappi:

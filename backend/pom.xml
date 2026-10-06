@@ -115,6 +115,12 @@
 			<scope>test</scope>
 		</dependency>
 			<dependency>
+			<!-- Asistente operativo: el proveedor Claude va por su SDK oficial. -->
+			<groupId>com.anthropic</groupId>
+			<artifactId>anthropic-java</artifactId>
+			<version>2.34.0</version>
+		</dependency>
+		<dependency>
 			<groupId>com.stripe</groupId>
 			<artifactId>stripe-java</artifactId>
 			<version>26.0.0</version>

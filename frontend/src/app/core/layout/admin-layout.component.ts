@@ -25,8 +25,10 @@ import {
   LucideX,
   LucideBarChart3,
   LucideWallet,
-  LucideLifeBuoy
+  LucideLifeBuoy,
+  LucideSparkles
 } from '@lucide/angular';
+import { AsistenteService } from '../services/asistente.service';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
 import { FranjaSoporteComponent } from '../../shared/components/franja-soporte.component';
 import { CampanaAvisosComponent } from '../../shared/components/campana-avisos.component';
@@ -79,6 +81,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideBarChart3,
     LucideWallet,
     LucideLifeBuoy,
+    LucideSparkles,
     NgTemplateOutlet,
     FranjaSoporteComponent,
     CampanaAvisosComponent
@@ -91,6 +94,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('domicilio') { <svg lucideBike class="w-5 h-5 shrink-0"></svg> }
         @case ('historial') { <svg lucideReceipt class="w-5 h-5 shrink-0"></svg> }
         @case ('caja') { <svg lucideWallet class="w-5 h-5 shrink-0"></svg> }
+        @case ('asistente') { <svg lucideSparkles class="w-5 h-5 shrink-0"></svg> }
         @case ('soporte') { <svg lucideLifeBuoy class="w-5 h-5 shrink-0"></svg> }
         @case ('reportes') { <svg lucideBarChart3 class="w-5 h-5 shrink-0"></svg> }
         @case ('catalogo') { <svg lucideBookOpen class="w-5 h-5 shrink-0"></svg> }
@@ -331,6 +335,7 @@ export class AdminLayoutComponent {
   private readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
   readonly sucursalActiva = inject(SucursalActivaService);
+  private readonly asistente = inject(AsistenteService);
 
   // Sidebar state Signal
   readonly isSidebarCollapsed = signal(false);
@@ -432,6 +437,12 @@ export class AdminLayoutComponent {
           visible: () => this.hasPermission('TABLES_READ') || this.hasPermission('ORDERS_READ')
             || this.hasPermission('ANALYTICS_READ') || this.isBranchManagerOrHigher(),
         },
+      ],
+    },
+    {
+      titulo: 'Asistente',
+      items: [
+        { ruta: '/asistente', nombre: 'Asistente IA', icono: 'asistente', exacta: false, visible: () => this.asistente.visible() },
       ],
     },
     {

@@ -56,6 +56,11 @@ public class User implements UserDetails {
     @Builder.Default
     private Boolean active = true;
 
+    /** El dueño lo habilita para usar el asistente operativo (dueño y gerentes lo usan siempre). */
+    @Builder.Default
+    @Column(name = "usa_asistente", nullable = false)
+    private Boolean usaAsistente = false;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "user_tables", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "table_id"))
     @ToString.Exclude

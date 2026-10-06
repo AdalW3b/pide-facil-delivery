@@ -149,6 +149,11 @@ export const routes: Routes = [
         data: { expectedRoles: ['SUPER_ADMIN'] },
       },
       {
+        // El asistente operativo: quién lo usa y qué ve lo decide el backend.
+        path: 'asistente',
+        loadComponent: () => import('./features/asistente/asistente.component').then((m) => m.AsistenteComponent),
+      },
+      {
         // La pantalla del operador de la plataforma; el dueño no entra.
         path: 'system',
         loadComponent: () => import('./features/admin-core/plataforma.component').then((m) => m.PlataformaComponent),

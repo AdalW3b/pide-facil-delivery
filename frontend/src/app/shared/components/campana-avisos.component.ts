@@ -52,9 +52,12 @@ const CADA_MS = 60_000;
           <ul class="divide-y divide-slate-800">
             @for (a of avisos(); track a.id) {
               <li class="px-4 py-3" [class.bg-indigo-500/5]="!a.leido">
-                <p class="text-xs font-bold" [class]="a.tipo === 'RENTA' ? 'text-emerald-300' : 'text-amber-300'">{{ a.tipo === 'RENTA' ? 'Renta' : 'Soporte' }}</p>
+                <p class="text-xs font-bold" [class]="a.tipo === 'RENTA' ? 'text-emerald-300' : a.tipo === 'ASISTENTE' ? 'text-indigo-300' : 'text-amber-300'">{{ a.tipo === 'RENTA' ? 'Renta' : a.tipo === 'ASISTENTE' ? 'Asistente' : 'Soporte' }}</p>
                 <p class="text-sm font-semibold text-white">{{ a.titulo }}</p>
-                @if (a.detalle) { <p class="text-xs text-slate-400 mt-0.5">{{ a.detalle }}</p> }
+                @if (a.detalle) {
+                  <!-- El resumen diario es largo: aquí solo el principio; completo en la pantalla del asistente -->
+                  <p class="text-xs text-slate-400 mt-0.5 whitespace-pre-line" [class.line-clamp-4]="a.tipo === 'ASISTENTE'">{{ a.detalle }}</p>
+                }
                 <p class="text-[11px] text-slate-500 mt-1 tabular-nums">{{ a.creadoEn | date: 'dd/MM HH:mm' }}</p>
               </li>
             }
