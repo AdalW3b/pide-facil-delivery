@@ -50,6 +50,9 @@ public class AsistenteService {
     static final int MAX_PREGUNTA = 2000;
     static final int MAX_TURNOS = 10;
     static final int MAX_TURNO = 4000;
+    /** Lo que recibe el modelo si pide mas consultas de las permitidas. */
+    static final String CIERRE = "Ya no hay más consultas para esta pregunta. Contesta ahora con lo que ya consultaste; "
+            + "si falta algún dato, dilo y explica dónde verlo en el sistema.";
 
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", new Locale("es", "MX"));
 
@@ -172,6 +175,7 @@ public class AsistenteService {
         long entrada = 0;
         long salida = 0;
         String texto = null;
+        boolean cerrada = false;
         for (int paso = 0; paso < MAX_PASOS; paso++) {
             ProveedorLlm.Paso r = conv.siguiente();
             entrada += r.tokensEntrada();
@@ -181,11 +185,25 @@ public class AsistenteService {
                 break;
             }
             List<ProveedorLlm.Resultado> resultados = new ArrayList<>();
-            for (ProveedorLlm.Llamada l : r.llamadas()) {
-                consulto.add(l.nombre());
-                resultados.add(herramientas.ejecutar(l, ctx));
+            if (paso < MAX_PASOS - 1) {
+                for (ProveedorLlm.Llamada l : r.llamadas()) {
+                    consulto.add(l.nombre());
+                    resultados.add(herramientas.ejecutar(l, ctx));
+                }
+            } else {
+                // Se acabaron las rondas: que conteste con lo que ya consulto.
+                for (ProveedorLlm.Llamada l : r.llamadas()) {
+                    resultados.add(new ProveedorLlm.Resultado(l, CIERRE, true));
+                }
+                cerrada = true;
             }
             conv.responder(resultados);
+        }
+        if (cerrada) {
+            ProveedorLlm.Paso r = conv.siguiente();
+            entrada += r.tokensEntrada();
+            salida += r.tokensSalida();
+            if (!r.pideHerramientas()) texto = r.texto();
         }
         if (texto == null || texto.isBlank()) {
             texto = "No alcancé a terminar la respuesta. Intenta con una pregunta más concreta (por ejemplo, de un solo periodo).";

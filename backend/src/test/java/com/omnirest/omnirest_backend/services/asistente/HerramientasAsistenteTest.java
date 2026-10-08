@@ -27,7 +27,10 @@ class HerramientasAsistenteTest {
     private final OperacionesInventarioService inventario = mock(OperacionesInventarioService.class);
     private final CajaService caja = mock(CajaService.class);
     private final DeliveryService delivery = mock(DeliveryService.class);
-    private final HerramientasAsistente herramientas = new HerramientasAsistente(analytics, inventario, caja, delivery);
+    private final com.omnirest.omnirest_backend.services.FlujoService flujo = mock(com.omnirest.omnirest_backend.services.FlujoService.class);
+    private final com.omnirest.omnirest_backend.services.ComprasService compras = mock(com.omnirest.omnirest_backend.services.ComprasService.class);
+    private final com.omnirest.omnirest_backend.services.GastosService gastos = mock(com.omnirest.omnirest_backend.services.GastosService.class);
+    private final HerramientasAsistente herramientas = new HerramientasAsistente(analytics, inventario, caja, delivery, flujo, compras, gastos);
 
     private final UUID restaurante = UUID.randomUUID();
     private final UUID sucursal = UUID.randomUUID();
@@ -44,13 +47,13 @@ class HerramientasAsistenteTest {
     @Test
     @DisplayName("Al modelo solo se le ofrecen las herramientas que el usuario puede usar")
     void segunPermisos() {
-        assertEquals(7, herramientas.para(usuario("SUPER_ADMIN", "SUPER_ADMIN")).size());
+        assertEquals(10, herramientas.para(usuario("SUPER_ADMIN", "SUPER_ADMIN")).size());
 
         List<String> mesero = nombres(herramientas.para(usuario("Mesero", "ORDERS_READ", "TABLES_READ")));
         assertEquals(List.of("pedidos_activos"), mesero, "un mesero no ve ventas, inventario ni caja");
 
         List<String> almacen = nombres(herramientas.para(usuario("Almacén", "INVENTORY_READ")));
-        assertEquals(List.of("inventario"), almacen);
+        assertEquals(List.of("compras_por_pagar", "inventario"), almacen, "el almacén ve lo que se debe, no el dinero del negocio");
     }
 
     @Test

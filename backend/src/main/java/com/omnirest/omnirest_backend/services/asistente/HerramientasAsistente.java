@@ -4,6 +4,9 @@ import com.omnirest.omnirest_backend.dtos.PedidoDomicilioPanelDTO;
 import com.omnirest.omnirest_backend.security.CustomUserDetails;
 import com.omnirest.omnirest_backend.services.AnalyticsService;
 import com.omnirest.omnirest_backend.services.CajaService;
+import com.omnirest.omnirest_backend.services.ComprasService;
+import com.omnirest.omnirest_backend.services.FlujoService;
+import com.omnirest.omnirest_backend.services.GastosService;
 import com.omnirest.omnirest_backend.services.DeliveryService;
 import com.omnirest.omnirest_backend.services.OperacionesInventarioService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,9 @@ public class HerramientasAsistente {
     private final OperacionesInventarioService inventarioService;
     private final CajaService cajaService;
     private final DeliveryService deliveryService;
+    private final FlujoService flujoService;
+    private final ComprasService comprasService;
+    private final GastosService gastosService;
 
     /** De quién es la pregunta y sobre qué sucursal. */
     public record Contexto(CustomUserDetails usuario, UUID restaurantId, UUID branchId) {
@@ -97,6 +103,56 @@ public class HerramientasAsistente {
                             LocalDate[] r = rango(p.args());
                             return analyticsService.getPeakHours(p.ctx().restaurantId(), p.ctx().branchId(), r[0], r[1]);
                         }),
+                new Definicion(new ProveedorLlm.Herramienta("ingresos_y_egresos",
+                        "El dinero que entró y salió en un periodo, en una sola consulta: ingresos (ventas cobradas por "
+                                + "forma de pago), egresos (compras de contado, pagos de compras a crédito, gastos como renta, "
+                                + "luz o nómina por categoría, y otras salidas de caja), resultado, lo comprado a crédito sin "
+                                + "pagar, propinas (aparte: son del personal), día por día y compras por proveedor. Úsala para "
+                                + "'entradas y salidas', 'cuánto gasté', 'flujo', 'cuánto me quedó'.", RANGO),
+                        VENTAS, p -> {
+                            LocalDate[] r = rango(p.args());
+                            var f = flujoService.flujo(p.ctx().restaurantId(), p.ctx().branchId(), r[0], r[1]);
+                            Map<String, Object> salida = new LinkedHashMap<>();
+                            salida.put("periodo", r[0] + " a " + r[1]);
+                            salida.put("ingresos", f.ingresos());
+                            salida.put("egresos", Map.of(
+                                    "total", f.egresos().total(),
+                                    "comprasEfectivoDeCaja", f.egresos().comprasCaja(),
+                                    "comprasTransferencia", f.egresos().comprasTransferencia(),
+                                    "comprasSinFormaDePago", f.egresos().comprasSinFormaPago(),
+                                    "pagosDeComprasACredito", f.egresos().pagosCredito(),
+                                    "gastosPorCategoria", f.egresos().gastosPorCategoria(),
+                                    "otrasSalidasDeCaja", f.egresos().otrasSalidas()));
+                            salida.put("resultado", f.resultado());
+                            salida.put("compradoACreditoSinPagar", f.compradoSinPagar());
+                            salida.put("propinas", f.propinas());
+                            salida.put("porDia", f.porDia().stream().filter(d -> d.ingresos().signum() != 0 || d.egresos().signum() != 0).toList());
+                            salida.put("comprasPorProveedor", f.porProveedor());
+                            return salida;
+                        }),
+                new Definicion(new ProveedorLlm.Herramienta("compras_por_pagar",
+                        "Lo comprado a crédito que falta pagar en la sucursal: proveedor, folio de la nota, fecha, total y "
+                                + "cuándo vence (lo vencido primero).",
+                        Map.of("type", "object", "properties", Map.of(), "required", List.of())),
+                        Set.of("SUPER_ADMIN", "BRANCH_MANAGER", "INVENTORY_READ", "CATALOG_READ"), p ->
+                        comprasService.porPagar(p.ctx().branchId()).stream().map(c -> {
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            m.put("proveedor", c.proveedor());
+                            m.put("folio", c.folio());
+                            m.put("fecha", c.fecha());
+                            m.put("total", c.total());
+                            m.put("vence", c.vence());
+                            m.put("articulos", c.renglones());
+                            return m;
+                        }).toList()),
+                new Definicion(new ProveedorLlm.Herramienta("gastos_del_mes",
+                        "Los gastos de un mes (renta, luz, agua, gas, nómina, mantenimiento…): cada gasto pagado, los "
+                                + "gastos fijos con su día de pago y si ya se pagaron, lo gastado y lo que falta de los fijos.",
+                        Map.of("type", "object",
+                                "properties", Map.of("mes", Map.of("type", "string",
+                                        "description", "Mes AAAA-MM. Por omisión, el actual.")),
+                                "required", List.of())),
+                        VENTAS, p -> gastosService.mes(p.ctx().branchId(), p.args().path("mes").asString(null))),
                 new Definicion(new ProveedorLlm.Herramienta("inventario",
                         "Existencias de la sucursal (ingredientes y productos): cantidad, unidad, mínimo, costo y zona. "
                                 + "Con solo_bajo_minimo=true regresa solo lo que está en o debajo de su mínimo.",

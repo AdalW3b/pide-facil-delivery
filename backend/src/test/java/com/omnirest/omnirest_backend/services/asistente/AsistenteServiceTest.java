@@ -162,6 +162,17 @@ class AsistenteServiceTest {
     }
 
     @Test
+    @DisplayName("Al acabarse las rondas, contesta con lo que ya consultó")
+    void cierraConLoQueTiene() {
+        pasosPidiendo = AsistenteService.MAX_PASOS;
+        AsistenteService.Respuesta r = servicio.preguntar(usuario("SUPER_ADMIN", "SUPER_ADMIN"),
+                new AsistenteService.Pregunta("Entradas y salidas de octubre", null, List.of()));
+        assertEquals("Ayer vendiste $1,500.", r.texto());
+        assertTrue(recibidos.get(recibidos.size() - 1).get(0).esError(), "la última ronda ya no consulta");
+        verify(herramientas, times(AsistenteService.MAX_PASOS - 1)).ejecutar(any(), any());
+    }
+
+    @Test
     @DisplayName("Límite de preguntas por hora y largo de la pregunta")
     void limites() {
         CustomUserDetails dueno = usuario("SUPER_ADMIN");
