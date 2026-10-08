@@ -146,6 +146,7 @@ public class InventoryService {
                 Ingredient ingrediente = renglon.getIngredient();
                 BigDecimal total = consumoPorPlatillo(renglon).multiply(BigDecimal.valueOf(cantidad));
                 if (total.signum() <= 0) continue;
+                prepararLoQueFalte(branchId, ingrediente, total, bloquear, orderId);
                 aplicarIngrediente(branchId, ingrediente, total.negate(), TipoMovimiento.VENTA, bloquear,
                         orderId, nota, null, null, "Stock insuficiente del ingrediente: " + ingrediente.getName());
                 anotar(item, ingrediente.getId(), null, total);
@@ -155,6 +156,47 @@ public class InventoryService {
                     "Ya no quedan suficientes " + producto.getName() + ".");
             anotar(item, null, producto.getId(), BigDecimal.valueOf(cantidad));
         }
+    }
+
+    /**
+     * Una preparacion que se prepara sola: si lo registrado no alcanza para
+     * esta venta, lo que falta se prepara ahora. Salen sus ingredientes y entra
+     * la preparacion con su costo, como si la cocina lo hubiera registrado.
+     */
+    private void prepararLoQueFalte(UUID branchId, Ingredient preparado, BigDecimal necesita, boolean bloquear,
+                                    UUID orderId) {
+        prepararLoQueFalte(branchId, preparado, necesita, bloquear, orderId, 0);
+    }
+
+    private void prepararLoQueFalte(UUID branchId, Ingredient preparado, BigDecimal necesita, boolean bloquear,
+                                    UUID orderId, int nivel) {
+        if (!Disponible.sePreparaAlVender(preparado) || nivel >= Costos.NIVELES) return;
+        BigDecimal hay = saldoIngrediente(branchId, preparado.getId()).max(BigDecimal.ZERO);
+        BigDecimal falta = necesita.subtract(hay);
+        if (falta.signum() <= 0) return;
+
+        BigDecimal tandas = falta.divide(preparado.getRinde(), 6, RoundingMode.HALF_UP);
+        String unidad = preparado.getUnitOfMeasure() != null ? " " + preparado.getUnitOfMeasure() : "";
+        String nota = "Preparación automática: " + legible(falta) + unidad + " de " + preparado.getName() + " (venta)";
+        UUID grupo = UUID.randomUUID();
+        Costos.Precios precios = preciosDe(branchId);
+        BigDecimal costoTotal = BigDecimal.ZERO;
+        boolean conCosto = true;
+        for (PreparacionComponente c : preparado.getComponentes()) {
+            BigDecimal usa = Costos.enUnidadDe(c).multiply(tandas).setScale(3, RoundingMode.HALF_UP);
+            if (usa.signum() <= 0) continue;
+            // Si el componente tambien se prepara solo (el chile tatemado de la salsa), primero el.
+            prepararLoQueFalte(branchId, c.getComponente(), usa, bloquear, orderId, nivel + 1);
+            BigDecimal unitario = Costos.deIngrediente(c.getComponente(), precios);
+            if (unitario == null) conCosto = false;
+            else costoTotal = costoTotal.add(usa.multiply(unitario));
+            aplicarIngrediente(branchId, c.getComponente(), usa.negate(), TipoMovimiento.PRODUCCION, bloquear, orderId,
+                    nota, null, null, "No alcanza " + c.getComponente().getName() + " para preparar "
+                            + preparado.getName() + ".", grupo);
+        }
+        BigDecimal costoUnitario = conCosto ? costoTotal.divide(falta, 4, RoundingMode.HALF_UP) : null;
+        aplicarIngrediente(branchId, preparado, falta, TipoMovimiento.PRODUCCION, false, orderId, nota, costoUnitario,
+                null, null, grupo);
     }
 
     private void anotar(OrderItem item, UUID ingredientId, UUID productId, BigDecimal cantidad) {
@@ -240,6 +282,7 @@ public class InventoryService {
             Ingredient ingrediente = ingredientRepository.findById(a.getIngredientId()).orElse(null);
             if (ingrediente == null) continue;
             BigDecimal total = a.getCantidadIngrediente().multiply(BigDecimal.valueOf(cantidad));
+            prepararLoQueFalte(branchId, ingrediente, total, modo == ControlInventario.BLOQUEAR, orderId);
             aplicarIngrediente(branchId, ingrediente, total.negate(), TipoMovimiento.VENTA,
                     modo == ControlInventario.BLOQUEAR, orderId, "Adicional: " + a.getNombre(), null, null,
                     "No alcanza " + ingrediente.getName() + " para " + a.getNombre()
@@ -410,11 +453,21 @@ public class InventoryService {
                 .costoUnitario(costoUnitario).proveedor(proveedor).nota(recortar(nota))
                 .orderId(orderId).grupoId(grupoId).usuario(quien()).build());
         if (delta.signum() > 0 && costoUnitario != null && costoUnitario.signum() > 0) {
-            ingrediente.setCostoPromedio(promedio(ingrediente.getCostoPromedio(), saldo.subtract(delta), delta, costoUnitario));
-            ingredientRepository.save(ingrediente);
+            // La sucursal promedia con lo que ella tenia; lo que no tenia costeado toma el general.
+            BigDecimal costoSucursal = branchIngredientStockRepository.costo(branchId, id)
+                    .orElse(ingrediente.getCostoPromedio());
+            branchIngredientStockRepository.fijarCosto(branchId, id,
+                    promedio(costoSucursal, saldo.subtract(delta), delta, costoUnitario));
+            // El general promedia con lo de todas. Un traspaso no cambia lo que tiene el restaurante.
+            if (tipo != TipoMovimiento.TRANSFERENCIA) {
+                BigDecimal totalAntes = branchIngredientStockRepository.totalEnSucursales(id).subtract(delta);
+                ingrediente.setCostoPromedio(promedio(ingrediente.getCostoPromedio(), totalAntes, delta, costoUnitario));
+                ingredientRepository.save(ingrediente);
+            }
         }
         if (delta.signum() < 0) {
-            avisarSiQuedaPoco(branchId, ingrediente, saldo.subtract(delta), saldo);
+            avisarSiQuedaPoco(branchId, ingrediente, saldo.subtract(delta), saldo,
+                    branchIngredientStockRepository.minimo(branchId, id).orElse(ingrediente.getMinimo()));
         }
         return saldo;
     }
@@ -460,18 +513,25 @@ public class InventoryService {
                 .costoUnitario(costoUnitario).nota(recortar(nota)).orderId(orderId).grupoId(grupoId)
                 .usuario(quien()).build());
         BigDecimal antes = saldo.subtract(BigDecimal.valueOf(delta));
+        Integer minimo = delta < 0 ? branchProductStockRepository.minimo(branchId, id).orElse(producto.getMinimo()) : null;
         if (delta < 0 && saldo.signum() < 0 && antes.signum() >= 0) {
             avisar(branchId, producto.getName() + " quedó en negativo (" + saldo.stripTrailingZeros().toPlainString()
                     + "): revisa el inventario.");
-        } else if (delta < 0 && producto.getMinimo() != null && producto.getMinimo() > 0
-                && antes.compareTo(BigDecimal.valueOf(producto.getMinimo())) >= 0
-                && saldo.compareTo(BigDecimal.valueOf(producto.getMinimo())) < 0) {
+        } else if (delta < 0 && minimo != null && minimo > 0
+                && antes.compareTo(BigDecimal.valueOf(minimo)) >= 0
+                && saldo.compareTo(BigDecimal.valueOf(minimo)) < 0) {
             avisar(branchId, "Queda poco de " + producto.getName() + ": " + saldo.stripTrailingZeros().toPlainString()
-                    + " (mínimo " + producto.getMinimo() + ").");
+                    + " (mínimo " + minimo + ").");
         }
         if (delta > 0 && costoUnitario != null && costoUnitario.signum() > 0) {
-            producto.setCostoPromedio(promedio(producto.getCostoPromedio(), antes, BigDecimal.valueOf(delta), costoUnitario));
-            productRepository.save(producto);
+            BigDecimal entra = BigDecimal.valueOf(delta);
+            BigDecimal costoSucursal = branchProductStockRepository.costo(branchId, id).orElse(producto.getCostoPromedio());
+            branchProductStockRepository.fijarCosto(branchId, id, promedio(costoSucursal, antes, entra, costoUnitario));
+            if (tipo != TipoMovimiento.TRANSFERENCIA) {
+                BigDecimal totalAntes = BigDecimal.valueOf(branchProductStockRepository.totalEnSucursales(id)).subtract(entra);
+                producto.setCostoPromedio(promedio(producto.getCostoPromedio(), totalAntes, entra, costoUnitario));
+                productRepository.save(producto);
+            }
         }
         return saldo;
     }
@@ -487,6 +547,67 @@ public class InventoryService {
                     .product(producto)
                     .stock(delta)
                     .build());
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Costos de la sucursal
+    // ------------------------------------------------------------------
+
+    /**
+     * Los costos de la sucursal para calcular platillos y reportes: lo que
+     * pago ella y, de lo que no ha comprado, el general del restaurante.
+     */
+    @Transactional(readOnly = true)
+    public Costos.Precios preciosDe(UUID branchId) {
+        if (branchId == null) return Costos.GENERALES;
+        Map<UUID, BigDecimal> ingredientes = new java.util.HashMap<>();
+        for (BranchIngredientStock s : branchIngredientStockRepository.findByBranchId(branchId)) {
+            if (s.getCostoPromedio() != null) ingredientes.put(s.getId().getIngredientId(), s.getCostoPromedio());
+        }
+        Map<UUID, BigDecimal> productos = new java.util.HashMap<>();
+        for (BranchProductStock s : branchProductStockRepository.findByBranchId(branchId)) {
+            if (s.getCostoPromedio() != null) productos.put(s.getId().getProductId(), s.getCostoPromedio());
+        }
+        return Costos.deSucursal(ingredientes, productos);
+    }
+
+    /** El minimo de esta sucursal; null = usar el general del ingrediente. */
+    public void fijarMinimoIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal minimo) {
+        if (branchIngredientStockRepository.fijarMinimo(branchId, ingrediente.getId(), minimo) == 0) {
+            sumarForzado(branchId, ingrediente, BigDecimal.ZERO);
+            branchIngredientStockRepository.fijarMinimo(branchId, ingrediente.getId(), minimo);
+        }
+    }
+
+    public void fijarMinimoProducto(UUID branchId, Product producto, Integer minimo) {
+        if (branchProductStockRepository.fijarMinimo(branchId, producto.getId(), minimo) == 0) {
+            sumarForzadoProducto(branchId, producto, 0);
+            branchProductStockRepository.fijarMinimo(branchId, producto.getId(), minimo);
+        }
+    }
+
+    /** El costo que se captura a mano en Inventario: vale para esta sucursal. */
+    public void fijarCostoIngrediente(UUID branchId, Ingredient ingrediente, BigDecimal costo) {
+        if (branchIngredientStockRepository.fijarCosto(branchId, ingrediente.getId(), costo) == 0) {
+            sumarForzado(branchId, ingrediente, BigDecimal.ZERO);
+            branchIngredientStockRepository.fijarCosto(branchId, ingrediente.getId(), costo);
+        }
+        // Si el restaurante no tenia costo general, este es el mejor dato que hay.
+        if (ingrediente.getCostoPromedio() == null && costo != null) {
+            ingrediente.setCostoPromedio(costo);
+            ingredientRepository.save(ingrediente);
+        }
+    }
+
+    public void fijarCostoProducto(UUID branchId, Product producto, BigDecimal costo) {
+        if (branchProductStockRepository.fijarCosto(branchId, producto.getId(), costo) == 0) {
+            sumarForzadoProducto(branchId, producto, 0);
+            branchProductStockRepository.fijarCosto(branchId, producto.getId(), costo);
+        }
+        if (producto.getCostoPromedio() == null && costo != null) {
+            producto.setCostoPromedio(costo);
+            productRepository.save(producto);
         }
     }
 
@@ -508,14 +629,14 @@ public class InventoryService {
      * "Queda poco de Carne: 0.8 kg (mínimo 2 kg)" o "quedó en negativo". Solo al
      * cruzar la raya, no en cada venta: si no, el gerente recibe un aviso por taco.
      */
-    private void avisarSiQuedaPoco(UUID branchId, Ingredient ingrediente, BigDecimal antes, BigDecimal despues) {
+    private void avisarSiQuedaPoco(UUID branchId, Ingredient ingrediente, BigDecimal antes, BigDecimal despues,
+                                   BigDecimal minimo) {
         String unidad = ingrediente.getUnitOfMeasure() != null ? " " + ingrediente.getUnitOfMeasure() : "";
         if (antes.signum() >= 0 && despues.signum() < 0) {
             avisar(branchId, ingrediente.getName() + " quedó en negativo (" + legible(despues) + unidad
                     + "): se vendió más de lo que había registrado. Revisa el inventario.");
             return;
         }
-        BigDecimal minimo = ingrediente.getMinimo();
         if (minimo != null && minimo.signum() > 0 && antes.compareTo(minimo) >= 0 && despues.compareTo(minimo) < 0) {
             avisar(branchId, "Queda poco de " + ingrediente.getName() + ": " + legible(despues) + unidad
                     + " (mínimo " + legible(minimo) + unidad + ").");

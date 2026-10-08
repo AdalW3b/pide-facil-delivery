@@ -31,4 +31,11 @@ public class BranchProductStock {
     @Column(nullable = false)
     @Builder.Default
     private Integer stock = 0;
+
+    /** Lo que le cuesta a esta sucursal, promedio ponderado. Null = sin costo propio todavia. */
+    @Column(name = "costo_promedio", precision = 12, scale = 4)
+    private java.math.BigDecimal costoPromedio;
+
+    /** El minimo de esta sucursal, en piezas. Null = el general del producto. */
+    private Integer minimo;
 }

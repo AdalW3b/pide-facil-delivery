@@ -200,7 +200,7 @@ public class InventarioController {
             @PathVariable UUID branchId,
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate desde,
             @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate hasta) {
-        securityValidationService.validateUserAccessToBranch(branchId);
+        securityValidationService.validarCosteoDeSucursal(branchId);
         return ResponseEntity.ok(operaciones.reporte(branchId, desde, hasta));
     }
 

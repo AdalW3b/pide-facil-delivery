@@ -482,7 +482,7 @@ import {
 
                           <!-- Desglose de Materia Prima Desplegable (Grid) -->
                           @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined && isRecipeBreakdownExpanded(prod.id)) {
-                            <div class="mt-3 p-3 rounded-xl bg-slate-955/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
+                            <div class="mt-3 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
                               <div class="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
                                 <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
                                   <svg lucideChefHat class="w-3 h-3"></svg> Materia Prima Proyectada
@@ -545,7 +545,7 @@ import {
                                 <button
                                   (click)="openAdjustStockModal('PRODUCT', prod)"
                                   [disabled]="prod.isRecipe"
-                                  [title]="prod.isRecipe ? 'El stock de los preparados se ajusta modificando la cantidad de sus ingredientes' : 'Ajustar stock físico'"
+                                  [title]="prod.isRecipe ? 'Los platillos con receta no tienen existencias propias: se ajustan las de sus ingredientes en Inventario' : 'Ajustar stock físico'"
                                   class="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-500/10"
                                 >
                                   <svg lucideBoxes class="w-3 h-3"></svg>
@@ -670,7 +670,7 @@ import {
                                   <button
                                     (click)="openAdjustStockModal('PRODUCT', prod)"
                                     [disabled]="prod.isRecipe"
-                                    [title]="prod.isRecipe ? 'El stock de los preparados se ajusta modificando la cantidad de sus ingredientes' : 'Ajustar stock físico'"
+                                    [title]="prod.isRecipe ? 'Los platillos con receta no tienen existencias propias: se ajustan las de sus ingredientes en Inventario' : 'Ajustar stock físico'"
                                     class="px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-500/10"
                                   >
                                     <svg lucideBoxes class="w-3.5 h-3.5"></svg>
@@ -698,7 +698,7 @@ import {
 
                           <!-- Desglose desplegable (List View) -->
                           @if (prod.isRecipe && activeBranchId() && prod.stock !== null && prod.stock !== undefined && isRecipeBreakdownExpanded(prod.id)) {
-                            <div class="mt-2 p-3 rounded-xl bg-slate-955/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
+                            <div class="mt-2 p-3 rounded-xl bg-slate-950/90 border border-slate-800/80 space-y-2 animate-fadeIn shadow-inner">
                               <div class="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
                                 <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
                                   <svg lucideChefHat class="w-3 h-3"></svg> Desglose de Materia Prima Proyectada (Lote Máximo: {{ prod.stock }} {{ prod.stock === 1 ? 'unidad' : 'unidades' }})
@@ -770,7 +770,7 @@ import {
                   placeholder="Buscar ingrediente..."
                   [value]="ingredientSearchQuery()"
                   (input)="ingredientSearchQuery.set($any($event.target).value)"
-                  class="w-full pl-10 pr-4 py-2.5 bg-slate-955 border border-slate-800/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors"
+                  class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800/80 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
@@ -812,7 +812,7 @@ import {
           <app-control-inventario [branchId]="activeBranchId()" />
 
           <!-- Ingredients Table -->
-          <div class="overflow-x-auto border border-slate-800/80 rounded-2xl bg-slate-955/30">
+          <div class="overflow-x-auto border border-slate-800/80 rounded-2xl bg-slate-950/30">
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="bg-slate-900/80 border-b border-slate-800/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -936,7 +936,7 @@ import {
     @if (isProductModalOpen()) {
       <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
         <!-- Backdrop -->
-        <div (click)="closeProductModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+        <div (click)="closeProductModal()" class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity duration-300"></div>
 
         <!-- Dialog Body -->
         <div class="w-full max-w-xl bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col max-h-[90vh]">
@@ -954,7 +954,7 @@ import {
 
           <div class="p-6 space-y-5 overflow-y-auto">
             <!-- ¿Platillo o combo? -->
-            <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-955 border border-slate-800" role="radiogroup" aria-label="Tipo de producto">
+            <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800" role="radiogroup" aria-label="Tipo de producto">
               <button type="button" role="radio" [attr.aria-checked]="!productForm.isCombo" (click)="productForm.isCombo = false"
                 class="py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                 [class]="!productForm.isCombo ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
@@ -975,7 +975,7 @@ import {
                   type="text"
                   [placeholder]="productForm.isCombo ? 'Ej. Combo pareja, Martes de tacos' : 'Nombre del plato o bebida'"
                   [(ngModel)]="productForm.name"
-                  class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
@@ -986,7 +986,7 @@ import {
                   step="0.01"
                   placeholder="10.00"
                   [(ngModel)]="productForm.price"
-                  class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
             </div>
@@ -995,7 +995,7 @@ import {
             <div>
               <label for="prod-categoria" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Categoría</label>
               <select id="prod-categoria" [(ngModel)]="productForm.categoryId"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer [color-scheme:dark]">
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer [color-scheme:dark]">
                 <option value="" disabled class="bg-slate-900 text-slate-400">Elige una categoría</option>
                 @for (cat of categories(); track cat.id) {
                   <option [value]="cat.id" class="bg-slate-900 text-white">{{ cat.name }}{{ cat.active ? '' : ' (oculta)' }}</option>
@@ -1013,7 +1013,7 @@ import {
                 rows="2"
                 placeholder="Ingredientes o detalles del producto"
                 [(ngModel)]="productForm.description"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors resize-none"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors resize-none"
               ></textarea>
             </div>
 
@@ -1030,7 +1030,7 @@ import {
 
             @if (productForm.isCombo) {
               <!-- QUÉ INCLUYE EL COMBO -->
-              <div class="p-4 rounded-xl bg-slate-955/60 border border-fuchsia-500/20 space-y-3">
+              <div class="p-4 rounded-xl bg-slate-950/60 border border-fuchsia-500/20 space-y-3">
                 <div class="flex items-center justify-between">
                   <h4 class="text-xs font-bold text-fuchsia-300 uppercase tracking-wider flex items-center gap-2">
                     <svg lucidePackage class="w-4 h-4"></svg>
@@ -1053,10 +1053,10 @@ import {
                       <div class="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800">
                         <input aria-label="Cantidad" type="number" min="1" max="50" step="1"
                           [(ngModel)]="parte.cantidad"
-                          class="w-16 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white text-center tabular-nums outline-none focus:border-fuchsia-500 shrink-0" />
+                          class="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-white text-center tabular-nums outline-none focus:border-fuchsia-500 shrink-0" />
                         <span class="text-slate-500 text-xs shrink-0">×</span>
                         <select aria-label="Platillo" [(ngModel)]="parte.productId"
-                          class="flex-1 min-w-0 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-fuchsia-500 cursor-pointer [color-scheme:dark]">
+                          class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-fuchsia-500 cursor-pointer [color-scheme:dark]">
                           <option value="" disabled class="bg-slate-900 text-slate-400">Elige un platillo</option>
                           @for (grupo of platillosParaCombo(); track grupo.categoria) {
                             <optgroup [label]="grupo.categoria" class="bg-slate-900 text-slate-400">
@@ -1100,7 +1100,7 @@ import {
               </div>
 
               <!-- CUÁNDO SE VENDE -->
-              <div class="p-4 rounded-xl bg-slate-955/60 border border-slate-800 space-y-3">
+              <div class="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
                 <div>
                   <h4 class="text-xs font-bold text-sky-300 uppercase tracking-wider">Cuándo se vende</h4>
                   <p class="text-[11px] text-slate-400 mt-0.5">Opcional. Fuera de estos días no aparece en el menú en línea, en el bot ni en el panel de meseros.</p>
@@ -1119,28 +1119,28 @@ import {
                   <div>
                     <label for="promo-desde" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Desde</label>
                     <input id="promo-desde" type="date" [(ngModel)]="productForm.promoDesde"
-                      class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
                   </div>
                   <div>
                     <label for="promo-hasta" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Hasta</label>
                     <input id="promo-hasta" type="date" [(ngModel)]="productForm.promoHasta" [min]="productForm.promoDesde || null"
-                      class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-sky-500 [color-scheme:dark]" />
                   </div>
                 </div>
               </div>
             } @else {
             <!-- INVENTORY & RECIPE CONFIGURATION SECTION -->
-            <div class="p-4 rounded-xl bg-slate-955/60 border border-slate-800 space-y-4">
+            <div class="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
               <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
                 <svg lucideBoxes class="w-4 h-4"></svg>
                 Configuración de Inventario & Receta
               </h4>
 
-              <!-- Toggle switch: ¿Es un producto preparado/receta? (isRecipe) -->
+              <!-- ¿Lleva receta? (isRecipe) -->
               <div class="flex items-center justify-between p-3 rounded-lg bg-slate-900/80 border border-slate-800/80">
                 <div class="space-y-0.5">
-                  <span class="text-xs font-bold text-white block">¿Es un producto preparado/receta?</span>
-                  <span class="text-[11px] text-slate-400 block">Elaborado en cocina a partir de materias primas e ingredientes</span>
+                  <span class="text-xs font-bold text-white block">¿Lleva receta?</span>
+                  <span class="text-[11px] text-slate-400 block">Se hace con ingredientes: cada venta descuenta lo que lleva. Las salsas y bases que se hacen por tanda van en Inventario › Preparaciones.</span>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -1179,7 +1179,7 @@ import {
                   <div class="flex items-center justify-between">
                     <h5 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                       <svg lucideChefHat class="w-4 h-4"></svg>
-                      Fórmula de Receta
+                      Receta de un platillo
                     </h5>
                     <button
                       type="button"
@@ -1203,12 +1203,12 @@ import {
                           <select aria-label="Ingrediente"
                             [(ngModel)]="item.ingredientId"
                             (change)="onRecipeIngredientChange(item)"
-                            class="flex-1 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500 cursor-pointer min-w-0"
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500 cursor-pointer min-w-0"
                           >
                             <option value="" disabled class="bg-slate-950 text-slate-400">Selecciona ingrediente</option>
                             @for (ing of ingredientesParaReceta(item.ingredientId); track ing.id) {
                               <option [value]="ing.id" class="bg-slate-950 text-white">
-                                {{ ing.name }} ({{ ing.unitOfMeasure }})
+                                {{ ing.name }} ({{ ing.unitOfMeasure }}){{ ing.esPreparado ? ' · preparación' : '' }}
                               </option>
                             }
                           </select>
@@ -1221,14 +1221,14 @@ import {
                               min="0"
                               placeholder="Cant."
                               [(ngModel)]="item.quantity"
-                              class="w-full bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500"
+                              class="w-full bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2.5 text-xs text-white outline-none focus:border-indigo-500"
                             />
                           </div>
 
                           <!-- Dynamic Unit Selector -->
                           <select aria-label="Unidad"
                             [(ngModel)]="item.recipeUnit"
-                            class="w-20 bg-slate-955 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-amber-300 font-semibold outline-none focus:border-indigo-500 cursor-pointer shrink-0"
+                            class="w-20 bg-slate-950 border border-slate-800 rounded-lg py-1.5 px-2 text-xs text-amber-300 font-semibold outline-none focus:border-indigo-500 cursor-pointer shrink-0"
                             title="Unidad de medida en la receta"
                           >
                             @for (unitOpt of getAvailableUnitsForItem(item); track unitOpt) {
@@ -1248,6 +1248,19 @@ import {
                             <svg lucideX class="w-4 h-4"></svg>
                           </button>
                         </div>
+                      }
+                    </div>
+                  }
+                  @if (costoDeReceta(); as c) {
+                    <!-- Lo que cuesta hacerlo mientras se escribe la receta -->
+                    <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg bg-slate-900/80 border border-slate-800 px-3 py-2 text-xs" role="status">
+                      <span class="text-slate-400">Cuesta hacerlo <strong class="text-white tabular-nums">{{ c.total | pesos }}</strong>{{ c.completo ? '' : '*' }}</span>
+                      @if (c.margen !== null) {
+                        <span class="text-slate-400">Margen <strong class="tabular-nums" [class]="c.margen < 30 ? 'text-rose-300' : c.margen < 60 ? 'text-amber-300' : 'text-emerald-300'">{{ c.margen }}%</strong></span>
+                        <span class="text-slate-400">Te deja <strong class="text-white tabular-nums">{{ c.utilidad | pesos }}</strong></span>
+                      }
+                      @if (!c.completo) {
+                        <span class="basis-full text-[11px] text-amber-400">* {{ c.sinCosto.join(', ') }} no {{ c.sinCosto.length === 1 ? 'tiene' : 'tienen' }} costo: el real es mayor. Captúralo en las compras de Inventario.</span>
                       }
                     </div>
                   }
@@ -1283,7 +1296,7 @@ import {
     @if (isIngredientModalOpen()) {
       <div class="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
         <!-- Backdrop -->
-        <div (click)="closeIngredientModal()" class="absolute inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity duration-300"></div>
+        <div (click)="closeIngredientModal()" class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity duration-300"></div>
 
         <!-- Dialog Body -->
         <div class="w-full max-w-md bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl shadow-2xl relative overflow-hidden animate-scaleIn flex flex-col">
@@ -1306,7 +1319,7 @@ import {
                 type="text"
                 placeholder="Ej: Carne Sirloin, Queso Gouda, Tomate"
                 [(ngModel)]="ingredientForm.name"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
 
@@ -1314,7 +1327,7 @@ import {
               <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Unidad de Medida</label>
               <select aria-label="Unidad de medida"
                 [(ngModel)]="ingredientForm.unitOfMeasure"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
               >
                 @for (u of unidadesDeInventario; track u.valor) {
                   <option [value]="u.valor" class="bg-slate-950 text-white">{{ u.nombre }}</option>
@@ -1328,7 +1341,7 @@ import {
               </label>
               <input id="ing-minimo" type="number" min="0" step="any" placeholder="Opcional"
                 [(ngModel)]="ingredientForm.minimo"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500" />
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500" />
               <p class="text-[11px] text-slate-500 mt-1.5">Cuando quede menos, se marca "queda poco" y avisamos al gerente.</p>
             </div>
           </div>
@@ -2431,6 +2444,32 @@ export class CatalogComponent implements OnInit {
   }
 
   // --- Dynamic Recipe Unit Helpers ---
+  /**
+   * El costo de la receta que se está escribiendo, con lo que le cuestan los
+   * ingredientes a la sucursal elegida, y el margen contra el precio.
+   */
+  costoDeReceta(): { total: number; completo: boolean; sinCosto: string[]; margen: number | null; utilidad: number } | null {
+    const renglones = (this.productForm?.recipeItems ?? []).filter((r) => r.ingredientId && Number(r.quantity) > 0);
+    if (renglones.length === 0) return null;
+    let total = 0;
+    const sinCosto: string[] = [];
+    for (const r of renglones) {
+      const ing = this.ingredients().find((i) => i.id === r.ingredientId);
+      if (!ing) continue;
+      if (ing.costo === null || ing.costo === undefined) {
+        sinCosto.push(ing.name);
+        continue;
+      }
+      const cantidad = convertirUnidad(Number(r.quantity), r.recipeUnit || ing.unitOfMeasure, ing.unitOfMeasure);
+      total += cantidad * Number(ing.costo);
+    }
+    total = Math.round(total * 100) / 100;
+    const precio = Number(this.productForm?.price) || 0;
+    const utilidad = Math.round((precio - total) * 100) / 100;
+    const margen = precio > 0 ? Math.round((utilidad / precio) * 100) : null;
+    return { total, completo: sinCosto.length === 0, sinCosto, margen, utilidad };
+  }
+
   getAvailableUnitsForItem(item: RecipeItem): string[] {
     const ing = item.ingredientId ? this.ingredients().find(i => i.id === item.ingredientId) : undefined;
     const unidades = unidadesCompatibles(ing?.unitOfMeasure);

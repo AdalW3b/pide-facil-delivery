@@ -108,7 +108,7 @@ export interface BillSummary {
             placeholder="Buscar por ID de orden o mesa..."
             [ngModel]="searchQuery()"
             (ngModelChange)="searchQuery.set($event)"
-            class="w-full pl-10 pr-4 py-2 bg-slate-955 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-all"
+            class="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-all"
           />
         </div>
 
@@ -269,7 +269,7 @@ export interface BillSummary {
           <!-- Backdrop -->
           <div
             (click)="closeTicketModal()"
-            class="fixed inset-0 bg-slate-955/70 backdrop-blur-sm transition-opacity"
+            class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
           ></div>
 
           <!-- Modal Container -->
@@ -296,7 +296,7 @@ export interface BillSummary {
                   <span class="text-xs">Cargando datos del ticket...</span>
                 </div>
               } @else if (ticketText()) {
-                <pre class="p-4 bg-slate-955 border border-slate-800 rounded-xl text-xs font-mono text-indigo-300 leading-relaxed overflow-x-auto whitespace-pre-wrap select-text max-h-96 shadow-inner">{{ ticketText() }}</pre>
+                <pre class="p-4 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-indigo-300 leading-relaxed overflow-x-auto whitespace-pre-wrap select-text max-h-96 shadow-inner">{{ ticketText() }}</pre>
               } @else {
                 <p class="text-xs text-slate-400 text-center py-6">No hay información de ticket disponible para esta orden.</p>
               }

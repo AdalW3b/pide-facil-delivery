@@ -202,7 +202,7 @@ export interface Employee {
                 type="text"
                 placeholder="Ej. Juan Pérez"
                 formControlName="name"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 [class.border-rose-500]="isFieldInvalid('name')"
               />
               @if (isFieldInvalid('name')) {
@@ -217,7 +217,7 @@ export interface Employee {
                 type="text"
                 placeholder="Ej. juanp"
                 formControlName="username"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 [class.border-rose-500]="isFieldInvalid('username')"
               />
               @if (isFieldInvalid('username')) {
@@ -234,7 +234,7 @@ export interface Employee {
                   type="tel"
                   placeholder="521234567890"
                   formControlName="phoneNumber"
-                  class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 pl-8 pr-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-8 pr-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                   [class.border-rose-500]="isFieldInvalid('phoneNumber')"
                 />
               </div>
@@ -252,7 +252,7 @@ export interface Employee {
                 type="password"
                 placeholder="{{ isEditMode() ? 'Dejar en blanco para no modificar' : 'Mínimo 6 caracteres' }}"
                 formControlName="password"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500 transition-colors"
                 [class.border-rose-500]="isFieldInvalid('password')"
               />
               @if (isFieldInvalid('password')) {
@@ -265,7 +265,7 @@ export interface Employee {
               <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Rol</label>
               <select aria-label="Rol"
                 formControlName="roleId"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
                 [class.border-rose-500]="isFieldInvalid('roleId')"
               >
                 <option value="" disabled selected class="bg-slate-950 text-slate-400">Selecciona un rol</option>
@@ -284,7 +284,7 @@ export interface Employee {
               <select aria-label="Sucursal"
                 formControlName="branchId"
                 (change)="onBranchSelectChange($event)"
-                class="w-full bg-slate-955 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
               >
                 <option value="" class="bg-slate-950 text-slate-400">Todas / Acceso General</option>
                 @for (branch of branches(); track branch.id) {
@@ -305,11 +305,11 @@ export interface Employee {
               </div>
 
               @if (availableBranchTables().length === 0) {
-                <div class="p-3 rounded-xl bg-slate-955 border border-slate-800 text-xs text-slate-400 text-center">
+                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-center">
                   {{ employeeForm.get('branchId')?.value ? 'No hay mesas disponibles en esta sucursal.' : 'Selecciona una sucursal para ver sus mesas.' }}
                 </div>
               } @else {
-                <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl bg-slate-955 border border-slate-800">
+                <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl bg-slate-950 border border-slate-800">
                   @for (table of availableBranchTables(); track table.id) {
                     <button
                       type="button"
@@ -375,7 +375,7 @@ export interface Employee {
       animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
     /* Estilo de inputs oscuros */
-    .bg-slate-955 {
+    .bg-slate-950 {
       background-color: rgb(5, 8, 16);
     }
   `],

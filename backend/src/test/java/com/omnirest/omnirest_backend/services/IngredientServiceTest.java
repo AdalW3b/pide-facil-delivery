@@ -88,6 +88,7 @@ class IngredientServiceTest {
 
         user = new CustomUserDetails(
                 UUID.randomUUID(), "admin", "pwd", "SUPER_ADMIN", "/admin", restaurantId, null, List.of());
+        lenient().when(inventoryService.preciosDe(any())).thenReturn(Costos.GENERALES);
     }
 
     @Test
@@ -100,6 +101,30 @@ class IngredientServiceTest {
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("Queso Mozzarella", result.get(0).name());
+    }
+
+    @Test
+    @DisplayName("No deja cambiar la unidad de un ingrediente que va dentro de una preparación")
+    void unidadBloqueadaPorPreparacion() {
+        when(ingredientRepository.findById(ingredient.getId())).thenReturn(Optional.of(ingredient));
+        lenient().when(ingredientRepository.usadoComoComponente(ingredient.getId())).thenReturn(true);
+
+        IngredientDTO dto = new IngredientDTO(ingredient.getId(), restaurantId, "Queso Mozzarella", "pieza", null, true);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> ingredientService.updateIngredient(ingredient.getId(), dto, user));
+        assertTrue(e.getMessage().contains("preparaciones"), e.getMessage());
+        verify(ingredientRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("No deja cambiar la unidad de un ingrediente que descuenta un extra")
+    void unidadBloqueadaPorExtra() {
+        when(ingredientRepository.findById(ingredient.getId())).thenReturn(Optional.of(ingredient));
+        lenient().when(ingredientRepository.adicionalesQueLoUsan(ingredient.getId())).thenReturn(1L);
+
+        IngredientDTO dto = new IngredientDTO(ingredient.getId(), restaurantId, "Queso Mozzarella", "g", null, true);
+        assertThrows(IllegalArgumentException.class,
+                () -> ingredientService.updateIngredient(ingredient.getId(), dto, user));
     }
 
     @Test

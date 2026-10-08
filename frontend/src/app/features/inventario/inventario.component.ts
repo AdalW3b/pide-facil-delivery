@@ -8,7 +8,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { PesosPipe } from '../../shared/utils/pesos';
-import { cantidadLegible, unidadesCompatibles } from '../../shared/utils/unidades';
+import { cantidadLegible, convertirUnidad, unidadesCompatibles } from '../../shared/utils/unidades';
 import { MovimientoInventarioComponent, ObjetivoInventario } from '../catalog/movimiento-inventario.component';
 import { HistorialInventarioComponent } from '../catalog/historial-inventario.component';
 import { ControlInventarioComponent } from '../catalog/control-inventario.component';
@@ -68,6 +68,17 @@ interface Preparacion {
   rinde: number | null;
   componentes: Componente[];
   costoPorUnidad: number | null;
+  /** Si al vender no alcanza lo registrado, se prepara sola con sus ingredientes. */
+  prepararAlVender: boolean;
+}
+
+/** Lo que va a usar una preparación de un ingrediente, contra lo que hay. */
+interface UsoPrevisto {
+  nombre: string;
+  usa: number;
+  hay: number;
+  unidad: string;
+  alcanza: boolean;
 }
 
 interface RenglonReporte {
@@ -86,6 +97,26 @@ interface RenglonReporte {
   consumoDiario: number;
   diasQueAlcanza: number | null;
   sugerido: number;
+  esPreparado: boolean;
+  diferenciaConteo: number;
+  costoDiferencia: number | null;
+}
+
+/** El costeo de cada sucursal, para el dueño. */
+interface CosteoSucursal {
+  branchId: string;
+  sucursal: string;
+  costoConsumo: number;
+  costoMerma: number;
+  costoDiferencias: number;
+  porReponer: number;
+}
+
+interface CosteoRestaurante {
+  costoConsumo: number;
+  costoMerma: number;
+  costoDiferencias: number;
+  sucursales: CosteoSucursal[];
 }
 
 interface Reporte {
@@ -93,6 +124,7 @@ interface Reporte {
   hasta: string;
   costoConsumo: number;
   costoMerma: number;
+  costoDiferencias: number;
   renglones: RenglonReporte[];
 }
 
@@ -328,6 +360,19 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                     @if (p.costoPorUnidad !== null) { <span class="ml-auto text-xs text-slate-400 tabular-nums">{{ p.costoPorUnidad | pesos }}/{{ p.unidad }}</span> }
                   </div>
                   <p class="text-xs text-slate-400">{{ describirComponentes(p) }}</p>
+                  @if (p.prepararAlVender) {
+                    <p class="text-[11px] text-emerald-300">Se prepara sola al vender si no alcanza lo registrado.</p>
+                  }
+                  @if (previsto(p); as usos) {
+                    <ul class="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 space-y-0.5 text-[11px]" aria-label="Lo que se va a usar">
+                      @for (u of usos; track u.nombre) {
+                        <li class="flex justify-between gap-3" [class]="u.alcanza ? 'text-slate-300' : 'text-rose-300'">
+                          <span>{{ u.nombre }}: usa {{ legibleU(u.usa, u.unidad) }}</span>
+                          <span class="tabular-nums">{{ u.alcanza ? 'hay ' + legibleU(u.hay, u.unidad) : 'solo hay ' + legibleU(u.hay, u.unidad) }}</span>
+                        </li>
+                      }
+                    </ul>
+                  }
                   @if (puedeMover()) {
                     <div class="flex flex-wrap items-center gap-2 pt-1">
                       <input type="number" min="0" step="any" [attr.aria-label]="'Cuánto preparaste de ' + p.nombre" placeholder="Cuánto hiciste"
@@ -364,7 +409,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                   <div class="grid grid-cols-12 gap-2 items-center">
                     <select [ngModel]="c.componenteId" (ngModelChange)="c.componenteId = $event; c.unidad = unidadDeIngrediente($event)" aria-label="Ingrediente" class="col-span-6 ${INPUT} [color-scheme:dark]">
                       <option value="">Ingrediente</option>
-                      @for (a of componentesPosibles(e.preparadoId); track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
+                      @for (a of componentesPosibles(e.preparadoId); track a.id) { <option [value]="a.id">{{ a.nombre }}{{ a.esPreparado ? ' · preparación' : '' }}</option> }
                     </select>
                     <input type="number" min="0" step="any" [ngModel]="c.cantidad" (ngModelChange)="c.cantidad = $event" aria-label="Cantidad" class="col-span-3 ${INPUT} tabular-nums" />
                     <select [ngModel]="c.unidad" (ngModelChange)="c.unidad = $event" aria-label="Unidad" class="col-span-2 ${INPUT} [color-scheme:dark]">
@@ -375,6 +420,15 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                 }
                 <button type="button" (click)="e.componentes.push({ componenteId: '', cantidad: null, unidad: '' }); editandoPrep.set({ ...e })"
                   class="text-xs font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer">+ Agregar ingrediente</button>
+                <label class="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input type="checkbox" [ngModel]="e.prepararAlVender" (ngModelChange)="e.prepararAlVender = $event"
+                    class="mt-0.5 accent-indigo-500" />
+                  <span>
+                    <strong class="text-white">Prepararla sola al vender</strong><br />
+                    Si se vende más de la que registró la cocina, lo que falta se prepara en ese momento con sus ingredientes.
+                    Así no queda en negativo cuando a alguien se le olvida registrarla.
+                  </span>
+                </label>
                 <div class="flex items-center gap-3 pt-2">
                   @if (e.preparadoId && esPreparacionExistente(e.preparadoId)) {
                     <button (click)="quitarPreparacion(e.preparadoId)" class="text-xs text-rose-400 hover:text-rose-300 cursor-pointer">Ya no es preparación</button>
@@ -444,8 +498,48 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                 </button>
               }
             </div>
+            @if (esDueno() && costeoTodas(); as t) {
+              @if (t.sucursales.length > 1) {
+                <div class="rounded-xl border border-indigo-500/30 bg-slate-900/40 overflow-x-auto">
+                  <h2 class="px-4 pt-4 text-sm font-bold text-white">Todas tus sucursales</h2>
+                  <p class="px-4 text-[11px] text-slate-400">Cada sucursal con sus propios costos. Elige una para ver su detalle abajo.</p>
+                  <table class="w-full text-sm mt-2">
+                    <thead class="text-[11px] uppercase tracking-wider text-slate-400 text-left">
+                      <tr>
+                        <th class="py-2 px-4">Sucursal</th>
+                        <th class="py-2 px-4 text-right">Consumido</th>
+                        <th class="py-2 px-4 text-right">Merma</th>
+                        <th class="py-2 px-4 text-right">Conteos</th>
+                        <th class="py-2 px-4 text-right">Por reponer</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800">
+                      @for (x of t.sucursales; track x.branchId) {
+                        <tr class="cursor-pointer hover:bg-slate-800/40" [class.bg-indigo-500/10]="x.branchId === branchId()"
+                          (click)="verSucursal(x.branchId)" tabindex="0" (keydown.enter)="verSucursal(x.branchId)"
+                          [attr.aria-current]="x.branchId === branchId() ? 'true' : null">
+                          <td class="py-2.5 px-4 text-white font-medium">{{ x.sucursal }}</td>
+                          <td class="py-2.5 px-4 text-right tabular-nums text-slate-300">{{ x.costoConsumo | pesos }}</td>
+                          <td class="py-2.5 px-4 text-right tabular-nums text-rose-300">{{ x.costoMerma | pesos }}</td>
+                          <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.costoDiferencias < 0 ? 'text-rose-300' : 'text-slate-300'">{{ x.costoDiferencias | pesos }}</td>
+                          <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.porReponer > 0 ? 'text-amber-300' : 'text-slate-500'">{{ x.porReponer }}</td>
+                        </tr>
+                      }
+                      <tr class="font-bold">
+                        <td class="py-2.5 px-4 text-white">Total</td>
+                        <td class="py-2.5 px-4 text-right tabular-nums text-white">{{ t.costoConsumo | pesos }}</td>
+                        <td class="py-2.5 px-4 text-right tabular-nums text-rose-300">{{ t.costoMerma | pesos }}</td>
+                        <td class="py-2.5 px-4 text-right tabular-nums" [class]="t.costoDiferencias < 0 ? 'text-rose-300' : 'text-white'">{{ t.costoDiferencias | pesos }}</td>
+                        <td class="py-2.5 px-4"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              }
+            }
             @if (reporte(); as r) {
-              <dl class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <h2 class="text-sm font-bold text-white">{{ esDueno() && (costeoTodas()?.sucursales?.length ?? 0) > 1 ? 'Detalle de ' + nombreSucursal() : 'Costeo de tu sucursal' }}</h2>
+              <dl class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
                   <dt class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Costo de lo consumido</dt>
                   <dd class="text-2xl font-black text-white tabular-nums mt-1">{{ r.costoConsumo | pesos }}</dd>
@@ -453,6 +547,10 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                 <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
                   <dt class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Costo de la merma</dt>
                   <dd class="text-2xl font-black text-rose-300 tabular-nums mt-1">{{ r.costoMerma | pesos }}</dd>
+                </div>
+                <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4" title="Lo que los conteos encontraron de menos (o de más) contra lo que decía el sistema">
+                  <dt class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">{{ r.costoDiferencias < 0 ? 'Faltante en conteos' : 'Diferencia en conteos' }}</dt>
+                  <dd class="text-2xl font-black tabular-nums mt-1" [class]="r.costoDiferencias < 0 ? 'text-rose-300' : 'text-white'">{{ r.costoDiferencias | pesos }}</dd>
                 </div>
                 <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
                   <dt class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Por comprar</dt>
@@ -470,6 +568,17 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                   </ul>
                 </div>
               }
+              @if (porPreparar().length > 0) {
+                <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                  <h2 class="text-sm font-bold text-emerald-200">Por preparar en la semana</h2>
+                  <p class="text-[11px] text-slate-400">Se hacen en cocina con sus ingredientes; regístralas en Preparaciones.</p>
+                  <ul class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                    @for (x of porPreparar(); track x.id) {
+                      <li class="flex justify-between gap-3"><span class="text-slate-200">{{ x.nombre }}</span><span class="tabular-nums text-emerald-200">{{ legibleR(x.sugerido, x) }}</span></li>
+                    }
+                  </ul>
+                </div>
+              }
 
               <div class="overflow-x-auto border border-slate-800 rounded-xl">
                 <table class="w-full text-sm">
@@ -478,6 +587,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                       <th class="py-3 px-4">Artículo</th>
                       <th class="py-3 px-4 text-right">Consumo</th>
                       <th class="py-3 px-4 text-right">Merma</th>
+                      <th class="py-3 px-4 text-right" title="Lo que los conteos encontraron de menos (−) o de más (+)">Conteos</th>
                       <th class="py-3 px-4 text-right">Costo</th>
                       <th class="py-3 px-4 text-right">Hay</th>
                       <th class="py-3 px-4 text-right">Alcanza</th>
@@ -489,6 +599,10 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                         <td class="py-2.5 px-4 text-white">{{ x.nombre }}</td>
                         <td class="py-2.5 px-4 text-right tabular-nums text-slate-300">{{ legibleR(x.consumo, x) }}</td>
                         <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.merma > 0 ? 'text-rose-300' : 'text-slate-500'">{{ x.merma > 0 ? legibleR(x.merma, x) : '—' }}</td>
+                        <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.diferenciaConteo < 0 ? 'text-rose-300' : x.diferenciaConteo > 0 ? 'text-slate-300' : 'text-slate-500'"
+                          [title]="x.costoDiferencia !== null ? 'A costo: ' + (x.costoDiferencia | pesos) : ''">
+                          {{ x.diferenciaConteo === 0 ? '—' : (x.diferenciaConteo > 0 ? '+' : '') + legibleR(x.diferenciaConteo, x) }}
+                        </td>
                         <td class="py-2.5 px-4 text-right tabular-nums text-slate-300">{{ x.costoConsumo !== null ? (x.costoConsumo | pesos) : '—' }}</td>
                         <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.existencia < 0 ? 'text-rose-300' : 'text-slate-300'">{{ legibleR(x.existencia, x) }}</td>
                         <td class="py-2.5 px-4 text-right tabular-nums" [class]="x.diasQueAlcanza !== null && x.diasQueAlcanza < 3 ? 'text-amber-300 font-bold' : 'text-slate-400'">
@@ -496,7 +610,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                         </td>
                       </tr>
                     } @empty {
-                      <tr><td colspan="6" class="py-10 text-center text-slate-500">Sin movimientos en este periodo.</td></tr>
+                      <tr><td colspan="7" class="py-10 text-center text-slate-500">Sin movimientos en este periodo.</td></tr>
                     }
                   </tbody>
                 </table>
@@ -558,7 +672,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
           <div class="relative w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
             <h3 id="ed-titulo" class="text-base font-bold text-white">{{ e.nombre }}</h3>
             <div>
-              <label for="ed-min" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Mínimo ({{ unidadCorta(e) }})</label>
+              <label for="ed-min" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Mínimo en esta sucursal ({{ unidadCorta(e) }})</label>
               <input id="ed-min" type="number" min="0" step="any" [ngModel]="e.minimo" (ngModelChange)="e.minimo = $event" class="${INPUT} tabular-nums" />
             </div>
             <div>
@@ -572,9 +686,9 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
               </button>
             </div>
             <div>
-              <label for="ed-costo" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Costo por {{ unidadCorta(e) }} ($)</label>
+              <label for="ed-costo" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Costo por {{ unidadCorta(e) }} en esta sucursal ($)</label>
               <input id="ed-costo" type="number" min="0" step="any" [ngModel]="e.costo" (ngModelChange)="e.costo = $event" class="${INPUT} tabular-nums" />
-              <p class="text-[11px] text-slate-500 mt-1">Se actualiza solo con cada compra que registre lo que pagaste.</p>
+              <p class="text-[11px] text-slate-500 mt-1">Se actualiza solo con cada compra que registre lo que pagaste. Cada sucursal lleva el suyo.</p>
             </div>
             <div class="flex justify-end gap-3 pt-2">
               <button (click)="editando.set(null)" class="text-xs text-slate-400 hover:text-white cursor-pointer">Cancelar</button>
@@ -644,7 +758,7 @@ export class InventarioComponent {
 
   // Preparaciones
   readonly preparaciones = signal<Preparacion[]>([]);
-  readonly editandoPrep = signal<{ preparadoId: string; rinde: number | null; componentes: Componente[] } | null>(null);
+  readonly editandoPrep = signal<{ preparadoId: string; rinde: number | null; componentes: Componente[]; prepararAlVender: boolean } | null>(null);
   readonly aProducir = signal<Record<string, number>>({});
 
   // Transferencias
@@ -657,7 +771,11 @@ export class InventarioComponent {
   readonly rangos = [7, 30];
   readonly dias = signal(7);
   readonly reporte = signal<Reporte | null>(null);
-  readonly porComprar = computed(() => (this.reporte()?.renglones ?? []).filter((r) => r.sugerido > 0));
+  readonly costeoTodas = signal<CosteoRestaurante | null>(null);
+  readonly esDueno = computed(() => this.auth.userRole() === 'SUPER_ADMIN');
+  readonly porComprar = computed(() => (this.reporte()?.renglones ?? []).filter((r) => r.sugerido > 0 && !r.esPreparado));
+  /** Salsas, bases y marinados que conviene hacer: no se compran, se preparan. */
+  readonly porPreparar = computed(() => (this.reporte()?.renglones ?? []).filter((r) => r.sugerido > 0 && r.esPreparado));
 
   constructor() {
     effect(() => {
@@ -960,7 +1078,8 @@ export class InventarioComponent {
   }
 
   componentesPosibles(preparadoId: string): Articulo[] {
-    return this.articulos().filter((a) => a.tipo === 'INGREDIENTE' && a.activo && !a.esPreparado && a.id !== preparadoId);
+    // Otra preparación también vale (el chile tatemado de la salsa); que no se contengan lo revisa el servidor.
+    return this.articulos().filter((a) => a.tipo === 'INGREDIENTE' && a.activo && a.id !== preparadoId);
   }
 
   unidadDePreparado(id: string): string {
@@ -977,7 +1096,7 @@ export class InventarioComponent {
   }
 
   nuevaPreparacion(): void {
-    this.editandoPrep.set({ preparadoId: '', rinde: null, componentes: [{ componenteId: '', cantidad: null, unidad: '' }] });
+    this.editandoPrep.set({ preparadoId: '', rinde: null, componentes: [{ componenteId: '', cantidad: null, unidad: '' }], prepararAlVender: false });
   }
 
   editarPreparacion(p: Preparacion): void {
@@ -985,6 +1104,7 @@ export class InventarioComponent {
       preparadoId: p.preparadoId,
       rinde: p.rinde,
       componentes: p.componentes.map((c) => ({ componenteId: c.componenteId, cantidad: c.cantidad, unidad: c.unidad })),
+      prepararAlVender: p.prepararAlVender,
     });
   }
 
@@ -1001,6 +1121,7 @@ export class InventarioComponent {
       componentes: e.componentes.filter((c) => c.componenteId).map((c) => ({
         componenteId: c.componenteId, cantidad: Number(c.cantidad), unidad: c.unidad || null,
       })),
+      prepararAlVender: e.prepararAlVender,
     }).subscribe({
       next: () => {
         this.guardando.set(false);
@@ -1025,6 +1146,27 @@ export class InventarioComponent {
       },
       error: (err) => this.avisos.error(err.error?.error || 'No se pudo cambiar.'),
     });
+  }
+
+  /**
+   * Antes de registrar: cuánto se va a usar de cada ingrediente y si alcanza.
+   * Null mientras no se escriba cuánto se preparó.
+   */
+  previsto(p: Preparacion): UsoPrevisto[] | null {
+    const cantidad = Number(this.aProducir()[p.preparadoId]);
+    if (!(cantidad > 0) || !p.rinde) return null;
+    const tandas = cantidad / p.rinde;
+    return p.componentes.map((c) => {
+      const art = this.articulos().find((a) => a.tipo === 'INGREDIENTE' && a.id === c.componenteId);
+      const unidad = art?.unidad ?? c.unidad;
+      const usa = convertirUnidad(Number(c.cantidad) || 0, c.unidad || unidad, unidad) * tandas;
+      const hay = art?.existencia ?? 0;
+      return { nombre: c.nombre ?? art?.nombre ?? '', usa, hay, unidad, alcanza: hay >= usa - 1e-9 };
+    });
+  }
+
+  legibleU(n: number, unidad: string): string {
+    return cantidadLegible(Math.round(n * 1000) / 1000, unidad);
   }
 
   fijarProducir(id: string, valor: number): void {
@@ -1082,9 +1224,26 @@ export class InventarioComponent {
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - (dias - 1) * 86400000);
     const iso = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    this.http.get<Reporte>(this.api(`reporte?desde=${iso(desde)}&hasta=${iso(hasta)}`)).subscribe({
+    const periodo = `desde=${iso(desde)}&hasta=${iso(hasta)}`;
+    this.http.get<Reporte>(this.api(`reporte?${periodo}`)).subscribe({
       next: (r) => this.reporte.set(r),
       error: (err) => this.avisos.error(err.error?.error || 'No se pudo cargar el reporte.'),
     });
+    // El dueño ve también el de todas sus sucursales; cada gerente, solo el suyo.
+    if (this.esDueno()) {
+      this.http.get<CosteoRestaurante>(`${environment.apiUrl}/inventario/costeo-sucursales?${periodo}`).subscribe({
+        next: (t) => this.costeoTodas.set(t),
+        error: () => this.costeoTodas.set(null),
+      });
+    }
+  }
+
+  /** Cambia la sucursal de todo el panel: el detalle de abajo pasa a ser el de esa. */
+  verSucursal(id: string): void {
+    if (id !== this.branchId()) this.sucursal.elegirSucursal(id);
+  }
+
+  nombreSucursal(): string {
+    return this.costeoTodas()?.sucursales.find((s) => s.branchId === this.branchId())?.sucursal ?? 'esta sucursal';
   }
 }

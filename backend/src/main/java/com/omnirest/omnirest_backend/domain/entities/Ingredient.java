@@ -60,6 +60,14 @@ public class Ingredient {
     @Column(precision = 12, scale = 3)
     private BigDecimal rinde;
 
+    /**
+     * Si al vender no alcanza lo preparado, lo que falta se prepara en ese
+     * momento con sus ingredientes, en vez de dejar la preparacion en negativo.
+     */
+    @Column(name = "preparar_al_vender", nullable = false)
+    @Builder.Default
+    private Boolean prepararAlVender = false;
+
     @OneToMany(mappedBy = "preparado", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     @ToString.Exclude

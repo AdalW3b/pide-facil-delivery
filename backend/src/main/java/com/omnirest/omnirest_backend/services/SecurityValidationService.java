@@ -65,6 +65,23 @@ public class SecurityValidationService {
         }
     }
 
+    /**
+     * El costeo de una sucursal: el dueño ve el de cualquiera de las suyas;
+     * cualquier otro empleado, solo el de la sucursal que tiene asignada, aunque
+     * su rol le deje operar otras.
+     */
+    public void validarCosteoDeSucursal(UUID branchId) {
+        validateUserAccessToBranch(branchId);
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        CustomUserDetails u = (CustomUserDetails) authentication.getPrincipal();
+        if ("SYSTEM_ADMIN".equalsIgnoreCase(u.roleName()) || "SUPER_ADMIN".equalsIgnoreCase(u.roleName())) {
+            return;
+        }
+        if (u.branchId() == null || !u.branchId().equals(branchId)) {
+            throw new AccessDeniedException("Solo puedes ver el costeo de tu sucursal.");
+        }
+    }
+
     private boolean hasAuthority(CustomUserDetails userDetails, String authority) {
         return userDetails.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals(authority));

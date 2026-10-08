@@ -50,11 +50,13 @@ public class ProductService {
                     .orElse(user.restaurantId());
         }
         java.util.Map<UUID, BigDecimal> existencias = existenciasDe(branchId);
+        // Costo y margen con lo que le cuestan las cosas a la sucursal elegida.
+        Costos.Precios precios = precios(branchId);
         List<Product> productos = productRepository.findByCategoryRestaurantId(restaurantId);
         java.util.Set<UUID> manuales = branchId != null ? agotadosService.manuales(branchId) : java.util.Set.of();
         java.util.Set<UUID> agotados = branchId != null ? agotadosService.agotados(branchId, productos) : java.util.Set.of();
         return productos.stream()
-                .map(p -> conAgotado(mapToResponse(p, branchId, existencias), agotados.contains(p.getId()),
+                .map(p -> conAgotado(mapToResponse(p, branchId, existencias, precios), agotados.contains(p.getId()),
                         manuales.contains(p.getId())))
                 .collect(Collectors.toList());
     }
@@ -93,6 +95,7 @@ public class ProductService {
             for (RecipeItemDTO itemDto : dto.recipeItems()) {
                 product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
             }
+            sinIngredientesRepetidos(product.getRecipeItems());
         }
 
         Product savedProduct = productRepository.save(product);
@@ -144,6 +147,7 @@ public class ProductService {
                 for (RecipeItemDTO itemDto : dto.recipeItems()) {
                     product.getRecipeItems().add(renglonDeReceta(product, itemDto, restauranteDe(product)));
                 }
+                sinIngredientesRepetidos(product.getRecipeItems());
             } else {
                 product.getRecipeItems().clear();
             }
@@ -295,6 +299,20 @@ public class ProductService {
                 .build();
     }
 
+    /**
+     * Un ingrediente va una sola vez en la receta: dos renglones se revisan por
+     * separado al ver si alcanza, y el platillo pareceria disponible sin estarlo.
+     */
+    static void sinIngredientesRepetidos(List<RecipeItem> receta) {
+        java.util.Set<UUID> vistos = new java.util.HashSet<>();
+        for (RecipeItem r : receta) {
+            if (!vistos.add(r.getIngredient().getId())) {
+                throw new IllegalArgumentException(r.getIngredient().getName()
+                        + " está dos veces en la receta: suma las cantidades en un solo renglón.");
+            }
+        }
+    }
+
     private void validateRestaurantOwnership(CustomUserDetails user, UUID resourceRestaurantId) {
         if (user.restaurantId() == null || !user.restaurantId().equals(resourceRestaurantId)) {
             throw new AccessDeniedException("User does not have access to this restaurant's products");
@@ -323,7 +341,7 @@ public class ProductService {
             for (RecipeItem item : items) {
                 BigDecimal porPlatillo = InventoryService.consumoPorPlatillo(item);
                 if (porPlatillo == null || porPlatillo.compareTo(BigDecimal.ZERO) <= 0) return 0;
-                BigDecimal hay = existencias.getOrDefault(item.getIngredient().getId(), BigDecimal.ZERO);
+                BigDecimal hay = Disponible.de(item.getIngredient(), existencias);
                 max = Math.min(max, hay.divide(porPlatillo, 0, RoundingMode.DOWN).intValue());
             }
             return Math.max(0, max);
@@ -349,10 +367,16 @@ public class ProductService {
     }
 
     private ProductResponseDTO mapToResponse(Product product, UUID branchId) {
-        return mapToResponse(product, branchId, existenciasDe(branchId));
+        return mapToResponse(product, branchId, existenciasDe(branchId), precios(branchId));
     }
 
-    private ProductResponseDTO mapToResponse(Product product, UUID branchId, java.util.Map<UUID, BigDecimal> existencias) {
+    /** Sin sucursal elegida, los costos generales del restaurante. */
+    private Costos.Precios precios(UUID branchId) {
+        return branchId == null ? Costos.GENERALES : inventoryService.preciosDe(branchId);
+    }
+
+    private ProductResponseDTO mapToResponse(Product product, UUID branchId, java.util.Map<UUID, BigDecimal> existencias,
+                                             Costos.Precios precios) {
         Integer currentStock = null;
         List<RecipeItemDTO> recipeItemDTOs = null;
 
@@ -446,7 +470,7 @@ public class ProductService {
         Costos.Costo costo = Costos.dePlatillo(product, Boolean.TRUE.equals(product.getIsRecipe())
                 ? (product.getRecipeItems() != null && !product.getRecipeItems().isEmpty()
                         ? product.getRecipeItems() : recipeItemRepository.findByProductId(product.getId()))
-                : null);
+                : null, precios);
         return new ProductResponseDTO(
                 product.getId(),
                 product.getCategory().getId(),

@@ -66,10 +66,12 @@ class CombosTest {
     }
 
     private ProductService productService() {
+        InventoryService inventario = mock(InventoryService.class);
+        when(inventario.preciosDe(any())).thenReturn(Costos.GENERALES);
         return new ProductService(productRepository, categoryRepository, mock(IngredientRepository.class),
                 mock(RecipeItemRepository.class), existencias, ingredientes,
                 mock(BranchRepository.class), mock(RestaurantRepository.class), comboItemRepository,
-                mock(InventoryService.class), mock(AgotadosService.class));
+                inventario, mock(AgotadosService.class));
     }
 
     private InventoryService inventoryService() {

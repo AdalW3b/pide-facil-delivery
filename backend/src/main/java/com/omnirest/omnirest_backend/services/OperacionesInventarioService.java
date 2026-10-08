@@ -53,17 +53,27 @@ public class OperacionesInventarioService {
     public List<Articulo> existencias(UUID branchId) {
         Branch branch = sucursal(branchId);
         UUID restaurantId = branch.getRestaurant().getId();
-        Map<UUID, BigDecimal> stockIng = ingredienteStockRepository.findByBranchId(branchId).stream()
+        List<BranchIngredientStock> filasIng = ingredienteStockRepository.findByBranchId(branchId);
+        List<BranchProductStock> filasProd = productoStockRepository.findByBranchId(branchId);
+        Map<UUID, BigDecimal> stockIng = filasIng.stream()
                 .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
-        Map<UUID, Integer> stockProd = productoStockRepository.findByBranchId(branchId).stream()
+        Map<UUID, Integer> stockProd = filasProd.stream()
                 .collect(Collectors.toMap(s -> s.getId().getProductId(), BranchProductStock::getStock, (a, b) -> a));
+        // El minimo de esta sucursal; si no tiene, el general del catalogo.
+        Map<UUID, BigDecimal> minimoIng = new HashMap<>();
+        filasIng.forEach(s -> { if (s.getMinimo() != null) minimoIng.put(s.getId().getIngredientId(), s.getMinimo()); });
+        Map<UUID, Integer> minimoProd = new HashMap<>();
+        filasProd.forEach(s -> { if (s.getMinimo() != null) minimoProd.put(s.getId().getProductId(), s.getMinimo()); });
         Map<UUID, Integer> usos = recipeItemRepository.usosPorIngrediente(restaurantId).stream()
                 .collect(Collectors.toMap(f -> (UUID) f[0], f -> ((Number) f[1]).intValue()));
+        // El costo de esta sucursal: lo que ella pago.
+        Costos.Precios precios = inventoryService.preciosDe(branchId);
 
         List<Articulo> lista = new ArrayList<>();
         for (Ingredient i : ingredientRepository.findByRestaurantId(restaurantId)) {
             lista.add(new Articulo("INGREDIENTE", i.getId(), i.getName(), i.getUnitOfMeasure(),
-                    stockIng.getOrDefault(i.getId(), BigDecimal.ZERO), i.getMinimo(), Costos.deIngrediente(i),
+                    stockIng.getOrDefault(i.getId(), BigDecimal.ZERO), minimoIng.getOrDefault(i.getId(), i.getMinimo()),
+                    Costos.deIngrediente(i, precios),
                     i.getZona() != null ? i.getZona().getId() : null, i.getZona() != null ? i.getZona().getNombre() : null,
                     !Boolean.FALSE.equals(i.getActive()), usos.getOrDefault(i.getId(), 0),
                     Boolean.TRUE.equals(i.getEsPreparado())));
@@ -72,7 +82,9 @@ public class OperacionesInventarioService {
             if (!Boolean.TRUE.equals(p.getTrackStock())) continue;
             lista.add(new Articulo("PRODUCTO", p.getId(), p.getName(), "pieza",
                     BigDecimal.valueOf(stockProd.getOrDefault(p.getId(), 0)),
-                    p.getMinimo() != null ? BigDecimal.valueOf(p.getMinimo()) : null, p.getCostoPromedio(),
+                    minimoProd.containsKey(p.getId()) ? BigDecimal.valueOf(minimoProd.get(p.getId()))
+                            : p.getMinimo() != null ? BigDecimal.valueOf(p.getMinimo()) : null,
+                    precios.deProducto(p),
                     p.getZona() != null ? p.getZona().getId() : null, p.getZona() != null ? p.getZona().getNombre() : null,
                     !Boolean.FALSE.equals(p.getActive()), 0, false));
         }
@@ -80,7 +92,7 @@ public class OperacionesInventarioService {
         return lista;
     }
 
-    /** Minimo, zona y costo de un articulo. */
+    /** La zona del articulo, y su minimo y su costo en esta sucursal. */
     @Transactional
     public void actualizar(UUID branchId, String tipo, UUID id, ActualizarArticulo datos) {
         UUID restaurantId = sucursal(branchId).getRestaurant().getId();
@@ -90,17 +102,23 @@ public class OperacionesInventarioService {
             if (datos.minimo() != null && datos.minimo().stripTrailingZeros().scale() > 0) {
                 throw new IllegalArgumentException("El mínimo de un producto va en piezas enteras.");
             }
-            p.setMinimo(datos.minimo() == null || datos.minimo().signum() == 0 ? null : datos.minimo().intValue());
             p.setZona(zona);
-            p.setCostoPromedio(datos.costo() == null || datos.costo().signum() == 0 ? null : datos.costo());
             productRepository.save(p);
+            inventoryService.fijarMinimoProducto(branchId, p,
+                    datos.minimo() == null || datos.minimo().signum() == 0 ? null : datos.minimo().intValue());
+            inventoryService.fijarCostoProducto(branchId, p, costoCapturado(datos.costo()));
             return;
         }
         Ingredient i = ingrediente(id, restaurantId);
-        i.setMinimo(datos.minimo() == null || datos.minimo().signum() == 0 ? null : datos.minimo());
         i.setZona(zona);
-        i.setCostoPromedio(datos.costo() == null || datos.costo().signum() == 0 ? null : datos.costo());
         ingredientRepository.save(i);
+        inventoryService.fijarMinimoIngrediente(branchId, i,
+                datos.minimo() == null || datos.minimo().signum() == 0 ? null : datos.minimo());
+        inventoryService.fijarCostoIngrediente(branchId, i, costoCapturado(datos.costo()));
+    }
+
+    private static BigDecimal costoCapturado(BigDecimal costo) {
+        return costo == null || costo.signum() == 0 ? null : costo;
     }
 
     // ------------------------------------------------------------------
@@ -257,6 +275,8 @@ public class OperacionesInventarioService {
         UUID restaurantId = origen.getRestaurant().getId();
         UUID grupo = UUID.randomUUID();
         String extra = limpiar(t.nota()) != null ? " · " + limpiar(t.nota()) : "";
+        // La mercancia llega con lo que le costo a la sucursal que la manda.
+        Costos.Precios preciosOrigen = inventoryService.preciosDe(origen.getId());
         for (Renglon r : t.renglones()) {
             if (r.cantidad().signum() <= 0) throw new IllegalArgumentException("Cada renglón lleva una cantidad mayor a cero.");
             if (r.productId() != null) {
@@ -265,14 +285,14 @@ public class OperacionesInventarioService {
                 inventoryService.moverProducto(origen.getId(), p, -piezas, TipoMovimiento.TRANSFERENCIA, true,
                         "A " + destino.getName() + extra, null, grupo);
                 inventoryService.moverProducto(destino.getId(), p, piezas, TipoMovimiento.TRANSFERENCIA, false,
-                        "De " + origen.getName() + extra, null, grupo);
+                        "De " + origen.getName() + extra, preciosOrigen.deProducto(p), grupo);
             } else {
                 Ingredient i = ingrediente(r.ingredientId(), restaurantId);
                 BigDecimal cantidad = convertir(r.cantidad(), r.unidad(), i);
                 inventoryService.moverIngrediente(origen.getId(), i, cantidad.negate(), TipoMovimiento.TRANSFERENCIA, true,
                         "A " + destino.getName() + extra, null, null, grupo);
                 inventoryService.moverIngrediente(destino.getId(), i, cantidad, TipoMovimiento.TRANSFERENCIA, false,
-                        "De " + origen.getName() + extra, null, null, grupo);
+                        "De " + origen.getName() + extra, Costos.deIngrediente(i, preciosOrigen), null, grupo);
             }
         }
         return new Lote(t.renglones().size(), "Se pasaron " + t.renglones().size()
@@ -286,23 +306,24 @@ public class OperacionesInventarioService {
     @Transactional(readOnly = true)
     public Preparacion preparacion(UUID branchId, UUID preparadoId) {
         Ingredient p = ingrediente(preparadoId, sucursal(branchId).getRestaurant().getId());
-        return aPreparacion(p);
+        return aPreparacion(p, inventoryService.preciosDe(branchId));
     }
 
     @Transactional(readOnly = true)
     public List<Preparacion> preparaciones(UUID branchId) {
         UUID restaurantId = sucursal(branchId).getRestaurant().getId();
+        Costos.Precios precios = inventoryService.preciosDe(branchId);
         return ingredientRepository.findByRestaurantId(restaurantId).stream()
                 .filter(i -> Boolean.TRUE.equals(i.getEsPreparado()))
                 .sorted(Comparator.comparing(Ingredient::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(this::aPreparacion)
+                .map(i -> aPreparacion(i, precios))
                 .toList();
     }
 
     /**
-     * La receta de una tanda y cuanto rinde. Los componentes son ingredientes
-     * sueltos: un preparado no se hace con otro preparado, para que no haya
-     * recetas que se contengan a si mismas.
+     * La receta de una tanda y cuanto rinde. Un componente puede ser otra
+     * preparacion (el chile tatemado de la salsa), siempre que no se contengan
+     * entre si y no pasen de cinco niveles.
      */
     @Transactional
     public Preparacion guardarPreparacion(UUID branchId, UUID preparadoId, Preparacion datos) {
@@ -313,8 +334,9 @@ public class OperacionesInventarioService {
         for (Componente c : datos.componentes()) {
             Ingredient comp = ingrediente(c.componenteId(), restaurantId);
             if (comp.getId().equals(p.getId())) throw new IllegalArgumentException("Una preparación no puede llevarse a sí misma.");
-            if (Boolean.TRUE.equals(comp.getEsPreparado())) {
-                throw new IllegalArgumentException(comp.getName() + " también es una preparación: usa sus ingredientes sueltos.");
+            if (lleva(comp, p.getId(), 0)) {
+                throw new IllegalArgumentException(comp.getName() + " ya lleva " + p.getName()
+                        + ": una no puede ir dentro de la otra.");
             }
             if (!vistos.add(comp.getId())) throw new IllegalArgumentException(comp.getName() + " está dos veces.");
             String unidad = c.unidad() == null || c.unidad().isBlank() ? comp.getUnitOfMeasure() : Unidades.canonica(c.unidad());
@@ -324,21 +346,33 @@ public class OperacionesInventarioService {
             }
             nuevos.add(PreparacionComponente.builder().preparado(p).componente(comp).cantidad(c.cantidad()).unidad(unidad).build());
         }
-        if (ingredientRepository.usadoComoComponente(p.getId())) {
-            throw new IllegalArgumentException(p.getName() + " se usa dentro de otra preparación: no puede ser preparación también.");
-        }
         p.setEsPreparado(true);
         p.setRinde(datos.rinde());
+        p.setPrepararAlVender(Boolean.TRUE.equals(datos.prepararAlVender()));
         p.getComponentes().clear();
         p.getComponentes().addAll(nuevos);
         ingredientRepository.save(p);
-        return aPreparacion(p);
+        return aPreparacion(p, inventoryService.preciosDe(branchId));
+    }
+
+    /** Si la preparacion lleva, directo o dentro de otra, al ingrediente buscado. */
+    static boolean lleva(Ingredient preparacion, UUID buscado, int nivel) {
+        if (!Boolean.TRUE.equals(preparacion.getEsPreparado())) return false;
+        if (nivel >= Costos.NIVELES) {
+            throw new IllegalArgumentException("Hay demasiadas preparaciones una dentro de otra (máximo "
+                    + Costos.NIVELES + ").");
+        }
+        for (PreparacionComponente c : preparacion.getComponentes()) {
+            if (c.getComponente().getId().equals(buscado) || lleva(c.getComponente(), buscado, nivel + 1)) return true;
+        }
+        return false;
     }
 
     @Transactional
     public void quitarPreparacion(UUID branchId, UUID preparadoId) {
         Ingredient p = ingrediente(preparadoId, sucursal(branchId).getRestaurant().getId());
         p.setEsPreparado(false);
+        p.setPrepararAlVender(false);
         p.setRinde(null);
         p.getComponentes().clear();
         ingredientRepository.save(p);
@@ -361,14 +395,19 @@ public class OperacionesInventarioService {
         String nota = "Preparación: " + legible(orden.cantidad()) + " " + p.getUnitOfMeasure() + " de " + p.getName()
                 + (limpiar(orden.nota()) != null ? " · " + limpiar(orden.nota()) : "");
 
+        // Lo preparado cuesta lo que costaron sus ingredientes en esta sucursal.
+        Costos.Precios precios = inventoryService.preciosDe(branchId);
+        // En modo "Bloquear" no se prepara con ingredientes que no hay.
+        boolean bloquear = inventoryService.modo(branchId) == com.omnirest.omnirest_backend.domain.enums.ControlInventario.BLOQUEAR;
         BigDecimal costoTotal = BigDecimal.ZERO;
         boolean conCosto = true;
         for (PreparacionComponente c : p.getComponentes()) {
             BigDecimal usa = Costos.enUnidadDe(c).multiply(tandas).setScale(3, RoundingMode.HALF_UP);
-            inventoryService.moverIngrediente(branchId, c.getComponente(), usa.negate(), TipoMovimiento.PRODUCCION, false,
+            BigDecimal unitario = Costos.deIngrediente(c.getComponente(), precios);
+            if (unitario == null) conCosto = false;
+            else costoTotal = costoTotal.add(usa.multiply(unitario));
+            inventoryService.moverIngrediente(branchId, c.getComponente(), usa.negate(), TipoMovimiento.PRODUCCION, bloquear,
                     nota, null, null, grupo);
-            if (c.getComponente().getCostoPromedio() == null) conCosto = false;
-            else costoTotal = costoTotal.add(usa.multiply(c.getComponente().getCostoPromedio()));
         }
         BigDecimal costoUnitario = conCosto ? costoTotal.divide(orden.cantidad(), 4, RoundingMode.HALF_UP) : null;
         BigDecimal saldo = inventoryService.moverIngrediente(branchId, p, orden.cantidad(), TipoMovimiento.PRODUCCION, false,
@@ -376,12 +415,13 @@ public class OperacionesInventarioService {
         return new Lote(p.getComponentes().size() + 1, p.getName() + " quedó en " + legible(saldo) + " " + p.getUnitOfMeasure() + ".");
     }
 
-    private Preparacion aPreparacion(Ingredient p) {
+    private Preparacion aPreparacion(Ingredient p, Costos.Precios precios) {
         return new Preparacion(p.getId(), p.getName(), p.getUnitOfMeasure(), p.getRinde(),
                 p.getComponentes().stream()
                         .map(c -> new Componente(c.getComponente().getId(), c.getComponente().getName(), c.getCantidad(), c.getUnidad()))
                         .toList(),
-                Costos.dePreparacion(p));
+                Costos.dePreparacion(p, precios),
+                Boolean.TRUE.equals(p.getPrepararAlVender()));
     }
 
     // ------------------------------------------------------------------
@@ -410,6 +450,7 @@ public class OperacionesInventarioService {
 
         BigDecimal totalConsumo = BigDecimal.ZERO;
         BigDecimal totalMerma = BigDecimal.ZERO;
+        BigDecimal totalDiferencias = BigDecimal.ZERO;
         List<RenglonReporte> renglones = new ArrayList<>();
         for (Articulo a : existencias(branchId)) {
             Map<TipoMovimiento, BigDecimal> s = sumas.getOrDefault(a.id(), Map.of());
@@ -419,8 +460,13 @@ public class OperacionesInventarioService {
             BigDecimal produccion = s.getOrDefault(TipoMovimiento.PRODUCCION, BigDecimal.ZERO);
             if (produccion.signum() < 0) consumo = consumo.add(produccion.negate());
             BigDecimal merma = s.getOrDefault(TipoMovimiento.MERMA, BigDecimal.ZERO).negate();
-            BigDecimal entradas = s.getOrDefault(TipoMovimiento.ENTRADA, BigDecimal.ZERO);
-            if (consumo.signum() == 0 && merma.signum() == 0 && entradas.signum() == 0
+            // Lo que entro: compras y, en una preparacion, lo que se preparo.
+            BigDecimal entradas = s.getOrDefault(TipoMovimiento.ENTRADA, BigDecimal.ZERO)
+                    .add(produccion.max(BigDecimal.ZERO));
+            // Lo que los conteos encontraron de mas o de menos contra el sistema.
+            BigDecimal diferencia = s.getOrDefault(TipoMovimiento.CONTEO, BigDecimal.ZERO)
+                    .add(s.getOrDefault(TipoMovimiento.AJUSTE, BigDecimal.ZERO));
+            if (consumo.signum() == 0 && merma.signum() == 0 && entradas.signum() == 0 && diferencia.signum() == 0
                     && (a.minimo() == null || a.existencia().compareTo(a.minimo()) >= 0)) {
                 continue; // sin movimiento y sin problema: no estorba en el reporte
             }
@@ -431,14 +477,47 @@ public class OperacionesInventarioService {
             BigDecimal sugerido = objetivo.subtract(a.existencia()).max(BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP);
             BigDecimal costoConsumo = a.costo() != null ? consumo.multiply(a.costo()).setScale(2, RoundingMode.HALF_UP) : null;
             BigDecimal costoMerma = a.costo() != null ? merma.multiply(a.costo()).setScale(2, RoundingMode.HALF_UP) : null;
+            BigDecimal costoDiferencia = a.costo() != null && diferencia.signum() != 0
+                    ? diferencia.multiply(a.costo()).setScale(2, RoundingMode.HALF_UP) : null;
             if (costoConsumo != null) totalConsumo = totalConsumo.add(costoConsumo);
             if (costoMerma != null) totalMerma = totalMerma.add(costoMerma);
+            if (costoDiferencia != null) totalDiferencias = totalDiferencias.add(costoDiferencia);
             renglones.add(new RenglonReporte(a.tipo(), a.id(), a.nombre(), a.unidad(), a.existencia(), a.minimo(),
-                    entradas, consumo, merma, a.costo(), costoConsumo, costoMerma, diario, alcanza, sugerido));
+                    entradas, consumo, merma, a.costo(), costoConsumo, costoMerma, diario, alcanza, sugerido,
+                    a.esPreparado(), diferencia, costoDiferencia));
         }
         renglones.sort(Comparator.comparing((RenglonReporte r) -> r.costoConsumo() != null ? r.costoConsumo() : BigDecimal.ZERO)
                 .reversed());
-        return new Reporte(d, h, totalConsumo, totalMerma, renglones);
+        return new Reporte(d, h, totalConsumo, totalMerma, totalDiferencias, renglones);
+    }
+
+    /**
+     * Para el dueño: el costeo de cada sucursal (con sus propios costos) y la
+     * suma de todas. El detalle de cada una es su reporte.
+     */
+    @Transactional(readOnly = true)
+    public CosteoRestaurante reporteDelRestaurante(UUID restaurantId, LocalDate desde, LocalDate hasta) {
+        List<CosteoSucursal> sucursales = new ArrayList<>();
+        BigDecimal consumo = BigDecimal.ZERO;
+        BigDecimal merma = BigDecimal.ZERO;
+        BigDecimal diferencias = BigDecimal.ZERO;
+        LocalDateTime d = null;
+        LocalDateTime h = null;
+        for (Branch b : branchRepository.findByRestaurantId(restaurantId)) {
+            Reporte r = reporte(b.getId(), desde, hasta);
+            d = r.desde();
+            h = r.hasta();
+            int porReponer = (int) r.renglones().stream()
+                    .filter(x -> x.existencia().signum() < 0 || (x.minimo() != null && x.existencia().compareTo(x.minimo()) < 0))
+                    .count();
+            sucursales.add(new CosteoSucursal(b.getId(), b.getName(), r.costoConsumo(), r.costoMerma(),
+                    r.costoDiferencias(), porReponer));
+            consumo = consumo.add(r.costoConsumo());
+            merma = merma.add(r.costoMerma());
+            diferencias = diferencias.add(r.costoDiferencias());
+        }
+        sucursales.sort(Comparator.comparing(CosteoSucursal::sucursal, String.CASE_INSENSITIVE_ORDER));
+        return new CosteoRestaurante(d, h, consumo, merma, diferencias, sucursales);
     }
 
     // ------------------------------------------------------------------

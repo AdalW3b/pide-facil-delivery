@@ -24,6 +24,27 @@ public interface BranchIngredientStockRepository extends JpaRepository<BranchIng
     @Query("SELECT b.stock FROM BranchIngredientStock b WHERE b.branch.id = :branchId AND b.ingredient.id = :ingredientId")
     java.util.Optional<BigDecimal> saldo(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId);
 
+    /** El costo de la sucursal tal como esta en la base. */
+    @Query("SELECT b.costoPromedio FROM BranchIngredientStock b WHERE b.branch.id = :branchId AND b.ingredient.id = :ingredientId")
+    java.util.Optional<BigDecimal> costo(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId);
+
+    @Query("SELECT b.minimo FROM BranchIngredientStock b WHERE b.branch.id = :branchId AND b.ingredient.id = :ingredientId")
+    java.util.Optional<BigDecimal> minimo(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE BranchIngredientStock b SET b.minimo = :minimo WHERE b.ingredient.id = :ingredientId AND b.branch.id = :branchId")
+    int fijarMinimo(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId, @Param("minimo") BigDecimal minimo);
+
+    /** Lo que hay en todas las sucursales del restaurante, para el costo general. */
+    @Query("SELECT COALESCE(SUM(b.stock), 0) FROM BranchIngredientStock b WHERE b.ingredient.id = :ingredientId")
+    BigDecimal totalEnSucursales(@Param("ingredientId") UUID ingredientId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE BranchIngredientStock b SET b.costoPromedio = :costo WHERE b.ingredient.id = :ingredientId AND b.branch.id = :branchId")
+    int fijarCosto(@Param("branchId") UUID branchId, @Param("ingredientId") UUID ingredientId, @Param("costo") BigDecimal costo);
+
     /** Alguna sucursal tiene existencias (distintas de cero) de este ingrediente. */
     boolean existsByIngredientIdAndStockNot(UUID ingredientId, BigDecimal stock);
 

@@ -144,6 +144,21 @@ class ProductServiceTest {
     }
 
     @Test
+    @DisplayName("Una receta no lleva el mismo ingrediente dos veces")
+    void recetaSinIngredientesRepetidos() {
+        Ingredient carne = Ingredient.builder().id(UUID.randomUUID()).name("Carne al pastor").build();
+        Ingredient tortilla = Ingredient.builder().id(UUID.randomUUID()).name("Tortilla").build();
+        RecipeItem a = RecipeItem.builder().ingredient(carne).quantity(new BigDecimal("80")).build();
+        RecipeItem b = RecipeItem.builder().ingredient(tortilla).quantity(new BigDecimal("2")).build();
+        RecipeItem otraVez = RecipeItem.builder().ingredient(carne).quantity(new BigDecimal("20")).build();
+
+        assertDoesNotThrow(() -> ProductService.sinIngredientesRepetidos(List.of(a, b)));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> ProductService.sinIngredientesRepetidos(List.of(a, b, otraVez)));
+        assertTrue(e.getMessage().contains("Carne al pastor"), e.getMessage());
+    }
+
+    @Test
     @DisplayName("La receta se guarda como se escribe: 250 ml, no 0.25")
     void createProduct_RecipeProduct_GuardaLaCantidadComoSeEscribe() {
         Ingredient ingredient = Ingredient.builder()

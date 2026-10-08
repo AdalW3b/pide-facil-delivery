@@ -33,4 +33,12 @@ public class BranchIngredientStock {
     @Column(nullable = false, precision = 10, scale = 3)
     @Builder.Default
     private BigDecimal stock = BigDecimal.ZERO;
+
+    /** Lo que le cuesta a esta sucursal, promedio ponderado. Null = sin costo propio todavia. */
+    @Column(name = "costo_promedio", precision = 12, scale = 4)
+    private BigDecimal costoPromedio;
+
+    /** El minimo de esta sucursal. Null = el general del ingrediente. */
+    @Column(precision = 12, scale = 3)
+    private BigDecimal minimo;
 }

@@ -234,7 +234,7 @@ export interface KitchenTicketDTO {
                           @for (item of getSortedItems(ticket.items); track item.itemId) {
                             <button
                               (click)="toggleItemStatus(item)"
-                              [class.bg-slate-955]="item.kitchenStatus === 'PENDING'"
+                              [class.bg-slate-950]="item.kitchenStatus === 'PENDING'"
                               [class.text-slate-100]="item.kitchenStatus === 'PENDING'"
                               [class.border-slate-800]="item.kitchenStatus === 'PENDING'"
                               [class.hover:border-amber-500/40]="item.kitchenStatus === 'PENDING'"
@@ -362,7 +362,7 @@ export interface KitchenTicketDTO {
                           @for (item of getSortedItems(ticket.items); track item.itemId) {
                             <button
                               (click)="toggleItemStatus(item)"
-                              [class.bg-slate-955]="item.kitchenStatus === 'PENDING'"
+                              [class.bg-slate-950]="item.kitchenStatus === 'PENDING'"
                               [class.text-slate-100]="item.kitchenStatus === 'PENDING'"
                               [class.border-slate-800]="item.kitchenStatus === 'PENDING'"
                               [class.hover:border-amber-500/40]="item.kitchenStatus === 'PENDING'"
@@ -490,7 +490,7 @@ export interface KitchenTicketDTO {
                           @for (item of getSortedItems(ticket.items); track item.itemId) {
                             <button
                               (click)="toggleItemStatus(item)"
-                              [class.bg-slate-955]="item.kitchenStatus === 'PENDING'"
+                              [class.bg-slate-950]="item.kitchenStatus === 'PENDING'"
                               [class.text-slate-100]="item.kitchenStatus === 'PENDING'"
                               [class.border-slate-800]="item.kitchenStatus === 'PENDING'"
                               [class.hover:border-amber-500/40]="item.kitchenStatus === 'PENDING'"
@@ -618,7 +618,7 @@ export interface KitchenTicketDTO {
                           @for (item of getSortedItems(ticket.items); track item.itemId) {
                             <button
                               (click)="toggleItemStatus(item)"
-                              [class.bg-slate-955]="item.kitchenStatus === 'PENDING'"
+                              [class.bg-slate-950]="item.kitchenStatus === 'PENDING'"
                               [class.text-slate-100]="item.kitchenStatus === 'PENDING'"
                               [class.border-slate-800]="item.kitchenStatus === 'PENDING'"
                               [class.hover:border-amber-500/40]="item.kitchenStatus === 'PENDING'"

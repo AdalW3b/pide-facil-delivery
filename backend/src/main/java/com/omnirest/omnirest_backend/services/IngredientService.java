@@ -55,9 +55,10 @@ public class IngredientService {
                         .collect(Collectors.toMap(s -> s.getId().getIngredientId(), BranchIngredientStock::getStock, (a, b) -> a));
         java.util.Map<UUID, Integer> usos = recipeItemRepository.usosPorIngrediente(restaurantId).stream()
                 .collect(Collectors.toMap(f -> (UUID) f[0], f -> ((Number) f[1]).intValue()));
+        Costos.Precios precios = precios(branchId);
         return ingredientRepository.findByRestaurantId(restaurantId).stream()
                 .map(i -> toDTO(i, branchId == null ? null : existencias.getOrDefault(i.getId(), BigDecimal.ZERO),
-                        usos.getOrDefault(i.getId(), 0)))
+                        usos.getOrDefault(i.getId(), 0), precios))
                 .collect(Collectors.toList());
     }
 
@@ -100,7 +101,8 @@ public class IngredientService {
             // Cambiar de kg a g haría que "25" pasara de 25 kg a 25 g, y las recetas
             // y adicionales ya escritos quedarían en otra escala.
             throw new IllegalArgumentException("No se puede cambiar la unidad de " + ingredient.getName()
-                    + " porque ya tiene existencias o se usa en recetas. Crea un ingrediente nuevo con la unidad que necesitas.");
+                    + " porque ya tiene existencias o se usa en recetas, extras o preparaciones."
+                    + " Crea un ingrediente nuevo con la unidad que necesitas.");
         }
         ingredient.setUnitOfMeasure(unidadNueva);
         if (dto.active() != null) {
@@ -178,9 +180,17 @@ public class IngredientService {
         return canonica;
     }
 
+    /**
+     * Ya hay numeros escritos en su unidad: existencias, recetas, extras o
+     * preparaciones (como componente o con su propia receta y rendimiento).
+     */
     private boolean enUso(Ingredient ingredient) {
-        return recipeItemRepository.countByIngredientId(ingredient.getId()) > 0
-                || branchIngredientStockRepository.existsByIngredientIdAndStockNot(ingredient.getId(), BigDecimal.ZERO);
+        UUID id = ingredient.getId();
+        return recipeItemRepository.countByIngredientId(id) > 0
+                || branchIngredientStockRepository.existsByIngredientIdAndStockNot(id, BigDecimal.ZERO)
+                || ingredientRepository.adicionalesQueLoUsan(id) > 0
+                || ingredientRepository.usadoComoComponente(id)
+                || Boolean.TRUE.equals(ingredient.getEsPreparado());
     }
 
     private void validateRestaurantOwnership(CustomUserDetails user, UUID resourceRestaurantId) {
@@ -197,10 +207,16 @@ public class IngredientService {
                     .map(BranchIngredientStock::getStock)
                     .orElse(BigDecimal.ZERO);
         }
-        return toDTO(ingredient, currentStock, (int) recipeItemRepository.countByIngredientId(ingredient.getId()));
+        return toDTO(ingredient, currentStock, (int) recipeItemRepository.countByIngredientId(ingredient.getId()),
+                precios(branchId));
     }
 
-    private IngredientDTO toDTO(Ingredient ingredient, BigDecimal currentStock, Integer usos) {
+    /** Los costos de la sucursal elegida; sin sucursal, los generales del restaurante. */
+    private Costos.Precios precios(UUID branchId) {
+        return branchId == null ? Costos.GENERALES : inventoryService.preciosDe(branchId);
+    }
+
+    private IngredientDTO toDTO(Ingredient ingredient, BigDecimal currentStock, Integer usos, Costos.Precios precios) {
         return new IngredientDTO(
                 ingredient.getId(),
                 ingredient.getRestaurant().getId(),
@@ -209,6 +225,8 @@ public class IngredientService {
                 currentStock,
                 ingredient.getActive(),
                 ingredient.getMinimo(),
-                usos);
+                usos,
+                Boolean.TRUE.equals(ingredient.getEsPreparado()),
+                Costos.deIngrediente(ingredient, precios));
     }
 }

@@ -114,7 +114,9 @@ public final class OperacionesInventarioDTOs {
             @DecimalMin(value = "0.0", inclusive = false, message = "Lo que rinde debe ser mayor a cero.") BigDecimal rinde,
             @NotEmpty(message = "Agrega al menos un ingrediente.") @Valid List<Componente> componentes,
             /** Costo por unidad del preparado, con los costos de hoy. Null si falta alguno. */
-            BigDecimal costoPorUnidad) {
+            BigDecimal costoPorUnidad,
+            /** Si al vender no alcanza lo registrado, preparar lo que falta con sus ingredientes. */
+            Boolean prepararAlVender) {
     }
 
     public record Producir(
@@ -142,8 +144,34 @@ public final class OperacionesInventarioDTOs {
             BigDecimal consumoDiario,
             /** Dias que alcanza lo que hay al ritmo de consumo del periodo. Null si no se consume. */
             BigDecimal diasQueAlcanza,
-            /** Cuanto comprar para cubrir una semana y quedar arriba del minimo. */
-            BigDecimal sugerido) {
+            /** Cuanto comprar (o preparar, si es preparacion) para cubrir una semana y quedar arriba del minimo. */
+            BigDecimal sugerido,
+            /** Se hace en cocina: lo sugerido se prepara, no se compra. */
+            boolean esPreparado,
+            /** Lo que movieron los conteos y ajustes: negativo = falto contra lo que decia el sistema. */
+            BigDecimal diferenciaConteo,
+            BigDecimal costoDiferencia) {
+    }
+
+    /** Lo de una sucursal en el resumen del dueño. */
+    public record CosteoSucursal(
+            UUID branchId,
+            String sucursal,
+            BigDecimal costoConsumo,
+            BigDecimal costoMerma,
+            BigDecimal costoDiferencias,
+            /** Articulos en negativo o bajo su minimo. */
+            int porReponer) {
+    }
+
+    /** Todas las sucursales del restaurante, para el dueño. */
+    public record CosteoRestaurante(
+            LocalDateTime desde,
+            LocalDateTime hasta,
+            BigDecimal costoConsumo,
+            BigDecimal costoMerma,
+            BigDecimal costoDiferencias,
+            List<CosteoSucursal> sucursales) {
     }
 
     public record Reporte(
@@ -151,6 +179,8 @@ public final class OperacionesInventarioDTOs {
             LocalDateTime hasta,
             BigDecimal costoConsumo,
             BigDecimal costoMerma,
+            /** Lo que falto (negativo) o sobro en los conteos del periodo, a costo. */
+            BigDecimal costoDiferencias,
             List<RenglonReporte> renglones) {
     }
 }

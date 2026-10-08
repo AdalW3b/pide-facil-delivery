@@ -8,6 +8,10 @@ export interface Ingredient {
   minimo?: number | null;
   /** En cuántos platillos se usa. */
   usos?: number;
+  /** Se hace en cocina por tandas (Inventario › Preparaciones). */
+  esPreparado?: boolean;
+  /** Costo por unidad en la sucursal elegida (o el general). Se captura en Inventario. */
+  costo?: number | null;
 }
 
 export interface RecipeItem {

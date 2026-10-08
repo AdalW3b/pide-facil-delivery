@@ -351,7 +351,7 @@ import { environment } from '../../../environments/environment';
                     (click)="toggleWaiterSelection(waiter.id)"
                     [class.bg-indigo-600\/15]="selectedWaiterIds().has(waiter.id)"
                     [class.border-indigo-500\/40]="selectedWaiterIds().has(waiter.id)"
-                    [class.bg-slate-955\/60]="!selectedWaiterIds().has(waiter.id)"
+                    [class.bg-slate-950\/60]="!selectedWaiterIds().has(waiter.id)"
                     [class.border-slate-800]="!selectedWaiterIds().has(waiter.id)"
                     class="p-3 rounded-xl border flex items-center justify-between cursor-pointer hover:border-indigo-500/30 transition-all select-none"
                   >

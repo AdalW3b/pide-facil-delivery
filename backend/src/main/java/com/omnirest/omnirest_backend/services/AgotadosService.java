@@ -81,7 +81,7 @@ public class AgotadosService {
                     ? p.getRecipeItems() : recipeItemRepository.findByProductId(p.getId());
             for (RecipeItem r : receta) {
                 BigDecimal hace = InventoryService.consumoPorPlatillo(r).multiply(BigDecimal.valueOf(cantidad));
-                if (ingredientes.getOrDefault(r.getIngredient().getId(), BigDecimal.ZERO).compareTo(hace) < 0) {
+                if (Disponible.de(r.getIngredient(), ingredientes).compareTo(hace) < 0) {
                     return true;
                 }
             }

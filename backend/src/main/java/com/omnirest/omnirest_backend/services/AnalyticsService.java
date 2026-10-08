@@ -26,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +51,7 @@ public class AnalyticsService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ProductRepository productRepository;
+    private final InventoryService inventoryService;
 
     private NamedParameterJdbcTemplate jdbc() {
         return new NamedParameterJdbcTemplate(jdbcTemplate);
@@ -322,50 +324,89 @@ public class AnalyticsService {
 
     /**
      * Platillos vendidos con su costo de hoy. Se juntan todas las sucursales
-     * del alcance: antes salia un renglon por sucursal y el mismo platillo
-     * aparecia dos veces en el top.
+     * del alcance (antes salia un renglon por sucursal y el mismo platillo
+     * aparecia dos veces en el top), pero el costo de cada venta es el de la
+     * sucursal donde se vendio: con varias, la utilidad es la suma de cada una.
      */
     private List<ProductPerformanceDTO> productos(UUID restaurantId, UUID branchId, Rango rango, int limite) {
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("limite", limite);
         String sql = """
-            SELECT oi.product_id, p.name AS nombre,
-                   SUM(oi.quantity) AS piezas,
-                   SUM(oi.unit_price * oi.quantity) AS ventas,
-                   STRING_AGG(DISTINCT b.name, ', ') AS sucursales
-            FROM order_items oi
-            JOIN orders o ON o.id = oi.order_id
-            JOIN products p ON p.id = oi.product_id
-            JOIN branches b ON b.id = o.branch_id
-            WHERE o.status = 'CLOSED'
-              AND oi.kitchen_status <> 'CANCELLED'
+            WITH vendido AS (
+                SELECT oi.product_id, o.branch_id, b.name AS sucursal,
+                       SUM(oi.quantity) AS piezas,
+                       SUM(oi.unit_price * oi.quantity) AS ventas
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN branches b ON b.id = o.branch_id
+                WHERE o.status = 'CLOSED'
+                  AND oi.kitchen_status <> 'CANCELLED'
             """ + filtro(restaurantId, branchId, rango, "o.closed_at", p) + """
 
-            GROUP BY oi.product_id, p.name
-            ORDER BY piezas DESC, ventas DESC
-            LIMIT :limite
+                GROUP BY oi.product_id, o.branch_id, b.name
+            ), top AS (
+                SELECT product_id, SUM(piezas) AS piezas, SUM(ventas) AS ventas
+                FROM vendido
+                GROUP BY product_id
+                ORDER BY piezas DESC, ventas DESC
+                LIMIT :limite
+            )
+            SELECT v.product_id, pr.name AS nombre, v.branch_id, v.sucursal, v.piezas, v.ventas
+            FROM vendido v
+            JOIN top t ON t.product_id = v.product_id
+            JOIN products pr ON pr.id = v.product_id
+            ORDER BY t.piezas DESC, t.ventas DESC, v.product_id, v.sucursal
             """;
-        record Fila(UUID id, String nombre, long piezas, BigDecimal ventas, String sucursales) {
+        record Fila(UUID id, String nombre, UUID branchId, String sucursal, long piezas, BigDecimal ventas) {
         }
         List<Fila> filas = jdbc().query(sql, p, (rs, n) -> new Fila(
-                rs.getObject("product_id", UUID.class), rs.getString("nombre"), rs.getLong("piezas"),
-                rs.getBigDecimal("ventas").setScale(2, RoundingMode.HALF_UP), rs.getString("sucursales")));
+                rs.getObject("product_id", UUID.class), rs.getString("nombre"), rs.getObject("branch_id", UUID.class),
+                rs.getString("sucursal"), rs.getLong("piezas"), rs.getBigDecimal("ventas")));
         if (filas.isEmpty()) return List.of();
 
-        Map<UUID, Product> productos = productRepository.findAllById(filas.stream().map(Fila::id).toList())
+        Map<UUID, Product> productos = productRepository.findAllById(filas.stream().map(Fila::id).distinct().toList())
                 .stream().collect(Collectors.toMap(Product::getId, Function.identity()));
-        List<ProductPerformanceDTO> res = new ArrayList<>(filas.size());
-        for (Fila f : filas) {
-            Product prod = productos.get(f.id());
-            Costos.Costo c = prod != null ? Costos.dePlatillo(prod, prod.getRecipeItems()) : null;
-            BigDecimal unitario = c != null ? c.valor() : null;
-            BigDecimal costoTotal = unitario != null
-                    ? unitario.multiply(BigDecimal.valueOf(f.piezas())).setScale(2, RoundingMode.HALF_UP) : null;
-            BigDecimal utilidad = costoTotal != null ? f.ventas().subtract(costoTotal) : null;
-            Double margen = utilidad != null && f.ventas().signum() > 0 ? porcentaje(utilidad, f.ventas()) : null;
+        Map<UUID, Costos.Precios> precios = new HashMap<>();
+
+        // Juntar por platillo, en el orden del top, costeando cada sucursal con lo suyo.
+        Map<UUID, List<Fila>> porPlatillo = new java.util.LinkedHashMap<>();
+        for (Fila f : filas) porPlatillo.computeIfAbsent(f.id(), k -> new ArrayList<>()).add(f);
+
+        List<ProductPerformanceDTO> res = new ArrayList<>(porPlatillo.size());
+        for (List<Fila> deUno : porPlatillo.values()) {
+            Fila primera = deUno.get(0);
+            Product prod = productos.get(primera.id());
+            long piezas = 0;
+            BigDecimal ventas = BigDecimal.ZERO;
+            BigDecimal costoTotal = BigDecimal.ZERO;
+            boolean conCosto = prod != null;
+            boolean completo = prod != null;
+            java.util.Set<String> sucursales = new java.util.TreeSet<>();
+            for (Fila f : deUno) {
+                piezas += f.piezas();
+                ventas = ventas.add(f.ventas());
+                sucursales.add(f.sucursal());
+                if (prod == null) continue;
+                Costos.Costo c = Costos.dePlatillo(prod, prod.getRecipeItems(),
+                        precios.computeIfAbsent(f.branchId(), inventoryService::preciosDe));
+                if (c.valor() == null) {
+                    conCosto = false;
+                    continue;
+                }
+                costoTotal = costoTotal.add(c.valor().multiply(BigDecimal.valueOf(f.piezas())));
+                completo &= c.completo();
+            }
+            ventas = ventas.setScale(2, RoundingMode.HALF_UP);
+            costoTotal = conCosto ? costoTotal.setScale(2, RoundingMode.HALF_UP) : null;
+            // Con varias sucursales, el unitario es el promedio de lo que costo en cada una.
+            BigDecimal unitario = costoTotal != null && piezas > 0
+                    ? costoTotal.divide(BigDecimal.valueOf(piezas), 2, RoundingMode.HALF_UP) : null;
+            BigDecimal utilidad = costoTotal != null ? ventas.subtract(costoTotal) : null;
+            Double margen = utilidad != null && ventas.signum() > 0 ? porcentaje(utilidad, ventas) : null;
             String categoria = prod != null && prod.getCategory() != null ? prod.getCategory().getName() : null;
-            res.add(new ProductPerformanceDTO(f.id(), f.nombre(), f.piezas(), f.ventas(), f.sucursales(), categoria,
-                    unitario, costoTotal, utilidad, margen, c != null && c.completo()));
+            res.add(new ProductPerformanceDTO(primera.id(), primera.nombre(), piezas, ventas,
+                    String.join(", ", sucursales), categoria, unitario, costoTotal, utilidad, margen,
+                    conCosto && completo));
         }
         return res;
     }

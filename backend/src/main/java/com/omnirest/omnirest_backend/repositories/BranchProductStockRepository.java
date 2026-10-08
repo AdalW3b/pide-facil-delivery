@@ -22,6 +22,25 @@ public interface BranchProductStockRepository extends JpaRepository<BranchProduc
     @Query("SELECT b.stock FROM BranchProductStock b WHERE b.branch.id = :branchId AND b.product.id = :productId")
     Optional<Integer> saldo(@Param("branchId") UUID branchId, @Param("productId") UUID productId);
 
+    @Query("SELECT b.costoPromedio FROM BranchProductStock b WHERE b.branch.id = :branchId AND b.product.id = :productId")
+    Optional<java.math.BigDecimal> costo(@Param("branchId") UUID branchId, @Param("productId") UUID productId);
+
+    @Query("SELECT b.minimo FROM BranchProductStock b WHERE b.branch.id = :branchId AND b.product.id = :productId")
+    Optional<Integer> minimo(@Param("branchId") UUID branchId, @Param("productId") UUID productId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE BranchProductStock b SET b.minimo = :minimo WHERE b.product.id = :productId AND b.branch.id = :branchId")
+    int fijarMinimo(@Param("branchId") UUID branchId, @Param("productId") UUID productId, @Param("minimo") Integer minimo);
+
+    @Query("SELECT COALESCE(SUM(b.stock), 0) FROM BranchProductStock b WHERE b.product.id = :productId")
+    Long totalEnSucursales(@Param("productId") UUID productId);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE BranchProductStock b SET b.costoPromedio = :costo WHERE b.product.id = :productId AND b.branch.id = :branchId")
+    int fijarCosto(@Param("branchId") UUID branchId, @Param("productId") UUID productId, @Param("costo") java.math.BigDecimal costo);
+
     @Modifying
     @Transactional
     @Query("UPDATE BranchProductStock b SET b.stock = b.stock - :quantity WHERE b.product.id = :productId AND b.branch.id = :branchId AND b.stock >= :quantity")
