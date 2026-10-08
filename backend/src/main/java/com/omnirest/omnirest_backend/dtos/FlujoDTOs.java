@@ -48,7 +48,10 @@ public final class FlujoDTOs {
             BigDecimal comprasSinFormaPago,
             /** Lo comprado a credito, el dia que se pago. */
             BigDecimal pagosCredito,
-            /** Retiros de la caja que no son compras ni propinas. */
+            /** Renta, luz, nomina… registrados en Gastos, por la fecha en que se pagaron. */
+            BigDecimal gastos,
+            List<Concepto> gastosPorCategoria,
+            /** Retiros de la caja que no son compras, gastos ni propinas. */
             BigDecimal otrasSalidas,
             List<Salida> detalleOtrasSalidas) {
     }

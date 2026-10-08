@@ -92,6 +92,13 @@ export const routes: Routes = [
         data: { requiredPermission: 'CAJA_OPERAR' },
       },
       {
+        // Renta, luz, nómina: lo lleva el dueño o el gerente.
+        path: 'gastos',
+        loadComponent: () => import('./features/gastos/gastos.component').then((m) => m.GastosComponent),
+        canActivate: [roleGuard],
+        data: { expectedRoles: ['SUPER_ADMIN', 'SYSTEM_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
+      },
+      {
         path: 'kitchen',
         component: KitchenComponent,
         canActivate: [permissionGuard],

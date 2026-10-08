@@ -29,6 +29,8 @@ interface Flujo {
     comprasTransferencia: number;
     comprasSinFormaPago: number;
     pagosCredito: number;
+    gastos: number;
+    gastosPorCategoria: Concepto[];
     otrasSalidas: number;
     detalleOtrasSalidas: Salida[];
   };
@@ -38,6 +40,12 @@ interface Flujo {
   porDia: { fecha: string; ingresos: number; egresos: number }[];
   porProveedor: { proveedor: string; notas: number; comprado: number; pagado: number; debe: number }[];
 }
+
+/** Nombre de cada categoría de gasto. */
+const CATEGORIAS: Record<string, string> = {
+  RENTA: 'Renta', LUZ: 'Luz', AGUA: 'Agua', GAS: 'Gas', NOMINA: 'Nómina', INTERNET: 'Internet y teléfono',
+  MANTENIMIENTO: 'Mantenimiento', IMPUESTOS: 'Impuestos', OTRO: 'Otros gastos',
+};
 
 const TARJETA = 'p-5 bg-slate-900/90 border border-slate-700/50 rounded-2xl';
 const PANEL = 'p-5 sm:p-6 bg-slate-900 border border-slate-700/50 rounded-2xl';
@@ -73,7 +81,7 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
           <div class="${TARJETA}">
             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Egresos</p>
             <p class="mt-2 text-2xl lg:text-3xl font-extrabold text-rose-400 tabular-nums">{{ f.egresos.total | pesos }}</p>
-            <p class="mt-1 text-xs text-slate-400">Compras, pagos y salidas de caja</p>
+            <p class="mt-1 text-xs text-slate-400">Compras, gastos y salidas de caja</p>
           </div>
           <div class="${TARJETA}" [class.!border-emerald-500/40]="f.resultado >= 0" [class.!border-rose-500/50]="f.resultado < 0">
             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Resultado</p>
@@ -131,7 +139,7 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
               <p class="${VACIO}">No salió dinero en este periodo.</p>
             }
             <div class="flex justify-between border-t border-slate-800 pt-3 text-sm font-bold"><span class="text-slate-300">Total egresos</span><span class="text-rose-400 tabular-nums">{{ f.egresos.total | pesos }}</span></div>
-            <p class="text-[11px] text-slate-500">Las compras a crédito cuentan el día que se pagan. Renta, luz, gas y nómina se agregarán con el registro de gastos.</p>
+            <p class="text-[11px] text-slate-500">Las compras a crédito cuentan el día que se pagan. Renta, luz, nómina y demás se registran en Gastos.</p>
             @if (f.egresos.detalleOtrasSalidas.length) {
               <details class="text-xs">
                 <summary class="cursor-pointer text-slate-400 hover:text-white">Ver las otras salidas de caja ({{ f.egresos.detalleOtrasSalidas.length }})</summary>
@@ -277,6 +285,7 @@ export class IngresosEgresosComponent implements OnChanges {
       { nombre: 'Compras pagadas por transferencia', monto: e.comprasTransferencia },
       { nombre: 'Compras sin forma de pago', monto: e.comprasSinFormaPago },
       { nombre: 'Pagos de compras a crédito', monto: e.pagosCredito },
+      ...e.gastosPorCategoria.map((c) => ({ nombre: CATEGORIAS[c.nombre] ?? c.nombre, monto: c.monto })),
       { nombre: 'Otras salidas de caja', monto: e.otrasSalidas },
     ].filter((c) => c.monto > 0);
   });

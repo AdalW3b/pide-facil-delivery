@@ -24,7 +24,8 @@ import java.util.*;
  *    propinas son del personal: van aparte, para repartirlas.
  *  - Una compra de contado (caja o transferencia) es egreso en la fecha de la
  *    nota; una a credito, el dia en que se pago. Las anuladas no cuentan.
- *  - Las salidas de caja que pagaron compras ya estan en las compras, y las
+ *  - Los gastos (renta, luz, nomina) cuentan en la fecha en que se pagaron.
+ *  - Las salidas de caja que pagaron compras o gastos ya estan contadas, y las
  *    propinas repartidas no son del restaurante: no se cuentan como "otras
  *    salidas".
  *
@@ -84,6 +85,7 @@ public class FlujoService {
             m.tipo = 'SALIDA'
             AND m.concepto NOT ILIKE '%propina%'
             AND NOT EXISTS (SELECT 1 FROM compras c WHERE c.movimiento_caja_id = m.id OR c.pago_movimiento_caja_id = m.id)
+            AND NOT EXISTS (SELECT 1 FROM gastos g WHERE g.movimiento_caja_id = m.id)
             """;
 
     /**
@@ -198,6 +200,16 @@ public class FlujoService {
                 WHERE c.anulada_en IS NULL AND c.forma_pago = 'CREDITO' AND c.pagada_en IS NOT NULL"""
                 + donde(restaurantId, branchId, periodo, "c.branch_id", "c.pagada_en", false, q), q, BigDecimal.class));
 
+        MapSqlParameterSource g = new MapSqlParameterSource();
+        List<FlujoDTOs.Concepto> porCategoria = jdbc().query("""
+                SELECT g.categoria AS nombre, SUM(g.monto) AS monto
+                FROM gastos g JOIN branches b ON b.id = g.branch_id
+                WHERE g.anulado_en IS NULL"""
+                + donde(restaurantId, branchId, periodo, "g.branch_id", "g.fecha", true, g) + """
+
+                GROUP BY g.categoria ORDER BY monto DESC""", g, (rs, n) -> concepto(rs.getString("nombre"), rs.getBigDecimal("monto")));
+        BigDecimal gastos = porCategoria.stream().map(FlujoDTOs.Concepto::monto).reduce(BigDecimal.ZERO, BigDecimal::add);
+
         MapSqlParameterSource r = new MapSqlParameterSource();
         List<FlujoDTOs.Salida> otras = jdbc().query("""
                 SELECT m.creado_en, m.concepto, m.monto, m.por, b.name AS sucursal
@@ -209,8 +221,9 @@ public class FlujoService {
                 rs.getString("por"), rs.getString("sucursal")));
         BigDecimal otrasSalidas = otras.stream().map(FlujoDTOs.Salida::monto).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal total = caja.add(transferencia).add(sinForma).add(pagosCredito).add(otrasSalidas);
-        return new FlujoDTOs.Egresos(dinero(total), caja, transferencia, sinForma, pagosCredito, dinero(otrasSalidas),
+        BigDecimal total = caja.add(transferencia).add(sinForma).add(pagosCredito).add(gastos).add(otrasSalidas);
+        return new FlujoDTOs.Egresos(dinero(total), caja, transferencia, sinForma, pagosCredito,
+                dinero(gastos), porCategoria, dinero(otrasSalidas),
                 otras.size() > 100 ? otras.subList(0, 100) : otras);
     }
 
@@ -262,6 +275,10 @@ public class FlujoService {
                 FROM compras c JOIN branches b ON b.id = c.branch_id
                 WHERE c.anulada_en IS NULL AND c.forma_pago = 'CREDITO' AND c.pagada_en IS NOT NULL%s GROUP BY 1""",
                 restaurantId, branchId, periodo, "c.branch_id", "c.pagada_en", false);
+        sumarPorDia(dias, 1, """
+                SELECT g.fecha AS dia, SUM(g.monto) AS monto
+                FROM gastos g JOIN branches b ON b.id = g.branch_id
+                WHERE g.anulado_en IS NULL%s GROUP BY 1""", restaurantId, branchId, periodo, "g.branch_id", "g.fecha", true);
         sumarPorDia(dias, 1, """
                 SELECT m.creado_en::date AS dia, SUM(m.monto) AS monto
                 FROM movimientos_caja m JOIN turnos_caja t ON t.id = m.turno_id JOIN branches b ON b.id = t.branch_id

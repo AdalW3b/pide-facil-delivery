@@ -26,6 +26,7 @@ import {
   LucideX,
   LucideBarChart3,
   LucideWallet,
+  LucideBanknote,
   LucideLifeBuoy,
   LucideSparkles,
   LucidePalette
@@ -83,6 +84,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideX,
     LucideBarChart3,
     LucideWallet,
+    LucideBanknote,
     LucideLifeBuoy,
     LucideSparkles,
     LucidePalette,
@@ -99,6 +101,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('domicilio') { <svg lucideBike class="w-5 h-5 shrink-0"></svg> }
         @case ('historial') { <svg lucideReceipt class="w-5 h-5 shrink-0"></svg> }
         @case ('caja') { <svg lucideWallet class="w-5 h-5 shrink-0"></svg> }
+        @case ('gastos') { <svg lucideBanknote class="w-5 h-5 shrink-0"></svg> }
         @case ('asistente') { <svg lucideSparkles class="w-5 h-5 shrink-0"></svg> }
         @case ('soporte') { <svg lucideLifeBuoy class="w-5 h-5 shrink-0"></svg> }
         @case ('marca') { <svg lucidePalette class="w-5 h-5 shrink-0"></svg> }
@@ -442,6 +445,7 @@ export class AdminLayoutComponent {
       titulo: 'Ventas',
       items: [
         { ruta: '/caja', nombre: 'Caja', icono: 'caja', exacta: false, visible: () => this.hasPermission('CAJA_OPERAR') },
+        { ruta: '/gastos', nombre: 'Gastos', icono: 'gastos', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         {
           ruta: '/sales-history', nombre: 'Historial de ventas', corto: 'Ventas', icono: 'historial', exacta: false,
           visible: () => this.hasPermission('TABLES_READ') || this.hasPermission('ORDERS_READ'),

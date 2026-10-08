@@ -165,6 +165,35 @@ public class CajaService {
                 .build());
     }
 
+    /** Un gasto (renta, luz, nomina) pagado con el efectivo de la caja abierta. */
+    @Transactional
+    public UUID salidaPorGasto(UUID branchId, BigDecimal monto, String concepto, String por) {
+        TurnoCaja turno = abierta(branchId).orElseThrow(() -> new IllegalStateException(
+                "La caja está cerrada: ábrela en Caja para pagar con efectivo, o registra el gasto como transferencia o tarjeta."));
+        MovimientoCaja m = movimientoRepository.save(MovimientoCaja.builder()
+                .turnoId(turno.getId())
+                .tipo(MovimientoCaja.Tipo.SALIDA)
+                .monto(dinero(monto))
+                .concepto(recortar(concepto))
+                .por(por)
+                .build());
+        return m.getId();
+    }
+
+    /** Se anuló un gasto pagado en efectivo: el dinero regresa a la caja abierta. */
+    @Transactional
+    public void entradaPorGastoAnulado(UUID branchId, BigDecimal monto, String concepto, String por) {
+        TurnoCaja turno = abierta(branchId).orElseThrow(() -> new IllegalStateException(
+                "La caja está cerrada: ábrela en Caja para regresar el efectivo de este gasto."));
+        movimientoRepository.save(MovimientoCaja.builder()
+                .turnoId(turno.getId())
+                .tipo(MovimientoCaja.Tipo.ENTRADA)
+                .monto(dinero(monto))
+                .concepto(recortar(concepto))
+                .por(por)
+                .build());
+    }
+
     private static String recortar(String texto) {
         return texto != null && texto.length() > 200 ? texto.substring(0, 200) : texto;
     }
