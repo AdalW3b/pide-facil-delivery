@@ -1,6 +1,7 @@
 package com.omnirest.omnirest_backend.services;
 
 import com.omnirest.omnirest_backend.domain.entities.CorteRepartidor;
+import com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp;
 import com.omnirest.omnirest_backend.domain.entities.MovimientoCaja;
 import com.omnirest.omnirest_backend.domain.entities.Order;
 import com.omnirest.omnirest_backend.domain.entities.Pago;
@@ -8,6 +9,7 @@ import com.omnirest.omnirest_backend.domain.entities.PaymentMethod;
 import com.omnirest.omnirest_backend.domain.entities.TurnoCaja;
 import com.omnirest.omnirest_backend.domain.enums.OrderStatus;
 import com.omnirest.omnirest_backend.domain.enums.OrderType;
+import com.omnirest.omnirest_backend.dtos.BillSummaryDTO;
 import com.omnirest.omnirest_backend.dtos.CajaDTOs;
 import com.omnirest.omnirest_backend.repositories.CorteRepartidorRepository;
 import com.omnirest.omnirest_backend.repositories.MovimientoCajaRepository;
@@ -54,6 +56,7 @@ public class CajaService {
     private final PaymentMethodRepository paymentMethodRepository;
     private final OrderRepository orderRepository;
     private final OrderService orderService;
+    private final ColaWhatsapp colaWhatsapp;
 
     // ------------------------------------------------------------------
     // Abrir y consultar
@@ -148,11 +151,44 @@ public class CajaService {
             throw new IllegalStateException("Los pedidos a domicilio y para llevar se cobran al entregarse.");
         }
         List<Pago> pagos = registrarPagos(branchId, orderId, peticiones, user);
+        // El ticket se arma antes de cerrar: ya cerrada, la cuenta no se recalcula.
+        BillSummaryDTO cuenta = orderService.getBill(branchId, orderId);
 
         // Cierra y libera la mesa con las mismas reglas de siempre (la cocina
         // tiene que haber terminado). Si no puede, se deshacen los pagos.
         orderService.closeOrder(branchId, orderId);
+
+        // Sale solo si el cobro se confirma; si la mesa no tiene WhatsApp, no se manda.
+        if (cuenta.telefonoCliente() != null && !cuenta.telefonoCliente().isBlank()) {
+            colaWhatsapp.encolar(branchId, cuenta.telefonoCliente(),
+                    ticketPagado(cuenta, pagoRepository.findByOrderId(orderId)),
+                    MensajeWhatsapp.Motivo.TICKET, "ticket:" + orderId);
+        }
         return resultado(orderId, pagos);
+    }
+
+    /** El ticket que recibe el cliente: lo que consumió, cómo pagó, propina y cambio. */
+    static String ticketPagado(BillSummaryDTO cuenta, List<Pago> pagos) {
+        String detalle = cuenta.formattedBillText() != null
+                ? cuenta.formattedBillText().replace("TOTAL A PAGAR:", "TOTAL:") : "";
+        StringBuilder sb = new StringBuilder("✅ *Pago recibido.* ¡Gracias por tu visita!\n\n").append(detalle);
+        if (!pagos.isEmpty()) {
+            sb.append("\n*Pagaste con:*\n");
+            for (Pago p : pagos) {
+                sb.append("• ").append(p.getMetodo()).append(": $").append(dinero(p.getMonto())).append("\n");
+            }
+            BigDecimal propina = pagos.stream().map(Pago::getPropina).map(CajaService::dinero)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (propina.signum() > 0) {
+                sb.append("Propina: $").append(propina).append("\n");
+            }
+            BigDecimal cambio = pagos.stream().map(Pago::getCambio).filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (cambio.signum() > 0) {
+                sb.append("Cambio: $").append(dinero(cambio)).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     /**

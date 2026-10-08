@@ -31,7 +31,9 @@ public class MensajeWhatsapp {
         /** Cancelacion de un pedido o de un platillo. */
         CANCELACION(60),
         /** La cuenta que el mesero le manda al cliente desde el panel. */
-        CUENTA(60);
+        CUENTA(60),
+        /** El ticket que le llega al cliente cuando se cobra su cuenta. */
+        TICKET(120);
 
         /** Cuanto sigue valiendo la pena mandarlo. */
         public final int minutosDeVida;

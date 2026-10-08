@@ -44,6 +44,7 @@ class CajaServiceTest {
     private final PaymentMethodRepository paymentMethodRepository = mock(PaymentMethodRepository.class);
     private final OrderRepository orderRepository = mock(OrderRepository.class);
     private final OrderService orderService = mock(OrderService.class);
+    private final ColaWhatsapp colaWhatsapp = mock(ColaWhatsapp.class);
 
     private CajaService servicio;
     private TurnoCaja turno;
@@ -53,7 +54,7 @@ class CajaServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new CajaService(turnoRepository, pagoRepository, movimientoRepository, corteRepository,
-                paymentMethodRepository, orderRepository, orderService);
+                paymentMethodRepository, orderRepository, orderService, colaWhatsapp);
 
         turno = TurnoCaja.builder().id(UUID.randomUUID()).branchId(branchId).abiertoPorNombre("lupita")
                 .abiertoEn(LocalDateTime.now().minusHours(6)).fondoInicial(new BigDecimal("500.00")).build();
@@ -112,6 +113,36 @@ class CajaServiceTest {
         assertEquals(new BigDecimal("30.00"), r.propinas());
         assertEquals(new BigDecimal("40.00"), r.cambio());
         verify(orderService).closeOrder(branchId, cuenta.getId());
+    }
+
+    @Test
+    @DisplayName("Al cobrar, el cliente de la mesa recibe su ticket con cómo pagó")
+    void ticketAlCliente() {
+        when(orderService.getBill(branchId, cuenta.getId())).thenReturn(new BillSummaryDTO(cuenta.getId(), 4,
+                List.of(), new BigDecimal("350.00"), "2x Taco\n*TOTAL A PAGAR: $350.00*\n", "5219511112222", null));
+        when(pagoRepository.findByOrderId(cuenta.getId())).thenAnswer(i -> pagosGuardados);
+
+        servicio.cobrar(branchId, cuenta.getId(), List.of(
+                pago(tarjeta, "200", "20", null),
+                pago(efectivo, "150", "10", "200")), cajera);
+
+        ArgumentCaptor<String> texto = ArgumentCaptor.forClass(String.class);
+        verify(colaWhatsapp).encolar(eq(branchId), eq("5219511112222"), texto.capture(),
+                eq(MensajeWhatsapp.Motivo.TICKET), eq("ticket:" + cuenta.getId()));
+        String ticket = texto.getValue();
+        assertTrue(ticket.contains("Pago recibido"));
+        assertTrue(ticket.contains("*TOTAL: $350.00*"), "ya no dice 'a pagar'");
+        assertTrue(ticket.contains("• Tarjeta: $200.00"));
+        assertTrue(ticket.contains("• Efectivo: $150.00"));
+        assertTrue(ticket.contains("Propina: $30.00"));
+        assertTrue(ticket.contains("Cambio: $40.00"));
+    }
+
+    @Test
+    @DisplayName("Sin WhatsApp en la mesa no se manda ticket")
+    void sinTelefonoNoHayTicket() {
+        servicio.cobrar(branchId, cuenta.getId(), List.of(pago(tarjeta, "350", null, null)), cajera);
+        verifyNoInteractions(colaWhatsapp);
     }
 
     @Test
