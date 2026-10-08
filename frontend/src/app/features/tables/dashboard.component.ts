@@ -1,4 +1,3 @@
-import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
@@ -398,45 +397,6 @@ import { environment } from '../../../environments/environment';
       </div>
     }
 
-    <!-- Waiter Alerts Floating Toasts Container -->
-    <div class="fixed top-20 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm w-full">
-      @for (alert of activeAlerts(); track alert.id) {
-        <div 
-          [class.bg-emerald-500\/10]="alert.type === 'BILL'"
-          [class.border-emerald-500\/40]="alert.type === 'BILL'"
-          [class.text-emerald-400]="alert.type === 'BILL'"
-          [class.bg-amber-500\/10]="alert.type !== 'BILL'"
-          [class.border-amber-500\/40]="alert.type !== 'BILL'"
-          [class.text-amber-400]="alert.type !== 'BILL'"
-          class="pointer-events-auto p-4 rounded-2xl border backdrop-blur-md shadow-2xl flex items-start gap-3 animate-slideIn transition-all duration-300"
-        >
-          <div class="p-2 rounded-xl bg-slate-950/40 shrink-0">
-            @if (alert.type === 'BILL') {
-              <svg lucideFileText class="w-5 h-5 text-emerald-400"></svg>
-            } @else {
-              <svg lucideTriangleAlert class="w-5 h-5 text-amber-400 animate-bounce"></svg>
-            }
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-bold uppercase tracking-wider">
-                {{ alert.type === 'BILL' ? 'Solicitud de Cuenta 🧾' : 'Atención Requerida 🔔' }}
-              </span>
-              <button aria-label="Cerrar"
-                (click)="dismissAlert(alert.id)"
-                class="text-slate-400 hover:text-white p-0.5 rounded-lg transition-colors cursor-pointer"
-              >
-                <svg lucideX class="w-4 h-4"></svg>
-              </button>
-            </div>
-            <p class="text-xs font-semibold text-slate-200 mt-1 leading-snug">
-              {{ alert.message }}
-            </p>
-          </div>
-        </div>
-      }
-    </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
@@ -458,7 +418,6 @@ import { environment } from '../../../environments/environment';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private readonly avisos = inject(AvisosService);
-  private readonly sonidos = inject(SonidosService);
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly tableService = inject(TableService);
@@ -466,10 +425,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
 
   private wsSubscription: Subscription | null = null;
-  private alertsSubscription: Subscription | null = null;
 
   // Active waiter alerts list signal
-  readonly activeAlerts = signal<{ id: number; message: string; type: string }[]>([]);
 
   constructor() {
     // Tras una reconexión, o cada 20 s mientras no hay conexión en vivo, se
@@ -570,10 +527,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   readonly occupiedCount = computed(() =>
     this.tables().filter((t) => t.status === TableStatus.OCCUPIED).length
   );
-
-  dismissAlert(alertId: number): void {
-    this.activeAlerts.update((alerts) => alerts.filter((a) => a.id !== alertId));
-  }
 
   /**
    * Evaluates if a table is enabled for the current logged-in user.
@@ -1001,40 +954,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
       });
 
-    // Subscribe to branch waiter alerts channel
-    this.alertsSubscription = this.webSocketService
-      .subscribe<any>(`/topic/branches/${branchId}/alerts`)
-      .subscribe({
-        next: (alert) => {
-          console.log('Real-time waiter alert received via WebSocket:', alert);
-          const currentIdStr = String(this.authService.currentUserId());
-          const assignedIds = alert.assignedUserIds || alert.assigned_user_ids || [];
-          const isAssigned = assignedIds.map(String).includes(currentIdStr);
-          const isManager = this.authService.userRole() === 'BRANCH_MANAGER' || this.isSuperAdmin();
-
-          if (isAssigned || isManager) {
-            this.sonidos.tocar('alerta');
-
-            const alertId = Date.now();
-            const alertItem = {
-              id: alertId,
-              message: alert.message || `Atención solicitada en Mesa ${alert.tableNumber || alert.table_number || ''}`,
-              type: alert.type || 'HELP'
-            };
-
-            this.activeAlerts.update((alerts) => [...alerts, alertItem]);
-            this.cdr.detectChanges();
-
-            setTimeout(() => {
-              this.activeAlerts.update((alerts) => alerts.filter((a) => a.id !== alertId));
-              this.cdr.detectChanges();
-            }, 10000);
-          }
-        },
-        error: (err) => {
-          console.error('WebSocket alerts subscription error:', err);
-        }
-      });
+    // Los avisos de las mesas (llamar al mesero, cuenta, listo en cocina) los
+    // muestra el panel en cualquier pantalla: <app-avisos-operacion>.
   }
 
   private unsubscribeWebSocket(): void {
@@ -1042,11 +963,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       console.log('Unsubscribing from active branch STOMP topic');
       this.wsSubscription.unsubscribe();
       this.wsSubscription = null;
-    }
-    if (this.alertsSubscription) {
-      console.log('Unsubscribing from active branch alerts STOMP topic');
-      this.alertsSubscription.unsubscribe();
-      this.alertsSubscription = null;
     }
   }
 

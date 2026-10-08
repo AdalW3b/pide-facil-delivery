@@ -9,6 +9,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan } from '@lucide/angular';
 import { environment } from '../../../../environments/environment';
 import { CobroComponent } from './cobro.component';
+import { TomaPedidoComponent } from './toma-pedido.component';
+import { ComandasEnBorradorService } from '../comandas-en-borrador.service';
 
 export interface OrderItem {
   id: string;
@@ -58,7 +60,7 @@ export interface GrupoAdicional {
 @Component({
   selector: 'app-order-panel',
   standalone: true,
-  imports: [CobroComponent, PesosPipe, CommonModule, FormsModule, LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan],
+  imports: [CobroComponent, TomaPedidoComponent, PesosPipe, CommonModule, FormsModule, LucideX, LucideCheckCircle, LucideLoader2, LucideShoppingCart, LucidePlus, LucideChevronRight, LucideCheckSquare, LucideBan],
   template: `
     <!-- Panel wrapper overlay -->
     <div
@@ -202,118 +204,18 @@ export interface GrupoAdicional {
                     </div>
                   </div>
 
-                  <!-- Inline Add Product Section -->
-                  <div class="border-t border-slate-800/80 pt-5 space-y-4">
-                    @if (!isAddingProduct()) {
-                      <button
-                        (click)="showAddProductForm()"
-                        class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border border-slate-700/80"
-                      >
-                        <svg lucidePlus class="w-4 h-4"></svg>
-                        <span>Agregar Producto</span>
-                      </button>
-                    } @else {
-                      <div class="p-4 bg-slate-950/40 border border-slate-800/80 rounded-xl space-y-4 animate-fadeIn">
-                        <div class="flex items-center justify-between">
-                          <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Agregar al Pedido</h4>
-                          <button
-                            (click)="hideAddProductForm()"
-                            class="text-xs text-slate-400 hover:text-white cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                        
-                        <!-- Product selection drop-down -->
-                        <div>
-                          <label class="block text-[11px] font-semibold text-slate-400 uppercase mb-1.5">Producto</label>
-                          <select aria-label="Producto"
-                            [(ngModel)]="newProductForm.productId"
-                            (ngModelChange)="alCambiarProducto()"
-                            class="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs text-white outline-none focus:border-indigo-500"
-                          >
-                            <option value="">Selecciona un producto</option>
-                            @for (prod of productsList(); track prod.id) {
-                              <option [value]="prod.id" [disabled]="prod.agotado">
-                                {{ prod.isCombo ? 'Combo · ' : '' }}{{ prod.name }} - {{ prod.price | pesos }}{{ prod.agotado ? ' (se acabó)' : '' }}
-                              </option>
-                            }
-                          </select>
-                          @if (incluyeDe(newProductForm.productId); as incluye) {
-                            <p class="text-[11px] text-slate-400 mt-1.5">Incluye: {{ incluye }}</p>
-                          }
-                        </div>
-
-                        <!-- Adicionales del platillo elegido: los mismos que ve el
-                             cliente en el menú en línea, con las mismas reglas. -->
-                        @for (grupo of gruposDe(newProductForm.productId); track grupo.id) {
-                          <div>
-                            <div class="flex items-baseline justify-between mb-1.5">
-                              <span class="text-[11px] font-semibold text-slate-400 uppercase">{{ grupo.nombre }}</span>
-                              <span class="text-[11px]" [class]="grupo.minimo > 0 && elegidosEn(grupo) < grupo.minimo ? 'text-amber-400' : 'text-slate-500'">
-                                {{ grupo.minimo > 0 ? 'Obligatorio' : 'Opcional' }} · {{ grupo.maximo === 1 ? 'elige 1' : 'hasta ' + grupo.maximo }}
-                              </span>
-                            </div>
-                            <div class="flex flex-wrap gap-1.5">
-                              @for (op of grupo.opciones; track op.id) {
-                                <button
-                                  type="button"
-                                  (click)="alternarAdicional(grupo, op.id)"
-                                  [disabled]="!op.disponible"
-                                  [attr.aria-pressed]="elegidos().has(op.id)"
-                                  class="px-2.5 py-1.5 rounded-lg text-xs border transition-colors cursor-pointer disabled:opacity-40 disabled:line-through disabled:cursor-not-allowed"
-                                  [class]="elegidos().has(op.id)
-                                    ? 'bg-indigo-600 border-indigo-500 text-white'
-                                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-600'"
-                                >
-                                  {{ op.nombre }}@if (op.precio > 0) { <span class="opacity-70">+\${{ op.precio }}</span> }
-                                </button>
-                              }
-                            </div>
-                          </div>
-                        }
-
-                        <!-- Quantity and Special Instructions -->
-                        <div class="grid grid-cols-3 gap-3">
-                          <div class="col-span-1">
-                            <label class="block text-[11px] font-semibold text-slate-400 uppercase mb-1.5">Cantidad</label>
-                            <input aria-label="Cantidad"
-                              type="number"
-                              min="1"
-                              [(ngModel)]="newProductForm.quantity"
-                              class="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs text-white outline-none focus:border-indigo-500 text-center"
-                            />
-                          </div>
-                          <div class="col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-400 uppercase mb-1.5">Nota Especial</label>
-                            <input aria-label="Instrucciones especiales"
-                              type="text"
-                              placeholder="Ej: sin hielo, salsa extra"
-                              [(ngModel)]="newProductForm.specialInstructions"
-                              class="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 px-3 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        @if (faltaAdicional(); as falta) {
-                          <p class="text-[11px] text-amber-400 text-center">{{ falta }}</p>
-                        }
-
-                        <!-- Confirm Save Button -->
-                        <button
-                          (click)="saveAddedProduct()"
-                          [disabled]="!newProductForm.productId || newProductForm.quantity < 1 || isActionLoading() || faltaAdicional() !== null"
-                          class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg shadow-md shadow-indigo-600/10 hover:shadow-indigo-500/25 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          @if (isActionLoading()) {
-                            <span class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                            <span>Agregando...</span>
-                          } @else {
-                            <span>Confirmar Agregar</span>
-                          }
-                        </button>
-                      </div>
+                  <!-- Tomar pedido: se arma la comanda y se manda completa a cocina -->
+                  <div class="border-t border-slate-800/80 pt-5 space-y-2">
+                    @if (sinEnviar() > 0) {
+                      <p class="text-xs text-amber-300 text-center">{{ sinEnviar() }} {{ sinEnviar() === 1 ? 'platillo' : 'platillos' }} sin enviar a cocina</p>
                     }
+                    <button
+                      (click)="tomandoPedido.set(true)"
+                      class="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <svg lucidePlus class="w-4 h-4"></svg>
+                      <span>{{ sinEnviar() > 0 ? 'Seguir con la comanda' : 'Tomar pedido' }}</span>
+                    </button>
                   </div>
 
                   <!-- Formatted Bill Preview Accordion -->
@@ -428,6 +330,18 @@ export interface GrupoAdicional {
           }
         </div>
       </div>
+
+      <!-- Fuera del panel deslizante: el panel se mueve con transform y eso
+           encerraba esta pantalla en su ancho. Así ocupa toda la ventana. -->
+      @if (table && tomandoPedido() && table.activeOrderId) {
+        <app-toma-pedido
+          [branchId]="table.branchId"
+          [orderId]="table.activeOrderId"
+          [mesa]="table.tableNumber"
+          (cerrar)="tomandoPedido.set(false)"
+          (enviado)="alEnviarComanda()"
+        />
+      }
     </div>
   `,
   styles: [`
@@ -456,8 +370,6 @@ export class OrderPanelComponent implements OnChanges {
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
-  readonly isAddingProduct = signal(false);
-  readonly productsList = signal<Product[]>([]);
   readonly isActionLoading = signal(false);
   readonly isBillTextOpen = signal(false);
   readonly isLoadingTicket = signal(false);
@@ -471,17 +383,14 @@ export class OrderPanelComponent implements OnChanges {
   /** La ventana de cobro está abierta. */
   readonly cobrando = signal(false);
 
-  /** productId -> sus grupos de adicionales. Vacío si el platillo no tiene. */
-  readonly gruposPorProducto = signal<Map<string, GrupoAdicional[]>>(new Map());
-  /** Ids de los adicionales marcados en el formulario. */
-  readonly elegidos = signal<Set<string>>(new Set());
-
-  // Add Product Form State
-  newProductForm = {
-    productId: '',
-    quantity: 1,
-    specialInstructions: '',
-  };
+  /** La pantalla para tomar el pedido está abierta. */
+  readonly tomandoPedido = signal(false);
+  private readonly borradores = inject(ComandasEnBorradorService);
+  /** Lo que el mesero dejó en la comanda sin mandar a cocina. */
+  sinEnviar(): number {
+    const orderId = this.table?.activeOrderId;
+    return orderId ? this.borradores.piezas(orderId) : 0;
+  }
 
   /**
    * Sums order items unit price dynamically as a visual safety net
@@ -493,6 +402,10 @@ export class OrderPanelComponent implements OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    const antes = changes['table']?.previousValue as Table | null | undefined;
+    if (changes['table'] && antes?.id !== this.table?.id) {
+      this.tomandoPedido.set(false);
+    }
     if (changes['table'] && this.table) {
       if (this.table.status === TableStatus.OCCUPIED) {
         // If the table input comes with items and totalAmount from the WebSocket payload,
@@ -508,14 +421,12 @@ export class OrderPanelComponent implements OnChanges {
           };
           this.bill.set(summary);
           this.errorMessage.set(null);
-          this.isAddingProduct.set(false);
           // Always (re)load the formatted ticket text from HTTP to keep it fresh
           this.loadFormattedBill();
         } else {
           // No WebSocket data - do a full HTTP bill load
           this.bill.set(null);
           this.errorMessage.set(null);
-          this.isAddingProduct.set(false);
           this.isBillTextOpen.set(false);
           this.loadBill();
         }
@@ -523,7 +434,6 @@ export class OrderPanelComponent implements OnChanges {
         // Available: clear states
         this.bill.set(null);
         this.errorMessage.set(null);
-        this.isAddingProduct.set(false);
         this.isBillTextOpen.set(false);
       }
     }
@@ -673,6 +583,8 @@ export class OrderPanelComponent implements OnChanges {
         // Trigger reload
         this.loadBill();
         this.refreshNeeded.emit();
+        // Mesa recién abierta: lo siguiente es tomar el pedido.
+        this.tomandoPedido.set(true);
       },
       error: (err) => {
         this.isActionLoading.set(false);
@@ -746,142 +658,10 @@ export class OrderPanelComponent implements OnChanges {
     });
   }
 
-  /**
-   * Toggles the inline Add Product form and loads products list if not loaded yet
-   */
-  showAddProductForm(): void {
-    this.isAddingProduct.set(true);
-    // Clear form inputs
-    this.newProductForm = {
-      productId: '',
-      quantity: 1,
-      specialInstructions: '',
-    };
-    this.elegidos.set(new Set());
-    this.cargarAdicionales();
-
-    // Load active products list if empty
-    if (this.productsList().length === 0) {
-      // Con la sucursal, para saber qué se acabó hoy en ella.
-      const sucursal = this.table?.branchId ? `?branchId=${this.table.branchId}` : '';
-      this.http.get<Product[]>(`${environment.apiUrl}/products${sucursal}`).subscribe({
-        next: (prods) => {
-          // Solo lo activo, y los combos solo en los días de su promoción.
-          const activeOnly = prods.filter((p) => p.active !== false && p.vigenteHoy !== false);
-          this.productsList.set(activeOnly);
-        },
-        error: (err) => {
-          console.error('Failed to load products list', err);
-        },
-      });
-    }
-  }
-
-  /** "4 × Taco al pastor, 2 × Refresco" si el producto elegido es combo. */
-  incluyeDe(productId: string): string | null {
-    const p = this.productsList().find((x) => x.id === productId);
-    if (!p?.isCombo || !p.comboItems?.length) return null;
-    return p.comboItems.map((c) => `${c.cantidad} × ${c.nombre}`).join(', ');
-  }
-
-  /**
-   * Los grupos salen del menú público de la sucursal, que ya los trae por
-   * platillo: así el mesero y el cliente ven exactamente lo mismo.
-   */
-  private cargarAdicionales(): void {
-    const branchId = this.table?.branchId;
-    if (!branchId || this.gruposPorProducto().size > 0) return;
-    this.http
-      .get<{ items: { id: string; grupos?: GrupoAdicional[] }[] }[]>(`${environment.apiUrl}/public/branches/${branchId}/menu`)
-      .subscribe({
-        next: (menu) => {
-          const mapa = new Map<string, GrupoAdicional[]>();
-          menu.forEach((c) => c.items.forEach((i) => mapa.set(i.id, i.grupos ?? [])));
-          this.gruposPorProducto.set(mapa);
-        },
-        error: (err) => console.error('No se pudieron cargar los adicionales', err),
-      });
-  }
-
-  gruposDe(productId: string): GrupoAdicional[] {
-    return productId ? this.gruposPorProducto().get(productId) ?? [] : [];
-  }
-
-  elegidosEn(grupo: GrupoAdicional): number {
-    return grupo.opciones.filter((o) => this.elegidos().has(o.id)).length;
-  }
-
-  /** En un grupo de una sola opción, elegir otra reemplaza la anterior. */
-  alternarAdicional(grupo: GrupoAdicional, opcionId: string): void {
-    const set = new Set(this.elegidos());
-    if (set.has(opcionId)) {
-      set.delete(opcionId);
-    } else if (grupo.maximo === 1) {
-      grupo.opciones.forEach((o) => set.delete(o.id));
-      set.add(opcionId);
-    } else if (this.elegidosEn(grupo) < grupo.maximo) {
-      set.add(opcionId);
-    }
-    this.elegidos.set(set);
-  }
-
-  /** Qué obligatorio falta, para decirlo en vez de dejar el botón gris sin más. */
-  faltaAdicional(): string | null {
-    for (const g of this.gruposDe(this.newProductForm.productId)) {
-      if (this.elegidosEn(g) < g.minimo) return `Falta elegir ${g.nombre.toLowerCase()}`;
-    }
-    return null;
-  }
-
-  /** Al cambiar de platillo, lo marcado del anterior ya no aplica. */
-  alCambiarProducto(): void {
-    this.elegidos.set(new Set());
-  }
-
-  /**
-   * Hides the Add Product inline form
-   */
-  hideAddProductForm(): void {
-    this.isAddingProduct.set(false);
-  }
-
-  /**
-   * Saves the product in the active order
-   */
-  saveAddedProduct(): void {
-    const orderId = this.table?.activeOrderId;
-    if (!orderId || !this.newProductForm.productId) return;
-
-    this.isActionLoading.set(true);
-
-    const payload = {
-      items: [
-        {
-          productId: this.newProductForm.productId,
-          quantity: this.newProductForm.quantity,
-          specialInstructions: this.newProductForm.specialInstructions || '',
-          // Solo los que son de este platillo; el precio lo pone el servidor.
-          adicionales: this.gruposDe(this.newProductForm.productId)
-            .flatMap((g) => g.opciones.map((o) => o.id))
-            .filter((id) => this.elegidos().has(id)),
-        },
-      ],
-    };
-
-    this.http.post<any>(`${environment.apiUrl}/branches/${this.table?.branchId}/orders/${orderId}/items`, payload).subscribe({
-      next: () => {
-        this.isActionLoading.set(false);
-        this.isAddingProduct.set(false);
-        // Reload bill to show the new items and update total
-        this.loadBill();
-        // Emit refresh event to update dashboard parent (if it needs to show total changes)
-        this.refreshNeeded.emit();
-      },
-      error: (err) => {
-        this.isActionLoading.set(false);
-        console.error('Failed to add items to order', err);
-        this.avisos.error(err.error?.error || err.error?.message || 'Error al agregar productos.');
-      },
-    });
+  /** La comanda llegó a cocina: se recarga la cuenta de la mesa. */
+  alEnviarComanda(): void {
+    this.tomandoPedido.set(false);
+    this.loadBill();
+    this.refreshNeeded.emit();
   }
 }

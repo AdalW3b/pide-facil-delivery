@@ -34,6 +34,7 @@ import { AsistenteService } from '../services/asistente.service';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
 import { FranjaSoporteComponent } from '../../shared/components/franja-soporte.component';
 import { CampanaAvisosComponent } from '../../shared/components/campana-avisos.component';
+import { AvisosOperacionComponent } from '../../shared/components/avisos-operacion.component';
 
 /** Una opción del menú lateral. */
 interface OpcionMenu {
@@ -87,7 +88,8 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucidePalette,
     NgTemplateOutlet,
     FranjaSoporteComponent,
-    CampanaAvisosComponent
+    CampanaAvisosComponent,
+    AvisosOperacionComponent
   ],
   template: `
     <ng-template #icono let-nombre>
@@ -276,6 +278,9 @@ const NOMBRES_DE_ROL: Record<string, string> = {
 
         <!-- Modo soporte: solo el operador, cuando ve un restaurante -->
         <app-franja-soporte />
+
+        <!-- Lo que sale de cocina y lo que piden las mesas, en cualquier pantalla -->
+        <app-avisos-operacion />
 
         <!-- Main Content (Scrollable & Ultrawide Optimized) -->
         <main class="flex-1 overflow-y-auto bg-slate-950">

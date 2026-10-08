@@ -129,6 +129,42 @@ class OrderServiceTest {
     }
 
     @Test
+    @DisplayName("\"Todo listo\" cambia toda la comanda de una vez y el comensal recibe un solo aviso")
+    void todoListoDeUnaVez() {
+        Product taco = Product.builder().id(UUID.randomUUID()).name("Taco al pastor").build();
+        OrderItem preparando = OrderItem.builder().id(UUID.randomUUID()).order(order).product(taco).quantity(2)
+                .kitchenStatus(KitchenStatus.PREPARING).build();
+        OrderItem pendiente = OrderItem.builder().id(UUID.randomUUID()).order(order).product(taco).quantity(1)
+                .kitchenStatus(KitchenStatus.PENDING).build();
+        OrderItem yaListo = OrderItem.builder().id(UUID.randomUUID()).order(order).product(taco).quantity(1)
+                .kitchenStatus(KitchenStatus.READY).build();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderItemRepository.findByOrderId(orderId)).thenReturn(List.of(preparando, pendiente, yaListo));
+
+        int cambiaron = orderService.cambiarEstadoDeComanda(branchId, orderId,
+                java.util.Set.of(KitchenStatus.PENDING, KitchenStatus.PREPARING), KitchenStatus.READY);
+
+        assertEquals(2, cambiaron);
+        assertEquals(KitchenStatus.READY, preparando.getKitchenStatus());
+        assertEquals(KitchenStatus.READY, pendiente.getKitchenStatus());
+        assertNotNull(pendiente.getReadyAt());
+        verify(orderItemRepository, times(1)).saveAll(anyList());
+        // La orden completa llegó a "listo": el aviso al comensal sale una vez.
+        assertEquals("READY", order.getKitchenNotified());
+        verify(messagingTemplate, times(1)).convertAndSend(eq("/topic/branches/" + branchId + "/kitchen"), any(Object.class));
+    }
+
+    @Test
+    @DisplayName("Una comanda de otra sucursal no se puede mover, y cancelar va platillo por platillo")
+    void comandaAjenaOCancelar() {
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () ->
+                orderService.cambiarEstadoDeComanda(UUID.randomUUID(), orderId, java.util.Set.of(KitchenStatus.PENDING), KitchenStatus.READY));
+        assertThrows(IllegalArgumentException.class, () ->
+                orderService.cambiarEstadoDeComanda(branchId, orderId, java.util.Set.of(KitchenStatus.PENDING), KitchenStatus.CANCELLED));
+    }
+
+    @Test
     @DisplayName("openOrder opens new order when table is AVAILABLE")
     void openOrder_AvailableTable_CreatesNewOrder() {
         table.setStatus(TableStatus.AVAILABLE);

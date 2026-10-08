@@ -1013,7 +1013,8 @@ public class DeliveryService {
                                 i.getQuantity(),
                                 i.getSpecialInstructions(),
                                 i.getKitchenStatus(),
-                                i.adicionalesParaMostrar()))
+                                i.adicionalesParaMostrar(),
+                                i.getCreatedAt()))
                         .toList(),
                 order.getDriver() != null ? order.getDriver().getNombre() : null,
                 order.getDriver() != null ? order.getDriver().getPhoneNumber() : null,

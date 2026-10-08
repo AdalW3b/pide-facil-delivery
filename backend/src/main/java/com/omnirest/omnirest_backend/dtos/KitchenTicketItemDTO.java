@@ -10,5 +10,7 @@ public record KitchenTicketItemDTO(
     String specialInstructions,
     KitchenStatus kitchenStatus,
     /** "Tortilla: Harina", "Extras: Carne extra, Queso". Vacia si no lleva. */
-    java.util.List<String> adicionales
+    java.util.List<String> adicionales,
+    /** Cuando se pidio: cocina separa las rondas y mide la espera desde aqui. Null si acaba de entrar. */
+    java.time.LocalDateTime createdAt
 ) {}

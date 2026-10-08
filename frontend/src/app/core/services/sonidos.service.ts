@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type TipoSonido = 'comanda' | 'domicilio' | 'alerta';
+export type TipoSonido = 'comanda' | 'domicilio' | 'alerta' | 'listo' | 'cancelado';
 
 /** Notas de cada aviso: [frecuencia Hz, inicio s, duración s]. */
 const MELODIAS: Record<TipoSonido, [number, number, number][]> = {
@@ -10,6 +10,10 @@ const MELODIAS: Record<TipoSonido, [number, number, number][]> = {
   domicilio: [[660, 0, 0.35], [880, 0.16, 0.35], [1175, 0.32, 0.6]],
   // Mesa que llama al mesero: dos toques iguales, insistente.
   alerta: [[988, 0, 0.3], [988, 0.28, 0.45]],
+  // Listo para entregar: acorde que sube y se queda, como "¡salió!".
+  listo: [[784, 0, 0.3], [988, 0.12, 0.3], [1319, 0.24, 0.8]],
+  // Se canceló algo en cocina: dos notas que bajan, para no prepararlo.
+  cancelado: [[523, 0, 0.35], [392, 0.22, 0.6]],
 };
 
 /**

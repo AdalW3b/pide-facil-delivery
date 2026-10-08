@@ -36,4 +36,19 @@ public class KitchenController {
         orderService.updateKitchenStatus(branchId, itemId, status);
         return ResponseEntity.ok().build();
     }
+
+    /**
+     * Toda la comanda de un toque: los platillos que estan en {@code desde}
+     * pasan a {@code a} (por ejemplo, PENDING,PREPARING -> READY).
+     */
+    @PatchMapping("/api/v1/branches/{branchId}/kitchen/orders/{orderId}/status")
+    @PreAuthorize("hasAuthority('KITCHEN_UPDATE')")
+    public ResponseEntity<java.util.Map<String, Integer>> cambiarComanda(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId,
+            @RequestParam("desde") java.util.Set<KitchenStatus> desde,
+            @RequestParam("a") KitchenStatus a) {
+        securityValidationService.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(java.util.Map.of("cambiaron", orderService.cambiarEstadoDeComanda(branchId, orderId, desde, a)));
+    }
 }

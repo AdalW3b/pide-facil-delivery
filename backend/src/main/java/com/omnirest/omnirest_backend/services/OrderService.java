@@ -681,7 +681,8 @@ public class OrderService {
                                 item.getQuantity(),
                                 item.getSpecialInstructions(),
                                 item.getKitchenStatus(),
-                                item.adicionalesParaMostrar()));
+                                item.adicionalesParaMostrar(),
+                                item.getCreatedAt()));
                     }
                 }
             }
@@ -768,6 +769,9 @@ public class OrderService {
         if (previousStatus != status) {
             avisarComensalSiTodoElPedidoAvanzo(item.getOrder(), status);
         }
+        if (status == KitchenStatus.READY && previousStatus != KitchenStatus.READY) {
+            avisarMostradorSiTodoSalio(item.getOrder());
+        }
 
         // La mesa se pinta con el color de cocina, asi que hay que refrescarla
         // tambien, no solo el tablero de cocina.
@@ -782,6 +786,97 @@ public class OrderService {
                 && item.getOrder().getOrderType() != OrderType.SALON) {
             eventos.publishEvent(new PedidoDomicilioCambio(branchId));
         }
+    }
+
+    /**
+     * Mueve de una vez los platillos de una comanda: "Empezar" (pendientes a
+     * preparando), "Todo listo" o "Entregado". Todo en una transaccion y con un
+     * solo aviso: antes la pantalla mandaba una peticion por platillo al mismo
+     * tiempo, cada una avisaba a cocina con lo que alcanzaba a ver y la ultima
+     * en llegar regresaba platillos al estado anterior; ademas el comensal no
+     * recibia su aviso porque ninguna veia la orden completa.
+     *
+     * @return cuantos platillos cambiaron.
+     */
+    @Transactional
+    public int cambiarEstadoDeComanda(UUID branchId, UUID orderId, java.util.Set<KitchenStatus> desde, KitchenStatus hacia) {
+        if (hacia == null || hacia == KitchenStatus.CANCELLED) {
+            throw new IllegalArgumentException("Para cancelar, hazlo platillo por platillo.");
+        }
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Esa comanda ya no existe."));
+        if (order.getBranch() == null || !order.getBranch().getId().equals(branchId)) {
+            throw new org.springframework.security.access.AccessDeniedException("La comanda no es de esta sucursal.");
+        }
+
+        List<OrderItem> cambian = orderItemRepository.findByOrderId(orderId).stream()
+                .filter(i -> i.getKitchenStatus() != KitchenStatus.CANCELLED)
+                .filter(i -> desde == null || desde.isEmpty() || desde.contains(i.getKitchenStatus()))
+                .filter(i -> i.getKitchenStatus() != hacia)
+                .toList();
+        if (cambian.isEmpty()) {
+            return 0;
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        for (OrderItem item : cambian) {
+            item.setKitchenStatus(hacia);
+            if (hacia == KitchenStatus.READY) {
+                item.setReadyAt(ahora);
+            }
+        }
+        orderItemRepository.saveAll(cambian);
+
+        // Al mesero, un solo aviso con todo lo que salio, no uno por platillo.
+        Table table = order.getTable();
+        if (hacia == KitchenStatus.READY && table != null) {
+            StringBuilder mensaje = new StringBuilder("🍽️ ¡Pedido Listo en Cocina!\n");
+            for (OrderItem item : cambian) {
+                mensaje.append(item.getQuantity() != null ? item.getQuantity() : 1).append("x ")
+                        .append(item.getProduct() != null ? item.getProduct().getName() : "Producto").append("\n");
+            }
+            mensaje.append("Mesa: ").append(table.getTableNumber()).append("\nPor favor, pasar a recoger.");
+            notifyWaiters(branchId, table.getTableNumber(), "KITCHEN_READY", mensaje.toString());
+        }
+
+        avisarComensalSiTodoElPedidoAvanzo(order, hacia);
+        if (hacia == KitchenStatus.READY) {
+            avisarMostradorSiTodoSalio(order);
+        }
+        if (table != null) {
+            sendTableUpdate(table);
+        }
+        messagingTemplate.convertAndSend("/topic/branches/" + branchId + "/kitchen", getKitchenTickets(branchId));
+        if (order.getOrderType() != null && order.getOrderType() != OrderType.SALON) {
+            eventos.publishEvent(new PedidoDomicilioCambio(branchId));
+        }
+        return cambian.size();
+    }
+
+    /**
+     * Un pedido sin mesa (domicilio, kiosko, para llevar) que ya salio
+     * completo de cocina: se avisa en el panel a quien entrega (mostrador,
+     * caja, domicilio). A las mesas ya les avisa {@link #notifyWaiters}.
+     */
+    private void avisarMostradorSiTodoSalio(Order order) {
+        if (order == null || order.getBranch() == null || order.getOrderType() == null
+                || order.getOrderType() == OrderType.SALON) {
+            return;
+        }
+        List<OrderItem> vivos = orderItemRepository.findByOrderId(order.getId()).stream()
+                .filter(i -> i.getKitchenStatus() != KitchenStatus.CANCELLED)
+                .toList();
+        boolean todoSalio = !vivos.isEmpty()
+                && vivos.stream().allMatch(i -> i.getKitchenStatus() == KitchenStatus.READY
+                        || i.getKitchenStatus() == KitchenStatus.DELIVERED)
+                && vivos.stream().anyMatch(i -> i.getKitchenStatus() == KitchenStatus.READY);
+        if (!todoSalio) {
+            return;
+        }
+        String etiqueta = etiquetaDeCocina(order, null);
+        String mensaje = etiqueta + ": listo "
+                + (order.getOrderType() == OrderType.DOMICILIO ? "para el repartidor." : "para entregar en mostrador.");
+        messagingTemplate.convertAndSend("/topic/branches/" + order.getBranch().getId() + "/alerts",
+                new TableAlertDTO(null, "PEDIDO_LISTO", mensaje, List.of()));
     }
 
     /**
