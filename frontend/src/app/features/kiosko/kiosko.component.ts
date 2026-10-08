@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { LucideMinus, LucidePlus, LucideX } from '@lucide/angular';
 import { environment } from '../../../environments/environment';
 import { PesosPipe, formatearPesos } from '../../shared/utils/pesos';
+import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 
 /** Lo que guarda la tablet al activarse como kiosko desde el panel. */
 export interface KioskoGuardado {
@@ -111,8 +112,11 @@ const SEGUNDOS_TURNO = 20;
       @if (pantalla() === 'inicio') {
         <div class="flex-1 flex flex-col items-center justify-center gap-10 p-8 text-center">
           <div>
+            @if (marca.urlLogo(); as logo) {
+              <img [src]="logo" alt="" class="mx-auto mb-5 w-28 h-28 object-contain" />
+            }
             <p class="text-sm font-bold uppercase tracking-[0.2em] text-orange-600" (pointerdown)="empezarSalida()" (pointerup)="cancelarSalida()" (pointerleave)="cancelarSalida()">
-              {{ restaurante() || 'Bienvenido' }}
+              {{ marca.marca()?.nombre || restaurante() || 'Bienvenido' }}
             </p>
             <h1 class="mt-3 text-5xl sm:text-6xl font-black tracking-tight">Ordena aquí</h1>
             <p class="mt-3 text-lg text-stone-600">Elige, paga en caja y te llamamos por tu turno.</p>
@@ -136,7 +140,10 @@ const SEGUNDOS_TURNO = 20;
       @if (pantalla() === 'menu') {
         <header class="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b border-stone-200">
           <div class="flex items-center gap-2 min-w-0">
-            <p class="font-extrabold truncate">{{ restaurante() }}</p>
+            @if (marca.urlLogo(); as logo) {
+              <img [src]="logo" alt="" class="w-9 h-9 rounded-lg object-contain shrink-0" />
+            }
+            <p class="font-extrabold truncate">{{ marca.marca()?.nombre || restaurante() }}</p>
             <button type="button" (click)="alternarConsumo()"
               class="shrink-0 px-3 py-1.5 rounded-full text-sm font-bold bg-orange-100 text-orange-800 cursor-pointer">
               {{ consumo() === 'AQUI' ? '🍽️ Comer aquí' : '🛍️ Para llevar' }} · cambiar
@@ -363,6 +370,9 @@ export class KioskoComponent implements OnInit, OnDestroy {
   readonly router = inject(Router);
 
   private kiosko: KioskoGuardado | null = null;
+  /** La sucursal del kiosko, para mostrar la marca del restaurante. */
+  private readonly sucursal = signal<string | null>(null);
+  readonly marca = usarMarcaDeSucursal(() => this.sucursal());
 
   readonly pantalla = signal<Pantalla>('inicio');
   readonly restaurante = signal('');
@@ -425,6 +435,7 @@ export class KioskoComponent implements OnInit, OnDestroy {
       this.pantalla.set('sin-activar');
       return;
     }
+    this.sucursal.set(this.kiosko.branchId);
     this.http.get<{ nombre: string; restaurante: string }>(
       `${this.api}/public/branches/${this.kiosko.branchId}/kiosko`, { headers: this.encabezados() },
     ).subscribe({

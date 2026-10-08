@@ -12,6 +12,7 @@ import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CuentaService, DireccionGuardada } from '../cuenta/cuenta.service';
+import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 import { environment } from '../../../environments/environment';
 import {
   LucideMapPin,
@@ -199,8 +200,11 @@ interface PedidoCreado {
         <header id="encabezado-menu" class="bg-white border-b border-stone-200 sticky top-0 z-20">
           <div class="max-w-3xl mx-auto px-4 pt-3 pb-2">
             <div class="flex items-start gap-3">
+              @if (marca.urlLogo(); as logo) {
+                <img [src]="logo" alt="" class="w-11 h-11 rounded-xl object-contain shrink-0" />
+              }
               <div class="min-w-0 flex-1">
-                <h1 class="font-extrabold text-lg leading-tight truncate">{{ info()?.restaurante ?? 'Pide a domicilio' }}</h1>
+                <h1 class="font-extrabold text-lg leading-tight truncate">{{ marca.marca()?.nombre ?? info()?.restaurante ?? 'Pide a domicilio' }}</h1>
                 @if (info(); as i) {
                   <p class="text-xs text-stone-500 truncate">{{ i.sucursal }}</p>
                 }
@@ -830,6 +834,8 @@ export class PublicOrderComponent implements OnInit {
   readonly cuenta = inject(CuentaService);
 
   readonly branchId = signal<string>('');
+  /** Colores, nombre y logo del restaurante mientras el cliente está en el menú. */
+  readonly marca = usarMarcaDeSucursal(() => this.branchId());
 
   readonly menu = signal<MenuCategoria[]>([]);
   readonly cargandoMenu = signal(true);

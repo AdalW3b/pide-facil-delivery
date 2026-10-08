@@ -234,7 +234,7 @@ interface WaStatusResponse {
                     </p>
                   }
                   <p class="text-xs text-slate-400 max-w-xs mx-auto">
-                    Tu bot de Pide Facil está listo para recibir y enviar mensajes automáticos de WhatsApp.
+                    Tu bot está listo para recibir y enviar mensajes automáticos de WhatsApp.
                   </p>
                   @if (avisoNumero()) {
                     <p class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 max-w-sm mx-auto" role="alert">

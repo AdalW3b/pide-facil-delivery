@@ -11,6 +11,7 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription, timer } from 'rxjs';
 import { CuentaService, EntregaHistorial, PedidoHistorial } from './cuenta.service';
+import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 import {
   LucideUser,
   LucideBike,
@@ -55,7 +56,9 @@ const EN_CURSO = ['NUEVO', 'CONFIRMADO', 'LISTO', 'EN_CAMINO'];
     <div class="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
       <header class="bg-white border-b border-stone-200 sticky top-0 z-10">
         <div class="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          @if (cuenta.esRepartidor()) {
+          @if (marca.urlLogo(); as logo) {
+            <img [src]="logo" [alt]="marca.marca()?.nombre ?? ''" class="w-9 h-9 rounded-lg object-contain shrink-0" />
+          } @else if (cuenta.esRepartidor()) {
             <svg lucideBike class="w-6 h-6 text-indigo-600 shrink-0"></svg>
           } @else {
             <svg lucideUser class="w-6 h-6 text-orange-600 shrink-0"></svg>
@@ -274,6 +277,7 @@ export class MiCuentaComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
 
   readonly branchId = signal('');
+  readonly marca = usarMarcaDeSucursal(() => this.branchId());
   readonly pedidos = signal<PedidoHistorial[]>([]);
   readonly entregas = signal<EntregaHistorial[]>([]);
   readonly cargando = signal(true);

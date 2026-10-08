@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CuentaService, TipoCuenta } from './cuenta.service';
+import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 import {
   LucideUser,
   LucideBike,
@@ -42,6 +43,14 @@ type Modo = 'entrar' | 'crear' | 'recuperar';
   template: `
     <div class="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
       <div class="max-w-md mx-auto px-4 py-10">
+        @if (marca.marca(); as m) {
+          <div class="flex flex-col items-center gap-2 mb-6">
+            @if (marca.urlLogo(m); as logo) {
+              <img [src]="logo" alt="" class="w-16 h-16 object-contain" />
+            }
+            <p class="text-sm font-bold text-orange-700">{{ m.nombre }}</p>
+          </div>
+        }
         <h1 class="text-2xl font-bold text-center">
           {{ modo() === 'entrar' ? 'Entra a tu cuenta' : modo() === 'crear' ? 'Crea tu cuenta' : 'Recupera tu acceso' }}
         </h1>
@@ -208,6 +217,7 @@ export class CuentaAccesoComponent implements OnInit {
   private temporizador: ReturnType<typeof setInterval> | null = null;
 
   readonly branchId = signal('');
+  readonly marca = usarMarcaDeSucursal(() => this.branchId());
   readonly modo = signal<Modo>('entrar');
   readonly tipo = signal<TipoCuenta>('CLIENTE');
 

@@ -1,3 +1,4 @@
+import { MarcaService } from '../../core/services/marca.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
 import { sucursalInicial } from '../../shared/utils/sucursal-inicial';
@@ -347,6 +348,7 @@ export class SalesHistoryComponent implements OnInit {
   readonly isSuperAdmin = computed(() => this.authService.userRole() === 'SUPER_ADMIN' || this.authService.userRole() === 'SYSTEM_ADMIN');
   // Restaurante y sucursal: los mismos para todo el panel (se eligen en la barra superior).
   private readonly sucursalActiva = inject(SucursalActivaService);
+  private readonly marca = inject(MarcaService);
   readonly restaurants = this.sucursalActiva.restaurantes;
   readonly selectedRestaurantId = this.sucursalActiva.restaurantId;
   readonly selectedBranchId = this.sucursalActiva.branchId;
@@ -574,7 +576,7 @@ export class SalesHistoryComponent implements OnInit {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Imprimir Ticket Pide Facil</title>
+            <title>Ticket ${this.marca.marca()?.nombre ?? 'Pide Facil'}</title>
             <style>
               body {
                 font-family: 'Courier New', Courier, monospace;

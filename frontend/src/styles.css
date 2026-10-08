@@ -36,7 +36,8 @@ body {
 
 /* Foco visible y consistente en toda la app */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid #818cf8; /* indigo-400 */
+  /* indigo-400: con la marca del restaurante toma su color */
+  outline: 2px solid var(--color-indigo-400);
   outline-offset: 2px;
   border-radius: 0.5rem;
 }

@@ -12,6 +12,7 @@ import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CuentaService, Sesion } from '../cuenta/cuenta.service';
+import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 import { Subscription, timer } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { DeliveryStatus } from './models/delivery.model';
@@ -89,11 +90,15 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
     <div class="min-h-screen bg-slate-950 text-slate-100">
       <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
         <div class="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
-          <svg lucideBike class="w-6 h-6 text-indigo-400 shrink-0"></svg>
+          @if (marca.urlLogo(); as logo) {
+            <img [src]="logo" alt="" class="w-9 h-9 rounded-lg object-contain shrink-0" />
+          } @else {
+            <svg lucideBike class="w-6 h-6 text-indigo-400 shrink-0"></svg>
+          }
           <div class="min-w-0">
             <h1 class="font-bold leading-tight">Entrega {{ entrega()?.token || '' }}</h1>
             @if (entrega(); as e) {
-              <p class="text-xs text-slate-400 truncate">{{ e.sucursal }}</p>
+              <p class="text-xs text-slate-400 truncate">{{ marca.marca()?.nombre ? marca.marca()!.nombre + ' · ' : '' }}{{ e.sucursal }}</p>
             }
           </div>
 
@@ -382,6 +387,8 @@ export class DriverOrderComponent implements OnInit, OnDestroy {
 
   readonly token = signal('');
   readonly entrega = signal<EntregaRepartidor | null>(null);
+  /** El repartidor trabaja para el restaurante: ve su marca. */
+  readonly marca = usarMarcaDeSucursal(() => this.entrega()?.branchId);
   readonly cargando = signal(true);
   readonly error = signal<string | null>(null);
   readonly errorAccion = signal<string | null>(null);

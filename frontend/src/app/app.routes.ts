@@ -136,6 +136,13 @@ export const routes: Routes = [
         data: { expectedRoles: ['BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'SYSTEM_ADMIN'] },
       },
       {
+        // Nombre, color y logo con que ven el sistema sus clientes y su equipo.
+        path: 'settings/marca',
+        loadComponent: () => import('./features/settings/marca-settings.component').then((m) => m.MarcaSettingsComponent),
+        canActivate: [roleGuard],
+        data: { expectedRoles: ['SUPER_ADMIN'] },
+      },
+      {
         path: 'admin',
         component: SuperAdminDashboardComponent,
         canActivate: [roleGuard],

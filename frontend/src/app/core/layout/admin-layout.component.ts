@@ -4,7 +4,8 @@ import { HttpClient } from '@angular/common/http';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../../../environments/environment';
-import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
+import { MarcaLogoComponent } from '../../shared/components/marca-logo.component';
+import { MarcaService } from '../services/marca.service';
 import {
   LucideChevronsLeft,
   LucideLayoutDashboard,
@@ -26,7 +27,8 @@ import {
   LucideBarChart3,
   LucideWallet,
   LucideLifeBuoy,
-  LucideSparkles
+  LucideSparkles,
+  LucidePalette
 } from '@lucide/angular';
 import { AsistenteService } from '../services/asistente.service';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
@@ -60,7 +62,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
-    BrandLogoComponent,
+    MarcaLogoComponent,
     LucideChevronsLeft,
     LucideLayoutDashboard,
     LucideBookOpen,
@@ -82,6 +84,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideWallet,
     LucideLifeBuoy,
     LucideSparkles,
+    LucidePalette,
     NgTemplateOutlet,
     FranjaSoporteComponent,
     CampanaAvisosComponent
@@ -96,6 +99,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('caja') { <svg lucideWallet class="w-5 h-5 shrink-0"></svg> }
         @case ('asistente') { <svg lucideSparkles class="w-5 h-5 shrink-0"></svg> }
         @case ('soporte') { <svg lucideLifeBuoy class="w-5 h-5 shrink-0"></svg> }
+        @case ('marca') { <svg lucidePalette class="w-5 h-5 shrink-0"></svg> }
         @case ('reportes') { <svg lucideBarChart3 class="w-5 h-5 shrink-0"></svg> }
         @case ('catalogo') { <svg lucideBookOpen class="w-5 h-5 shrink-0"></svg> }
         @case ('inventario') { <svg lucideBoxes class="w-5 h-5 shrink-0"></svg> }
@@ -128,8 +132,8 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         <div class="min-h-0 flex flex-col">
           <!-- Marca -->
           <div class="h-16 flex items-center justify-between px-4 border-b border-slate-800/80 shrink-0">
-            <a routerLink="/" class="overflow-hidden rounded-lg" aria-label="Pide Facil, ir al inicio">
-              <app-brand-logo size="sm" [showWordmark]="!colapsado()" />
+            <a routerLink="/" class="overflow-hidden rounded-lg min-w-0" [attr.aria-label]="(marca.marca()?.nombre ?? 'Pide Facil') + ', ir al inicio'">
+              <app-marca-logo size="sm" [showWordmark]="!colapsado()" />
             </a>
             <button
               (click)="toggleSidebar()"
@@ -251,7 +255,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
                 <p class="text-xs text-slate-400 truncate">{{ n.sucursal }}</p>
               </div>
             } @else {
-              <p class="text-sm font-semibold text-white truncate">Pide Facil</p>
+              <p class="text-sm font-semibold text-white truncate">{{ marca.marca()?.nombre ?? 'Pide Facil' }}</p>
             }
           </div>
 
@@ -336,6 +340,7 @@ export class AdminLayoutComponent {
   private readonly http = inject(HttpClient);
   readonly sucursalActiva = inject(SucursalActivaService);
   private readonly asistente = inject(AsistenteService);
+  readonly marca = inject(MarcaService);
 
   // Sidebar state Signal
   readonly isSidebarCollapsed = signal(false);
@@ -367,9 +372,13 @@ export class AdminLayoutComponent {
     const navegacion = inject(Router).events.subscribe((e) => {
       if (e instanceof NavigationEnd) this.menuMovil.set(false);
     });
+    // El equipo ve el panel con la marca de su restaurante; al salir (cerrar
+    // sesión, ir a la landing) se regresa a la de Pide Facil.
+    this.marca.cargarPropia();
     inject(DestroyRef).onDestroy(() => {
       consulta.removeEventListener('change', alCambiar);
       navegacion.unsubscribe();
+      this.marca.quitar();
     });
 
     effect(() => {
@@ -463,6 +472,7 @@ export class AdminLayoutComponent {
         { ruta: '/settings/whatsapp', nombre: 'WhatsApp', icono: 'whatsapp', exacta: false, visible: () => this.isBranchManagerOrHigher() || this.esOperador() },
         { ruta: '/admin/employees', nombre: 'Empleados', icono: 'empleados', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/admin/roles', nombre: 'Roles y permisos', icono: 'roles', exacta: false, visible: () => this.isBranchManagerOrHigher() },
+        { ruta: '/settings/marca', nombre: 'Marca', icono: 'marca', exacta: false, visible: () => this.userRole() === 'SUPER_ADMIN' },
         { ruta: '/soporte', nombre: 'Soporte', icono: 'soporte', exacta: false, visible: () => this.userRole() === 'SUPER_ADMIN' },
       ],
     },
