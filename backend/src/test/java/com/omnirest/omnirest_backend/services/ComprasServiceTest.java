@@ -34,6 +34,7 @@ class ComprasServiceTest {
     private final MovimientoInventarioRepository movimientos = mock(MovimientoInventarioRepository.class);
     private final InventoryService inventario = mock(InventoryService.class);
     private final CajaService caja = mock(CajaService.class);
+    private final PedidoProveedorRepository pedidos = mock(PedidoProveedorRepository.class);
 
     private ComprasService servicio;
     private Ingredient arrachera;
@@ -42,7 +43,7 @@ class ComprasServiceTest {
 
     @BeforeEach
     void setUp() {
-        servicio = new ComprasService(branches, proveedores, presentaciones, compras, ingredientes, productos, movimientos, inventario, caja);
+        servicio = new ComprasService(branches, proveedores, presentaciones, compras, ingredientes, productos, movimientos, inventario, caja, pedidos);
         when(branches.findById(branchId)).thenReturn(Optional.of(Branch.builder().id(branchId).restaurant(restaurante).build()));
         arrachera = Ingredient.builder().id(UUID.randomUUID()).name("Arrachera").unitOfMeasure("kg").restaurant(restaurante).build();
         when(ingredientes.findById(arrachera.getId())).thenReturn(Optional.of(arrachera));
@@ -59,7 +60,7 @@ class ComprasServiceTest {
     }
 
     private ComprasDTOs.NuevaCompra compra(String pago, String iva, ComprasDTOs.RenglonCompra... renglones) {
-        return new ComprasDTOs.NuevaCompra(lopez.getId(), null, "A-2381", null, pago, iva, null, List.of(renglones));
+        return new ComprasDTOs.NuevaCompra(lopez.getId(), null, "A-2381", null, pago, iva, null, List.of(renglones), null, null);
     }
 
     private ComprasDTOs.RenglonCompra kg(String cantidad, String importe) {
@@ -132,7 +133,7 @@ class ComprasServiceTest {
     @Test
     @DisplayName("La fecha de la nota no puede ser futura")
     void fechaFutura() {
-        var futura = new ComprasDTOs.NuevaCompra(lopez.getId(), null, null, LocalDate.now().plusDays(3), "TRANSFERENCIA", "SIN", null, List.of(kg("1", "190")));
+        var futura = new ComprasDTOs.NuevaCompra(lopez.getId(), null, null, LocalDate.now().plusDays(3), "TRANSFERENCIA", "SIN", null, List.of(kg("1", "190")), null, null);
         assertThrows(IllegalArgumentException.class, () -> servicio.registrar(branchId, futura));
     }
 
@@ -154,5 +155,95 @@ class ComprasServiceTest {
         verify(caja).entradaPorCompraAnulada(eq(branchId), eq(new BigDecimal("950.00")), contains("Compra anulada"), any());
         assertNotNull(c.getAnuladaEn());
         assertThrows(IllegalStateException.class, () -> servicio.anular(branchId, compraId, null), "no se anula dos veces");
+    }
+
+    @Test
+    @DisplayName("Recibir un pedido: entra lo que llegó y queda anotado lo que faltó")
+    void recibirPedido() {
+        PedidoProveedor pedido = PedidoProveedor.builder().id(UUID.randomUUID()).branchId(branchId)
+                .proveedorId(lopez.getId()).proveedor(lopez.getNombre()).build();
+        PedidoProveedorRenglon pedido10 = PedidoProveedorRenglon.builder().id(UUID.randomUUID()).pedido(pedido)
+                .ingredientId(arrachera.getId()).cantidad(new BigDecimal("10")).unidad("kg").descripcion("10 kg Arrachera").build();
+        pedido.getRenglones().add(pedido10);
+        when(pedidos.findById(pedido.getId())).thenReturn(Optional.of(pedido));
+
+        var datos = new ComprasDTOs.NuevaCompra(null, null, "A-1", null, "CREDITO", "SIN", null, List.of(kg("8", "1520")),
+                pedido.getId(), List.of(new ComprasDTOs.Recibido(pedido10.getId(), new BigDecimal("8"), "MAL_ESTADO")));
+        var r = servicio.registrar(branchId, datos);
+
+        verify(inventario).moverIngrediente(eq(branchId), eq(arrachera), eq(new BigDecimal("8")), eq(TipoMovimiento.ENTRADA),
+                eq(false), anyString(), any(), eq("Carnicería López"), any());
+        assertEquals(PedidoProveedor.RECIBIDO, pedido.getEstado());
+        assertEquals(0, new BigDecimal("8").compareTo(pedido10.getRecibido()));
+        assertEquals(PedidoProveedorRenglon.MAL_ESTADO, pedido10.getMotivo());
+        assertTrue(r.mensaje().contains("2 de 10 kg Arrachera (llegó mal)"), r.mensaje());
+        // Sin proveedor en la compra, se toma el del pedido.
+        ArgumentCaptor<Compra> guardada = ArgumentCaptor.forClass(Compra.class);
+        verify(compras, atLeastOnce()).save(guardada.capture());
+        assertEquals(lopez.getId(), guardada.getValue().getProveedorId());
+        assertEquals(pedido.getId(), guardada.getValue().getPedidoId());
+    }
+
+    @Test
+    @DisplayName("Un pedido ya recibido no se recibe otra vez")
+    void pedidoYaRecibido() {
+        PedidoProveedor pedido = PedidoProveedor.builder().id(UUID.randomUUID()).branchId(branchId)
+                .proveedor("López").estado(PedidoProveedor.RECIBIDO).build();
+        when(pedidos.findById(pedido.getId())).thenReturn(Optional.of(pedido));
+        var datos = new ComprasDTOs.NuevaCompra(null, null, null, null, "CREDITO", "SIN", null, List.of(kg("1", "190")), pedido.getId(), List.of());
+        assertThrows(IllegalStateException.class, () -> servicio.registrar(branchId, datos));
+    }
+
+    @Test
+    @DisplayName("Pagar en efectivo varias notas a crédito: una sola salida de caja")
+    void pagarConCaja() {
+        Compra a = Compra.builder().id(UUID.randomUUID()).branchId(branchId).proveedor("Carnicería López").folio("A-1")
+                .formaPago("CREDITO").total(new BigDecimal("1000.00")).build();
+        Compra b = Compra.builder().id(UUID.randomUUID()).branchId(branchId).proveedor("Carnicería López").folio("A-2")
+                .formaPago("CREDITO").total(new BigDecimal("480.50")).build();
+        when(compras.findById(a.getId())).thenReturn(Optional.of(a));
+        when(compras.findById(b.getId())).thenReturn(Optional.of(b));
+        UUID mov = UUID.randomUUID();
+        when(caja.salidaPorCompra(eq(branchId), any(), anyString(), any())).thenReturn(mov);
+
+        servicio.pagar(branchId, new ComprasDTOs.Pagar(List.of(a.getId(), b.getId()), "CAJA"));
+
+        verify(caja).salidaPorCompra(eq(branchId), eq(new BigDecimal("1480.50")), contains("notas A-1, A-2"), any());
+        assertNotNull(a.getPagadaEn());
+        assertEquals("CAJA", b.getPagoForma());
+        assertEquals(mov, b.getPagoMovimientoCajaId());
+        assertThrows(IllegalStateException.class,
+                () -> servicio.pagar(branchId, new ComprasDTOs.Pagar(List.of(a.getId()), "TRANSFERENCIA")), "no se paga dos veces");
+    }
+
+    @Test
+    @DisplayName("Anular una compra a crédito que se pagó con caja regresa el efectivo y reabre el pedido")
+    void anularCreditoPagado() {
+        UUID compraId = UUID.randomUUID();
+        PedidoProveedor pedido = PedidoProveedor.builder().id(UUID.randomUUID()).branchId(branchId).proveedor("López")
+                .estado(PedidoProveedor.RECIBIDO).compraId(compraId).build();
+        when(pedidos.findById(pedido.getId())).thenReturn(Optional.of(pedido));
+        Compra c = Compra.builder().id(compraId).branchId(branchId).formaPago("CREDITO").total(new BigDecimal("300.00"))
+                .pagoForma("CAJA").pagoMovimientoCajaId(UUID.randomUUID()).pedidoId(pedido.getId()).build();
+        when(compras.findById(compraId)).thenReturn(Optional.of(c));
+        when(movimientos.findByGrupoIdIn(List.of(compraId))).thenReturn(List.of());
+
+        servicio.anular(branchId, compraId, null);
+
+        verify(caja).entradaPorCompraAnulada(eq(branchId), eq(new BigDecimal("300.00")), anyString(), any());
+        assertEquals(PedidoProveedor.PENDIENTE, pedido.getEstado());
+        assertNull(pedido.getCompraId());
+    }
+
+    @Test
+    @DisplayName("El mensaje de WhatsApp del pedido")
+    void mensajeDelPedido() {
+        Branch centro = Branch.builder().id(branchId).name("Centro").restaurant(restaurante).build();
+        PedidoProveedor p = PedidoProveedor.builder().proveedor("López").para(Combos.hoy().plusDays(1)).nota("Antes de las 9, por favor.").build();
+        p.getRenglones().add(PedidoProveedorRenglon.builder().descripcion("10 kg Arrachera").build());
+        p.getRenglones().add(PedidoProveedorRenglon.builder().descripcion("2 caja de 24 Coca-Cola 355 ml").build());
+        String m = PedidosProveedorService.mensaje(p, centro);
+        assertTrue(m.startsWith("Buen día, le escribe JA TechCode (sucursal Centro).\nPara mañana, "), m);
+        assertTrue(m.contains("• 10 kg Arrachera\n• 2 caja de 24 Coca-Cola 355 ml\nAntes de las 9, por favor.\nGracias."), m);
     }
 }

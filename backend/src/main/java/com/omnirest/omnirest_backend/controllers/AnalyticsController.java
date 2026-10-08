@@ -34,6 +34,7 @@ import java.util.UUID;
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
+    private final com.omnirest.omnirest_backend.services.FlujoService flujoService;
     private final RestaurantRepository restaurantRepository;
     private final BranchRepository branchRepository;
     private final SecurityValidationService securityValidationService;
@@ -47,6 +48,18 @@ public class AnalyticsController {
             @AuthenticationPrincipal CustomUserDetails user) {
         Alcance a = alcance(restaurantId, branchId, user);
         return ResponseEntity.ok(analyticsService.getAnalyticsSummary(a.restaurantId(), a.branchId(), startDate, endDate));
+    }
+
+    /** Ingresos y egresos: lo cobrado contra compras, pagos a proveedores y salidas de caja. */
+    @GetMapping("/flujo")
+    public ResponseEntity<com.omnirest.omnirest_backend.dtos.FlujoDTOs.Flujo> getFlujo(
+            @RequestParam(required = false) UUID restaurantId,
+            @RequestParam(required = false) UUID branchId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        Alcance a = alcance(restaurantId, branchId, user);
+        return ResponseEntity.ok(flujoService.flujo(a.restaurantId(), a.branchId(), startDate, endDate));
     }
 
     @GetMapping("/sales/daily")

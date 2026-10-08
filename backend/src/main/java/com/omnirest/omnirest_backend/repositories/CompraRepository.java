@@ -11,6 +11,9 @@ import java.util.UUID;
 public interface CompraRepository extends JpaRepository<Compra, UUID> {
     List<Compra> findTop30ByBranchIdOrderByCreadoEnDesc(UUID branchId);
 
+    /** Lo comprado a credito en la sucursal que falta pagar, lo que vence primero arriba. */
+    List<Compra> findByBranchIdAndFormaPagoAndPagadaEnIsNullAndAnuladaEnIsNullOrderByVenceAscFechaAsc(UUID branchId, String formaPago);
+
     /** Lo que se le debe a cada proveedor: compras a credito sin pagar ni anular. [proveedorId, total] */
     @org.springframework.data.jpa.repository.Query("SELECT c.proveedorId, COALESCE(SUM(c.total), 0) FROM Compra c "
             + "WHERE c.proveedorId IN :ids AND c.formaPago = 'CREDITO' AND c.pagadaEn IS NULL AND c.anuladaEn IS NULL "

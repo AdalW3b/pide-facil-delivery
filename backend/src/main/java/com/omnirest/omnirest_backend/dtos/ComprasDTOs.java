@@ -101,7 +101,19 @@ public final class ComprasDTOs {
             /** INCLUIDO, APARTE o SIN. */
             String iva,
             @Size(max = 300) String nota,
-            @NotEmpty(message = "Agrega al menos un artículo.") @Valid List<RenglonCompra> renglones) {
+            @NotEmpty(message = "Agrega al menos un artículo.") @Valid List<RenglonCompra> renglones,
+            /** Si la compra es la llegada de un pedido: queda recibido. */
+            UUID pedidoId,
+            /** Cuanto llego de cada renglon del pedido (0 = no llego). */
+            @Valid List<Recibido> recepcion) {
+    }
+
+    /** Lo que llego de un renglon del pedido, en la misma unidad o presentacion en que se pidio. */
+    public record Recibido(
+            @NotNull UUID renglonId,
+            @NotNull @DecimalMin(value = "0.0", message = "Lo recibido no puede ser negativo.") BigDecimal recibido,
+            /** FALTO o MAL_ESTADO si llego menos. */
+            String motivo) {
     }
 
     public record Compra(
@@ -123,7 +135,77 @@ public final class ComprasDTOs {
             boolean pagada,
             boolean anulada,
             String anuladaPor,
-            String motivoAnulacion) {
+            String motivoAnulacion,
+            /** Como se pago lo comprado a credito: CAJA o TRANSFERENCIA. */
+            String pagoForma,
+            UUID pedidoId) {
+    }
+
+    /** Pagar una o varias compras a credito, en efectivo de caja o por transferencia. */
+    public record Pagar(
+            @NotEmpty(message = "Elige qué compras se pagan.") List<UUID> compras,
+            @NotBlank(message = "Elige cómo se pagó.") String forma) {
+    }
+
+    // ------------------------------------------------------------------ pedidos al proveedor
+
+    public record RenglonPedido(
+            UUID ingredientId,
+            UUID productId,
+            @NotNull(message = "Falta la cantidad.")
+            @DecimalMin(value = "0.0", inclusive = false, message = "La cantidad debe ser mayor a cero.") BigDecimal cantidad,
+            @Size(max = 20) String unidad,
+            UUID presentacionId) {
+    }
+
+    public record NuevoPedido(
+            @NotNull(message = "Elige a qué proveedor se le pide.") UUID proveedorId,
+            /** Para cuando se necesita; sin fecha, mañana. */
+            LocalDate para,
+            @Size(max = 300) String nota,
+            @NotEmpty(message = "Agrega al menos un artículo.") @Valid List<RenglonPedido> renglones) {
+    }
+
+    public record RenglonDePedido(
+            UUID id,
+            String tipo,
+            UUID articuloId,
+            BigDecimal cantidad,
+            String unidad,
+            UUID presentacionId,
+            String descripcion,
+            BigDecimal recibido,
+            String motivo) {
+    }
+
+    public record Pedido(
+            UUID id,
+            UUID proveedorId,
+            String proveedor,
+            /** WhatsApp del proveedor, para mandarle el mensaje. */
+            String telefono,
+            LocalDate para,
+            String nota,
+            /** PENDIENTE, RECIBIDO o CANCELADO. */
+            String estado,
+            String creadoPor,
+            LocalDateTime creadoEn,
+            LocalDateTime cerradoEn,
+            UUID compraId,
+            List<RenglonDePedido> renglones,
+            /** El texto para WhatsApp: "Buen día, le escribe…". */
+            String mensaje) {
+    }
+
+    /** Lo que conviene pedir (consumo de la ultima semana contra lo que hay) y quien lo surte. */
+    public record Sugerido(
+            String tipo,
+            UUID articuloId,
+            String nombre,
+            String unidad,
+            BigDecimal existencia,
+            BigDecimal sugerido,
+            List<UUID> proveedores) {
     }
 
     public record Anular(@Size(max = 300) String motivo) {

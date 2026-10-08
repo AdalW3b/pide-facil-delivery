@@ -7,6 +7,8 @@ import { AvisosService } from '../../core/services/avisos.service';
 import { PesosPipe, formatearPesos } from '../../shared/utils/pesos';
 import { convertirUnidad, unidadCanonica, unidadesCompatibles } from '../../shared/utils/unidades';
 import { SelectorFechaComponent, hoyIso } from '../../shared/components/selector-fecha.component';
+import { PedidosProveedorComponent } from './pedidos-proveedor.component';
+import { PorPagarComponent } from './por-pagar.component';
 
 /** Lo que la compra necesita saber de un artículo del inventario. */
 export interface ArticuloCompra {
@@ -30,7 +32,7 @@ export interface Proveedor {
   debemos: number;
 }
 
-interface Presentacion {
+export interface Presentacion {
   id: string;
   tipo: string;
   articuloId: string;
@@ -46,8 +48,9 @@ interface UltimoPrecio {
   proveedor: string | null;
 }
 
-interface Compra {
+export interface Compra {
   id: string;
+  proveedorId: string | null;
   proveedor: string | null;
   folio: string | null;
   fecha: string;
@@ -63,6 +66,36 @@ interface Compra {
   pagada: boolean;
   anulada: boolean;
   anuladaPor: string | null;
+  pagoForma: string | null;
+  pedidoId: string | null;
+}
+
+export interface RenglonDePedido {
+  id: string;
+  tipo: string;
+  articuloId: string;
+  cantidad: number;
+  unidad: string | null;
+  presentacionId: string | null;
+  descripcion: string;
+  recibido: number | null;
+  motivo: string | null;
+}
+
+export interface Pedido {
+  id: string;
+  proveedorId: string | null;
+  proveedor: string;
+  telefono: string | null;
+  para: string | null;
+  nota: string | null;
+  estado: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO';
+  creadoPor: string | null;
+  creadoEn: string;
+  cerradoEn: string | null;
+  compraId: string | null;
+  renglones: RenglonDePedido[];
+  mensaje: string;
 }
 
 /** Un renglón de la nota. "u:kg" = unidad suelta; "p:<id>" = presentación del proveedor. */
@@ -71,7 +104,14 @@ interface Linea {
   cantidad: number | null;
   como: string;
   importe: number | null;
+  /** Al recibir un pedido: el renglón, cuánto se pidió y cómo. */
+  renglonId?: string;
+  pedida?: number;
+  comoPedido?: string;
+  motivo?: 'FALTO' | 'MAL_ESTADO';
 }
+
+type Vista = 'registrar' | 'pedidos' | 'porpagar';
 
 type FormaPago = 'CAJA' | 'TRANSFERENCIA' | 'CREDITO';
 type Iva = 'INCLUIDO' | 'APARTE' | 'SIN';
@@ -89,12 +129,43 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
 @Component({
   selector: 'app-compras-inventario',
   standalone: true,
-  imports: [FormsModule, PesosPipe, SelectorFechaComponent, LucideBan, LucideLoader2, LucidePackagePlus, LucideUserPlus, LucideX],
+  imports: [FormsModule, PesosPipe, SelectorFechaComponent, PedidosProveedorComponent, PorPagarComponent, LucideBan, LucideLoader2, LucidePackagePlus, LucideUserPlus, LucideX],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <nav class="flex flex-wrap gap-2 mb-4" aria-label="Compras">
+      @for (v of vistas; track v.id) {
+        <button type="button" (click)="vista.set(v.id)" [attr.aria-current]="vista() === v.id ? 'page' : null"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer min-h-[40px]"
+          [class]="vista() === v.id ? 'bg-slate-700 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'">
+          {{ v.nombre }}
+          @if (v.id === 'pedidos' && pendientes() > 0) {
+            <span class="px-1.5 rounded-md bg-indigo-500/20 text-indigo-200 text-xs font-bold tabular-nums">{{ pendientes() }}</span>
+          }
+          @if (v.id === 'porpagar' && deuda() > 0) {
+            <span class="px-1.5 rounded-md bg-amber-500/20 text-amber-200 text-xs font-bold tabular-nums">{{ deuda() | pesos }}</span>
+          }
+        </button>
+      }
+    </nav>
+
+    @if (vista() === 'pedidos') {
+      <app-pedidos-proveedor [branchId]="branchId" [articulos]="articulos" [proveedores]="proveedores()" [presentaciones]="presentaciones()"
+        [pedidos]="pedidos()" (cambio)="cargarPedidos()" (recibir)="recibir($event)" />
+    }
+    @if (vista() === 'porpagar') {
+      <app-por-pagar [branchId]="branchId" [compras]="porPagar()" [cajaAbierta]="cajaAbierta()" [puedePagar]="puedeAnular" (pagado)="cargar()" />
+    }
+
+    @if (vista() === 'registrar') {
     <section class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-6 items-start">
-      <form class="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5 space-y-5" (submit)="registrar($event)" novalidate>
-        <h2 class="text-base font-bold text-white">Registrar compra</h2>
+      <form ngNoForm class="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5 space-y-5" (submit)="registrar($event)" novalidate>
+        <h2 class="text-base font-bold text-white">{{ recibiendo() ? 'Recibir pedido' : 'Registrar compra' }}</h2>
+        @if (recibiendo(); as rp) {
+          <div class="flex flex-wrap items-center gap-3 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3.5 py-2.5 text-sm" role="status">
+            <p class="text-indigo-100 flex-1 min-w-0">Recibiendo el pedido a <strong>{{ rp.proveedor }}</strong>. Escribe cuánto llegó de cada cosa y lo que dice la nota; lo que no llegó no entra al inventario.</p>
+            <button type="button" (click)="cancelarRecepcion()" class="text-xs font-semibold text-slate-300 hover:text-white cursor-pointer">Dejar de recibir</button>
+          </div>
+        }
 
         <!-- La nota -->
         <div class="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_minmax(0,.8fr)_minmax(0,1fr)] gap-3">
@@ -183,10 +254,10 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
               <div class="grid grid-cols-2 sm:grid-cols-[minmax(0,1.4fr)_80px_minmax(0,1.2fr)_110px_auto] gap-2 items-end">
                 <div class="col-span-2 sm:col-span-1 min-w-0">
                   <p class="text-sm font-bold text-white truncate">{{ l.articulo.nombre }}</p>
-                  <p class="text-[11px] text-slate-500">Se lleva en {{ l.articulo.unidad }}</p>
+                  <p class="text-[11px] text-slate-500">{{ l.renglonId ? 'Pediste ' + legible(l.pedida ?? 0) + ' ' + nombreComo(l.articulo, l.comoPedido ?? '') : 'Se lleva en ' + l.articulo.unidad }}</p>
                 </div>
                 <div>
-                  <label [for]="'cp-c' + i" class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cant.</label>
+                  <label [for]="'cp-c' + i" class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{{ l.renglonId ? 'Llegó' : 'Cant.' }}</label>
                   <input [id]="'cp-c' + i" type="number" min="0" step="any" inputmode="decimal" [ngModel]="l.cantidad" (ngModelChange)="cambiar(i, { cantidad: $event })" class="${CAMPO} tabular-nums" />
                 </div>
                 <div>
@@ -200,11 +271,23 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                   <label [for]="'cp-i' + i" class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">$ en la nota</label>
                   <input [id]="'cp-i' + i" type="number" min="0" step="any" inputmode="decimal" [ngModel]="l.importe" (ngModelChange)="cambiar(i, { importe: $event })" placeholder="0.00" class="${CAMPO} tabular-nums" />
                 </div>
-                <button type="button" (click)="quitar(i)" class="h-10 w-10 rounded-lg border border-slate-800 text-slate-500 hover:text-rose-400 flex items-center justify-center cursor-pointer" [attr.aria-label]="'Quitar ' + l.articulo.nombre">
+                <button type="button" (click)="quitar(i)" [class.invisible]="!!l.renglonId" class="h-10 w-10 rounded-lg border border-slate-800 text-slate-500 hover:text-rose-400 flex items-center justify-center cursor-pointer" [attr.aria-label]="'Quitar ' + l.articulo.nombre">
                   <svg lucideX class="w-4 h-4"></svg>
                 </button>
               </div>
               <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400" aria-live="polite">
+                @if (llegada(l); as e) {
+                  <span class="px-1.5 py-0.5 rounded font-bold" [class]="e.clase">{{ e.texto }}</span>
+                  @if (e.falta) {
+                    <label class="inline-flex items-center gap-1.5">
+                      <span class="sr-only">Por qué llegó menos</span>
+                      <select [ngModel]="l.motivo ?? 'FALTO'" (ngModelChange)="cambiar(i, { motivo: $event })" class="bg-slate-950 border border-slate-800 rounded-md py-1 px-2 text-xs text-white [color-scheme:dark] cursor-pointer">
+                        <option value="FALTO">No lo trajo</option>
+                        <option value="MAL_ESTADO">Llegó mal, se regresó</option>
+                      </select>
+                    </label>
+                  }
+                }
                 @if (unidadesInv(l); as u) {
                   <span>= <strong class="text-slate-200">{{ legible(u) }} {{ l.articulo.unidad }}</strong> al inventario</span>
                 }
@@ -234,7 +317,7 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
           <button type="submit" [disabled]="!sePuede() || guardando()"
             class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[48px]">
             @if (guardando()) { <svg lucideLoader2 class="w-4 h-4 animate-spin"></svg> }
-            Registrar compra
+            {{ recibiendo() ? 'Recibir y registrar compra' : 'Registrar compra' }}
           </button>
         </div>
         @if (faltante(); as f) { <p class="text-xs text-amber-300 text-right -mt-3">{{ f }}</p> }
@@ -249,7 +332,7 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
               <strong class="text-sm text-white truncate">{{ c.proveedor || 'Sin proveedor' }}</strong>
               <span class="text-sm font-bold tabular-nums" [class]="c.anulada ? 'text-slate-500 line-through' : 'text-emerald-300'">{{ c.total !== null ? (c.total | pesos) : '—' }}</span>
             </div>
-            <p class="text-[11px] text-slate-500">{{ c.folio ? 'Nota ' + c.folio + ' · ' : '' }}{{ fechaCorta(c.fecha) }}{{ c.usuario ? ' · ' + c.usuario : '' }}</p>
+            <p class="text-[11px] text-slate-500">{{ c.pedidoId ? 'Pedido recibido · ' : '' }}{{ c.folio ? 'Nota ' + c.folio + ' · ' : '' }}{{ fechaCorta(c.fecha) }}{{ c.usuario ? ' · ' + c.usuario : '' }}</p>
             <p class="text-xs text-slate-300" [class.line-through]="c.anulada">{{ c.renglones.join(' · ') }}</p>
             <div class="flex flex-wrap items-center gap-2 pt-1">
               @if (c.anulada) {
@@ -270,11 +353,12 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
         }
       </aside>
     </section>
+    }
 
     <!-- Alta rápida de proveedor -->
     @if (alta(); as a) {
       <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" (click)="alta.set(null)">
-        <form class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="alta-titulo"
+        <form ngNoForm class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="alta-titulo"
           (click)="$event.stopPropagation()" (submit)="darDeAlta($event)" novalidate>
           <h3 id="alta-titulo" class="text-base font-bold text-white">Dar de alta proveedor</h3>
           <p class="text-xs text-slate-400">Con el nombre basta para seguir con la compra. El resto se completa en Inventario › Proveedores.</p>
@@ -297,7 +381,7 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
     <!-- Nueva presentación -->
     @if (nuevaPres(); as np) {
       <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" (click)="nuevaPres.set(null)">
-        <form class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="pres-titulo"
+        <form ngNoForm class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="pres-titulo"
           (click)="$event.stopPropagation()" (submit)="guardarPresentacion($event)" novalidate>
           <h3 id="pres-titulo" class="flex items-center gap-2 text-base font-bold text-white"><svg lucidePackagePlus class="w-5 h-5 text-indigo-300"></svg> Presentación de {{ lineas()[np.linea].articulo.nombre }}</h3>
           <p class="text-xs text-slate-400">Cómo lo vende el proveedor. Se guarda para las siguientes compras.</p>
@@ -340,6 +424,18 @@ export class ComprasInventarioComponent implements OnChanges {
     { id: 'APARTE', nombre: 'IVA aparte (+16%)' },
     { id: 'SIN', nombre: 'Sin IVA' },
   ];
+
+  readonly vistas: { id: Vista; nombre: string }[] = [
+    { id: 'registrar', nombre: 'Registrar compra' },
+    { id: 'pedidos', nombre: 'Pedidos' },
+    { id: 'porpagar', nombre: 'Por pagar' },
+  ];
+  readonly vista = signal<Vista>('registrar');
+  readonly pedidos = signal<Pedido[]>([]);
+  readonly porPagar = signal<Compra[]>([]);
+  readonly recibiendo = signal<Pedido | null>(null);
+  readonly pendientes = computed(() => this.pedidos().filter((p) => p.estado === 'PENDIENTE').length);
+  readonly deuda = computed(() => this.porPagar().reduce((n, c) => n + (c.total ?? 0), 0));
 
   readonly proveedores = signal<Proveedor[]>([]);
   readonly presentaciones = signal<Presentacion[]>([]);
@@ -405,7 +501,9 @@ export class ComprasInventarioComponent implements OnChanges {
 
   readonly faltante = computed(() => {
     if (!this.lineas().length) return 'Agrega al menos un artículo.';
-    if (this.lineas().some((l) => !(Number(l.cantidad) > 0))) return 'Falta la cantidad de algún artículo.';
+    if (this.lineas().some((l) => !l.renglonId && !(Number(l.cantidad) > 0))) return 'Falta la cantidad de algún artículo.';
+    if (this.lineas().some((l) => l.renglonId && !(Number(l.cantidad) >= 0))) return 'Escribe cuánto llegó (0 si no llegó).';
+    if (!this.lineas().some((l) => Number(l.cantidad) > 0)) return 'No llegó nada: si el pedido ya no va a llegar, cancélalo en Pedidos.';
     if (this.pago() === 'CAJA' && this.cajaAbierta() === false) return 'Con la caja cerrada no se puede pagar en efectivo.';
     if (this.pago() === 'CREDITO' && !this.proveedor() && !this.textoProveedor().trim()) return 'A crédito, elige a quién se le debe.';
     return null;
@@ -428,10 +526,74 @@ export class ComprasInventarioComponent implements OnChanges {
       next: (u) => this.ultimos.set(new Map(u.map((x) => [x.tipo + ':' + x.articuloId, x]))),
     });
     this.http.get<Compra[]>(this.api('inventario/compras')).subscribe({ next: (c) => this.compras.set(c) });
+    this.http.get<Compra[]>(this.api('inventario/compras/por-pagar')).subscribe({ next: (c) => this.porPagar.set(c) });
+    this.cargarPedidos();
     this.http.get<{ abierta: boolean }>(this.api('caja/abierta')).subscribe({
       next: (r) => this.cajaAbierta.set(r.abierta),
       error: () => this.cajaAbierta.set(null),
     });
+  }
+
+  cargarPedidos(): void {
+    this.http.get<Pedido[]>(this.api('inventario/pedidos')).subscribe({
+      // Los que faltan por llegar, arriba.
+      next: (p) => this.pedidos.set([...p].sort((a, b) => Number(b.estado === 'PENDIENTE') - Number(a.estado === 'PENDIENTE'))),
+    });
+  }
+
+  // ------------------------------------------------------------------ recibir un pedido
+
+  /** Lleva el pedido a la captura: cada renglón con lo pedido, para corregir lo que no llegó. */
+  recibir(p: Pedido): void {
+    const lineas: Linea[] = [];
+    for (const r of p.renglones) {
+      const a = this.articulos.find((x) => x.id === r.articuloId && (x.tipo === 'PRODUCTO') === (r.tipo === 'PRODUCTO'));
+      if (!a) continue;
+      const como = r.presentacionId ? 'p:' + r.presentacionId : 'u:' + (r.unidad || this.unidadesDe(a)[0]);
+      lineas.push({ articulo: a, cantidad: r.cantidad, como, importe: null, renglonId: r.id, pedida: r.cantidad, comoPedido: como });
+    }
+    this.recibiendo.set(p);
+    this.lineas.set(lineas);
+    const prov = this.proveedores().find((x) => x.id === p.proveedorId);
+    if (prov) this.elegirProveedor(prov);
+    else this.textoProveedor.set(p.proveedor);
+    if (prov && prov.diasCredito > 0) this.pago.set('CREDITO');
+    this.folio.set('');
+    this.fecha.set(hoyIso());
+    this.vista.set('registrar');
+  }
+
+  cancelarRecepcion(): void {
+    this.recibiendo.set(null);
+    this.lineas.set([]);
+  }
+
+  /** Cuánto del inventario trae 1 de "como" (1 caja = 24 piezas; 1 g = 0.001 kg). */
+  private factorDe(a: ArticuloCompra, como: string): number {
+    if (como.startsWith('p:')) return this.presentaciones().find((x) => x.id === como.slice(2))?.factor ?? 1;
+    return convertirUnidad(1, como.slice(2), a.unidad);
+  }
+
+  /** Lo que llegó, en la misma unidad o presentación en que se pidió. */
+  private recibidoDe(l: Linea): number {
+    const cant = Number(l.cantidad) || 0;
+    if (!l.comoPedido || l.como === l.comoPedido) return cant;
+    return (cant * this.factorDe(l.articulo, l.como)) / this.factorDe(l.articulo, l.comoPedido);
+  }
+
+  llegada(l: Linea): { texto: string; clase: string; falta: boolean } | null {
+    if (!l.renglonId || l.pedida === undefined) return null;
+    const llego = this.recibidoDe(l);
+    const como = this.nombreComo(l.articulo, l.comoPedido ?? '');
+    if (llego <= 0) return { texto: 'No llegó', clase: 'bg-rose-500/15 text-rose-300', falta: true };
+    if (Math.abs(llego - l.pedida) < 0.0005) return { texto: 'Completo', clase: 'bg-emerald-500/15 text-emerald-300', falta: false };
+    if (llego < l.pedida) return { texto: `Faltan ${legible(l.pedida - llego)} ${como}`, clase: 'bg-amber-500/15 text-amber-300', falta: true };
+    return { texto: `Llegó de más: ${legible(llego - l.pedida)} ${como}`, clase: 'bg-sky-500/15 text-sky-300', falta: false };
+  }
+
+  nombreComo(a: ArticuloCompra, como: string): string {
+    if (como.startsWith('p:')) return this.presentaciones().find((x) => x.id === como.slice(2))?.nombre ?? '';
+    return como.slice(2) || a.unidad;
   }
 
   // ------------------------------------------------------------------ proveedor
@@ -546,7 +708,7 @@ export class ComprasInventarioComponent implements OnChanges {
     return this.presentaciones().filter((p) => p.articuloId === a.id);
   }
 
-  private unidadesDe(a: ArticuloCompra): string[] {
+  unidadesDe(a: ArticuloCompra): string[] {
     return a.tipo === 'PRODUCTO' ? ['pieza'] : unidadesCompatibles(a.unidad);
   }
 
@@ -592,7 +754,8 @@ export class ComprasInventarioComponent implements OnChanges {
     e.preventDefault();
     if (!this.sePuede() || this.guardando()) return;
     this.guardando.set(true);
-    const renglones = this.lineas().map((l) => ({
+    const pedido = this.recibiendo();
+    const renglones = this.lineas().filter((l) => Number(l.cantidad) > 0).map((l) => ({
       ingredientId: l.articulo.tipo === 'PRODUCTO' ? null : l.articulo.id,
       productId: l.articulo.tipo === 'PRODUCTO' ? l.articulo.id : null,
       cantidad: Number(l.cantidad),
@@ -608,10 +771,16 @@ export class ComprasInventarioComponent implements OnChanges {
       formaPago: this.pago(),
       iva: this.iva(),
       renglones,
+      pedidoId: pedido?.id ?? null,
+      recepcion: pedido ? this.lineas().filter((l) => l.renglonId).map((l) => {
+        const recibido = Math.round(this.recibidoDe(l) * 1000) / 1000;
+        return { renglonId: l.renglonId, recibido, motivo: recibido < (l.pedida ?? 0) ? l.motivo ?? 'FALTO' : null };
+      }) : null,
     }).subscribe({
       next: (r) => {
         this.guardando.set(false);
         this.avisos.exito(r.mensaje);
+        this.recibiendo.set(null);
         this.lineas.set([]);
         this.folio.set('');
         this.fecha.set(hoyIso());

@@ -55,6 +55,21 @@ public class Compra {
     @Column(name = "pagada_en")
     private LocalDateTime pagadaEn;
 
+    /** Quien pago lo comprado a credito, y como: CAJA o TRANSFERENCIA. */
+    @Column(name = "pagada_por", length = 100)
+    private String pagadaPor;
+
+    @Column(name = "pago_forma", length = 15)
+    private String pagoForma;
+
+    /** La salida de efectivo con que se pago lo comprado a credito. */
+    @Column(name = "pago_movimiento_caja_id")
+    private UUID pagoMovimientoCajaId;
+
+    /** El pedido al proveedor que se recibio con esta compra. */
+    @Column(name = "pedido_id")
+    private UUID pedidoId;
+
     @Column(length = 1000)
     private String detalle;
 

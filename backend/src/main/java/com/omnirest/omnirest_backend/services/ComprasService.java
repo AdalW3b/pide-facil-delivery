@@ -47,6 +47,7 @@ public class ComprasService {
     private final MovimientoInventarioRepository movimientoRepository;
     private final InventoryService inventoryService;
     private final CajaService cajaService;
+    private final PedidoProveedorRepository pedidoRepository;
 
     // ------------------------------------------------------------------
     // Proveedores
@@ -189,11 +190,24 @@ public class ComprasService {
             throw new IllegalArgumentException("La fecha de la nota no puede ser futura.");
         }
 
+        PedidoProveedor pedido = null;
+        if (datos.pedidoId() != null) {
+            pedido = pedidoRepository.findById(datos.pedidoId())
+                    .filter(x -> x.getBranchId().equals(branchId))
+                    .orElseThrow(() -> new IllegalArgumentException("Ese pedido no es de esta sucursal."));
+            if (!PedidoProveedor.PENDIENTE.equals(pedido.getEstado())) {
+                throw new IllegalStateException("Ese pedido ya estaba " + pedido.getEstado().toLowerCase() + ".");
+            }
+        }
+
         Proveedor proveedor = null;
         String nombreProveedor = limpiar(datos.proveedor());
-        if (datos.proveedorId() != null) {
-            proveedor = proveedor(datos.proveedorId(), restaurantId);
+        UUID proveedorId = datos.proveedorId() != null ? datos.proveedorId() : pedido != null ? pedido.getProveedorId() : null;
+        if (proveedorId != null) {
+            proveedor = proveedor(proveedorId, restaurantId);
             nombreProveedor = proveedor.getNombre();
+        } else if (nombreProveedor == null && pedido != null) {
+            nombreProveedor = pedido.getProveedor();
         }
 
         // Primero se arma todo: si un renglon esta mal, no se mueve nada.
@@ -218,6 +232,7 @@ public class ComprasService {
                 .total(t.total())
                 .nota(limpiar(datos.nota()))
                 .usuario(quien())
+                .pedidoId(pedido != null ? pedido.getId() : null)
                 .detalle(recortar(lineas.stream().map(Linea::descripcion).collect(Collectors.joining(" · ")), 1000))
                 .build());
 
@@ -232,8 +247,11 @@ public class ComprasService {
             compra.setVence(fecha.plusDays(dias));
         } else {
             compra.setPagadaEn(LocalDateTime.now());
+            compra.setPagoForma(formaPago);
+            compra.setPagadaPor(quien());
         }
         compraRepository.save(compra);
+        String faltantes = pedido != null ? recibir(pedido, compra.getId(), datos.recepcion()) : "";
 
         // Al inventario entra el costo sin IVA (se recupera).
         for (Linea l : lineas) {
@@ -254,7 +272,84 @@ public class ComprasService {
             default -> "Pagada por transferencia.";
         };
         return new ComprasDTOs.Resultado("Compra registrada: " + lineas.size()
-                + (lineas.size() == 1 ? " artículo" : " artículos") + " por " + pesos(t.total()) + ". " + pago);
+                + (lineas.size() == 1 ? " artículo" : " artículos") + " por " + pesos(t.total()) + ". " + pago + faltantes);
+    }
+
+    /**
+     * Anota en el pedido cuanto llego de cada renglon y lo da por recibido.
+     * Lo que falto o llego mal no entro al inventario (no viene en la compra).
+     */
+    private String recibir(PedidoProveedor pedido, UUID compraId, List<ComprasDTOs.Recibido> recepcion) {
+        Map<UUID, ComprasDTOs.Recibido> llego = new HashMap<>();
+        if (recepcion != null) recepcion.forEach(r -> llego.put(r.renglonId(), r));
+        List<String> faltaron = new ArrayList<>();
+        for (PedidoProveedorRenglon r : pedido.getRenglones()) {
+            ComprasDTOs.Recibido x = llego.get(r.getId());
+            if (x == null) continue;
+            r.setRecibido(x.recibido().setScale(3, RoundingMode.HALF_UP));
+            if (x.recibido().compareTo(r.getCantidad()) < 0) {
+                String motivo = PedidoProveedorRenglon.MAL_ESTADO.equalsIgnoreCase(x.motivo())
+                        ? PedidoProveedorRenglon.MAL_ESTADO : PedidoProveedorRenglon.FALTO;
+                r.setMotivo(motivo);
+                faltaron.add(legible(r.getCantidad().subtract(x.recibido())) + " de " + r.getDescripcion()
+                        + (PedidoProveedorRenglon.MAL_ESTADO.equals(motivo) ? " (llegó mal)" : ""));
+            } else {
+                r.setMotivo(null);
+            }
+        }
+        pedido.setEstado(PedidoProveedor.RECIBIDO);
+        pedido.setCompraId(compraId);
+        pedido.setCerradoEn(LocalDateTime.now());
+        pedidoRepository.save(pedido);
+        return faltaron.isEmpty() ? " Pedido recibido completo." : " Pedido recibido; faltó: " + String.join(", ", faltaron) + ".";
+    }
+
+    /** Lo comprado a credito en la sucursal que falta pagar. */
+    @Transactional(readOnly = true)
+    public List<ComprasDTOs.Compra> porPagar(UUID branchId) {
+        return compraRepository.findByBranchIdAndFormaPagoAndPagadaEnIsNullAndAnuladaEnIsNullOrderByVenceAscFechaAsc(branchId, "CREDITO")
+                .stream().map(c -> aDto(c, c.getDetalle() != null ? List.of(c.getDetalle().split(" · ")) : List.of()))
+                .toList();
+    }
+
+    /**
+     * Paga compras a credito. En efectivo, sale de la caja abierta en un solo
+     * movimiento (sin caja abierta no se paga nada).
+     */
+    @Transactional
+    public ComprasDTOs.Resultado pagar(UUID branchId, ComprasDTOs.Pagar datos) {
+        String forma = datos.forma().trim().toUpperCase();
+        if (!Set.of("CAJA", "TRANSFERENCIA").contains(forma)) {
+            throw new IllegalArgumentException("Se paga con efectivo de caja o por transferencia.");
+        }
+        List<Compra> lista = new ArrayList<>();
+        for (UUID id : new LinkedHashSet<>(datos.compras())) {
+            Compra c = compraRepository.findById(id)
+                    .filter(x -> x.getBranchId().equals(branchId))
+                    .orElseThrow(() -> new IllegalArgumentException("Esa compra no es de esta sucursal."));
+            if (c.getAnuladaEn() != null) throw new IllegalStateException("Una de las compras está anulada.");
+            if (!"CREDITO".equals(c.getFormaPago())) throw new IllegalStateException("Solo se pagan las compras a crédito.");
+            if (c.getPagadaEn() != null) throw new IllegalStateException("Una de las compras ya estaba pagada.");
+            lista.add(c);
+        }
+        BigDecimal total = lista.stream().map(c -> c.getTotal() != null ? c.getTotal() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String proveedores = lista.stream().map(Compra::getProveedor).filter(Objects::nonNull).distinct().collect(Collectors.joining(", "));
+        String folios = lista.stream().map(Compra::getFolio).filter(Objects::nonNull).collect(Collectors.joining(", "));
+        String concepto = "Pago" + (proveedores.isEmpty() ? " de compras a crédito" : " a " + proveedores)
+                + (folios.isEmpty() ? "" : " · notas " + folios);
+        UUID movimiento = "CAJA".equals(forma) && total.signum() > 0
+                ? cajaService.salidaPorCompra(branchId, total, concepto, quien()) : null;
+        LocalDateTime ahora = LocalDateTime.now();
+        for (Compra c : lista) {
+            c.setPagadaEn(ahora);
+            c.setPagoForma(forma);
+            c.setPagadaPor(quien());
+            c.setPagoMovimientoCajaId(movimiento);
+            compraRepository.save(c);
+        }
+        return new ComprasDTOs.Resultado("Pagado " + pesos(total) + (proveedores.isEmpty() ? "" : " a " + proveedores)
+                + ("CAJA".equals(forma) ? ": salió de la caja." : " por transferencia."));
     }
 
     @Transactional(readOnly = true)
@@ -270,14 +365,19 @@ public class ComprasService {
                     .add(legible(m.getCantidad()) + " " + nombres.getOrDefault(
                             m.getIngredientId() != null ? m.getIngredientId() : m.getProductId(), "¿?")));
         }
-        return compras.stream().map(c -> new ComprasDTOs.Compra(
+        return compras.stream().map(c -> aDto(c,
+                c.getDetalle() != null ? List.of(c.getDetalle().split(" · ")) : viejas.getOrDefault(c.getId(), List.of())))
+                .toList();
+    }
+
+    private static ComprasDTOs.Compra aDto(Compra c, List<String> renglones) {
+        return new ComprasDTOs.Compra(
                 c.getId(), c.getProveedor(), c.getProveedorId(), c.getFolio(),
                 c.getFecha() != null ? c.getFecha() : c.getCreadoEn().toLocalDate(),
                 c.getFormaPago(), c.getIva(), c.getSubtotal(), c.getIvaMonto(), c.getTotal(), c.getNota(),
-                c.getUsuario(), c.getCreadoEn(),
-                c.getDetalle() != null ? List.of(c.getDetalle().split(" · ")) : viejas.getOrDefault(c.getId(), List.of()),
-                c.getVence(), c.getPagadaEn() != null, c.getAnuladaEn() != null, c.getAnuladaPor(), c.getMotivoAnulacion()))
-                .toList();
+                c.getUsuario(), c.getCreadoEn(), renglones,
+                c.getVence(), c.getPagadaEn() != null, c.getAnuladaEn() != null, c.getAnuladaPor(), c.getMotivoAnulacion(),
+                c.getPagoForma(), c.getPedidoId());
     }
 
     /**
@@ -306,8 +406,24 @@ public class ComprasService {
                         branchId, p, -m.getCantidad().intValue(), TipoMovimiento.ENTRADA, false, nota, null, compraId));
             }
         }
-        if ("CAJA".equals(c.getFormaPago()) && c.getMovimientoCajaId() != null && c.getTotal() != null) {
+        // Regresa el efectivo si salio de la caja: al comprar o al pagar lo que se debia.
+        boolean efectivo = ("CAJA".equals(c.getFormaPago()) && c.getMovimientoCajaId() != null)
+                || ("CREDITO".equals(c.getFormaPago()) && c.getPagoMovimientoCajaId() != null);
+        if (efectivo && c.getTotal() != null) {
             cajaService.entradaPorCompraAnulada(branchId, c.getTotal(), nota, quien());
+        }
+        // Si era la llegada de un pedido, el pedido vuelve a quedar por recibir.
+        if (c.getPedidoId() != null) {
+            pedidoRepository.findById(c.getPedidoId()).filter(p -> compraId.equals(p.getCompraId())).ifPresent(p -> {
+                p.setEstado(PedidoProveedor.PENDIENTE);
+                p.setCompraId(null);
+                p.setCerradoEn(null);
+                p.getRenglones().forEach(r -> {
+                    r.setRecibido(null);
+                    r.setMotivo(null);
+                });
+                pedidoRepository.save(p);
+            });
         }
         c.setAnuladaEn(LocalDateTime.now());
         c.setAnuladaPor(quien());
@@ -315,7 +431,8 @@ public class ComprasService {
         compraRepository.save(c);
         log.info("Compra {} anulada por {}", compraId, c.getAnuladaPor());
         return new ComprasDTOs.Resultado("Compra anulada: se quitó del inventario"
-                + ("CAJA".equals(c.getFormaPago()) && c.getMovimientoCajaId() != null ? " y el efectivo regresó a la caja." : "."));
+                + (efectivo ? " y el efectivo regresó a la caja." : ".")
+                + (c.getPedidoId() != null ? " El pedido volvió a quedar por recibir." : ""));
     }
 
     // ------------------------------------------------------------------
@@ -383,19 +500,19 @@ public class ComprasService {
     // Apoyos
     // ------------------------------------------------------------------
 
-    private UUID restauranteDe(UUID branchId) {
+    UUID restauranteDe(UUID branchId) {
         return branchRepository.findById(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Sucursal no encontrada."))
                 .getRestaurant().getId();
     }
 
-    private Proveedor proveedor(UUID id, UUID restaurantId) {
+    Proveedor proveedor(UUID id, UUID restaurantId) {
         Proveedor p = proveedorRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Ese proveedor ya no existe."));
         if (!p.getRestaurantId().equals(restaurantId)) throw new IllegalArgumentException("Ese proveedor no es de este restaurante.");
         return p;
     }
 
-    private PresentacionCompra presentacion(UUID id, UUID restaurantId) {
+    PresentacionCompra presentacion(UUID id, UUID restaurantId) {
         PresentacionCompra pc = presentacionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Esa presentación ya no existe."));
         if (pc.getIngredientId() != null) ingrediente(pc.getIngredientId(), restaurantId);
@@ -403,20 +520,20 @@ public class ComprasService {
         return pc;
     }
 
-    private Ingredient ingrediente(UUID id, UUID restaurantId) {
+    Ingredient ingrediente(UUID id, UUID restaurantId) {
         Ingredient i = ingredientRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Ese ingrediente ya no existe."));
         if (!i.getRestaurant().getId().equals(restaurantId)) throw new IllegalArgumentException("Ese ingrediente no es de este restaurante.");
         return i;
     }
 
-    private Product producto(UUID id, UUID restaurantId) {
+    Product producto(UUID id, UUID restaurantId) {
         Product p = productRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Ese producto ya no existe."));
         if (!p.getCategory().getRestaurant().getId().equals(restaurantId)) throw new IllegalArgumentException("Ese producto no es de este restaurante.");
         if (!Boolean.TRUE.equals(p.getTrackStock())) throw new IllegalArgumentException(p.getName() + " no lleva existencias propias.");
         return p;
     }
 
-    private Map<UUID, String> nombresDe(UUID restaurantId) {
+    Map<UUID, String> nombresDe(UUID restaurantId) {
         Map<UUID, String> nombres = new HashMap<>();
         ingredientRepository.findByRestaurantId(restaurantId).forEach(i -> nombres.put(i.getId(), i.getName()));
         productRepository.findByCategoryRestaurantId(restaurantId).forEach(p -> nombres.put(p.getId(), p.getName()));
@@ -452,20 +569,20 @@ public class ComprasService {
         return "PRODUCTO".equalsIgnoreCase(tipo);
     }
 
-    private static String quien() {
+    static String quien() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getPrincipal() instanceof CustomUserDetails u ? u.getUsername() : null;
     }
 
-    private static String limpiar(String s) {
+    static String limpiar(String s) {
         return s == null || s.isBlank() ? null : s.trim();
     }
 
-    private static String recortar(String s, int max) {
+    static String recortar(String s, int max) {
         return s != null && s.length() > max ? s.substring(0, max) : s;
     }
 
-    private static String legible(BigDecimal n) {
+    static String legible(BigDecimal n) {
         return n.setScale(3, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 

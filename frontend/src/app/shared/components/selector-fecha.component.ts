@@ -16,9 +16,10 @@ function deIso(s: string): Date {
 }
 
 /**
- * Elegir una fecha con calendario. Trae atajos (Hoy, Ayer, Antier) y, con
- * `soloPasado`, no deja elegir días futuros: una compra se captura cuando ya
- * llegó.
+ * Elegir una fecha con calendario. Con `soloPasado` (una compra se captura
+ * cuando ya llegó) no deja elegir días futuros y trae Hoy, Ayer, Antier; con
+ * `soloFuturo` (para cuándo se pide) no deja elegir días pasados y trae Hoy,
+ * Mañana, Pasado mañana.
  */
 @Component({
   selector: 'app-selector-fecha',
@@ -41,7 +42,7 @@ function deIso(s: string): Date {
         role="dialog" aria-label="Elegir la fecha">
         <div class="grid grid-cols-3 gap-1.5">
           @for (a of atajos; track a.dias) {
-            <button type="button" (click)="elegirAtras(a.dias)" class="py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-200 hover:border-slate-500 cursor-pointer">{{ a.nombre }}</button>
+            <button type="button" (click)="elegirDesdeHoy(a.dias)" class="py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-200 hover:border-slate-500 cursor-pointer">{{ a.nombre }}</button>
           }
         </div>
         <div class="flex items-center justify-between">
@@ -70,7 +71,9 @@ function deIso(s: string): Date {
             }
           }
         </div>
-        @if (soloPasado) {
+        @if (soloFuturo) {
+          <p class="text-[11px] text-slate-500">No se pueden elegir días pasados.</p>
+        } @else if (soloPasado) {
           <p class="text-[11px] text-slate-500">No se pueden elegir días futuros.</p>
         }
       </div>
@@ -90,6 +93,8 @@ export class SelectorFechaComponent {
     return this._valor;
   }
   @Input() soloPasado = true;
+  /** Para fechas que vienen: tiene prioridad sobre `soloPasado`. */
+  @Input() soloFuturo = false;
   @Input() idBoton = 'selector-fecha';
   @Output() valorChange = new EventEmitter<string>();
 
@@ -97,12 +102,16 @@ export class SelectorFechaComponent {
   readonly abierto = signal(false);
   readonly mesVisto = signal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   readonly encabezados = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-  readonly atajos = [{ nombre: 'Hoy', dias: 0 }, { nombre: 'Ayer', dias: 1 }, { nombre: 'Antier', dias: 2 }];
+  get atajos(): { nombre: string; dias: number }[] {
+    return this.soloFuturo
+      ? [{ nombre: 'Hoy', dias: 0 }, { nombre: 'Mañana', dias: 1 }, { nombre: 'Pasado mañana', dias: 2 }]
+      : [{ nombre: 'Hoy', dias: 0 }, { nombre: 'Ayer', dias: -1 }, { nombre: 'Antier', dias: -2 }];
+  }
 
   readonly tituloMes = computed(() => this.mesVisto().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' }));
 
   readonly puedeAvanzar = computed(() => {
-    if (!this.soloPasado) return true;
+    if (this.soloFuturo || !this.soloPasado) return true;
     const hoy = new Date();
     const m = this.mesVisto();
     return m.getFullYear() < hoy.getFullYear() || (m.getFullYear() === hoy.getFullYear() && m.getMonth() < hoy.getMonth());
@@ -118,19 +127,19 @@ export class SelectorFechaComponent {
       const fecha = new Date(m.getFullYear(), m.getMonth(), d);
       const iso = aIso(fecha);
       celdas.push({
-        dia: d, iso, hoy: iso === hoy, futuro: this.soloPasado && iso > hoy,
+        dia: d, iso, hoy: iso === hoy, futuro: this.soloFuturo ? iso < hoy : this.soloPasado && iso > hoy,
         etiqueta: fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
       });
     }
     return celdas;
   });
 
-  /** "Hoy, mié 8 oct", "Ayer, mar 7 oct" o "lun 29 sep". */
+  /** "Hoy, mié 8 oct", "Ayer, mar 7 oct", "Mañana, jue 9 oct" o "lun 29 sep". */
   texto(): string {
     const d = deIso(this.valor);
     const corta = d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
     const dif = Math.round((deIso(hoyIso()).getTime() - d.getTime()) / 86_400_000);
-    return dif === 0 ? `Hoy, ${corta}` : dif === 1 ? `Ayer, ${corta}` : corta;
+    return dif === 0 ? `Hoy, ${corta}` : dif === 1 ? `Ayer, ${corta}` : dif === -1 ? `Mañana, ${corta}` : corta;
   }
 
   alternar(): void {
@@ -148,9 +157,10 @@ export class SelectorFechaComponent {
     this.abierto.set(false);
   }
 
-  elegirAtras(dias: number): void {
+  /** Días desde hoy: negativos hacia atrás. */
+  elegirDesdeHoy(dias: number): void {
     const d = new Date();
-    d.setDate(d.getDate() - dias);
+    d.setDate(d.getDate() + dias);
     this.elegir(aIso(d));
   }
 

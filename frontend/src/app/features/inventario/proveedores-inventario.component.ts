@@ -87,7 +87,7 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
 
     @if (ficha(); as f) {
       <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" (click)="ficha.set(null)">
-        <form class="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="prov-titulo"
+        <form ngNoForm class="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3" role="dialog" aria-modal="true" aria-labelledby="prov-titulo"
           (click)="$event.stopPropagation()" (submit)="guardar($event)" novalidate>
           <div class="flex items-center justify-between">
             <h3 id="prov-titulo" class="text-base font-bold text-white">{{ f.id ? 'Editar proveedor' : 'Nuevo proveedor' }}</h3>
@@ -145,6 +145,10 @@ const CAMPO = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
                   <button type="button" (mousedown)="$event.preventDefault(); agregarSurte(a)" class="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-200 hover:bg-slate-800 cursor-pointer">{{ a.nombre }}</button>
                 }
               </div>
+            } @else if (busqueda().trim()) {
+              <p class="text-[11px] text-amber-300 mt-1">Ningún artículo del inventario se llama "{{ busqueda().trim() }}". Busca por su nombre (arrachera, pastor…) y elígelo de la lista.</p>
+            } @else {
+              <p class="text-[11px] text-slate-500 mt-1">Busca y elige de la lista los artículos que te trae; así el pedido sugiere qué pedirle.</p>
             }
           </div>
           <div>

@@ -2,6 +2,7 @@ package com.omnirest.omnirest_backend.controllers;
 
 import com.omnirest.omnirest_backend.dtos.ComprasDTOs;
 import com.omnirest.omnirest_backend.services.ComprasService;
+import com.omnirest.omnirest_backend.services.PedidosProveedorService;
 import com.omnirest.omnirest_backend.services.SecurityValidationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class ComprasController {
 
     private final ComprasService compras;
+    private final PedidosProveedorService pedidos;
     private final SecurityValidationService seguridad;
 
     // ------------------------------------------------------------------ proveedores
@@ -112,5 +114,50 @@ public class ComprasController {
                                                         @Valid @RequestBody(required = false) ComprasDTOs.Anular datos) {
         seguridad.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(compras.anular(branchId, id, datos != null ? datos.motivo() : null));
+    }
+
+    /** Lo comprado a credito que falta pagar. */
+    @GetMapping("/compras/por-pagar")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'CATALOG_READ')")
+    public ResponseEntity<List<ComprasDTOs.Compra>> porPagar(@PathVariable UUID branchId) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(compras.porPagar(branchId));
+    }
+
+    @PostMapping("/compras/pagar")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<ComprasDTOs.Resultado> pagar(@PathVariable UUID branchId, @Valid @RequestBody ComprasDTOs.Pagar datos) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(compras.pagar(branchId, datos));
+    }
+
+    // ------------------------------------------------------------------ pedidos al proveedor
+
+    @GetMapping("/pedidos/sugerencias")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'CATALOG_READ')")
+    public ResponseEntity<List<ComprasDTOs.Sugerido>> sugerencias(@PathVariable UUID branchId) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(pedidos.sugerencias(branchId));
+    }
+
+    @GetMapping("/pedidos")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'CATALOG_READ')")
+    public ResponseEntity<List<ComprasDTOs.Pedido>> pedidos(@PathVariable UUID branchId) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(pedidos.pedidos(branchId));
+    }
+
+    @PostMapping("/pedidos")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<ComprasDTOs.Pedido> crearPedido(@PathVariable UUID branchId, @Valid @RequestBody ComprasDTOs.NuevoPedido datos) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(pedidos.crear(branchId, datos));
+    }
+
+    @PostMapping("/pedidos/{id}/cancelar")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<ComprasDTOs.Resultado> cancelarPedido(@PathVariable UUID branchId, @PathVariable UUID id) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(pedidos.cancelar(branchId, id));
     }
 }

@@ -11,6 +11,7 @@ import * as echarts from 'echarts';
 import { EChartsOption } from 'echarts';
 import { Branch } from '../admin-core/models/admin.model';
 import { environment } from '../../../environments/environment';
+import { IngresosEgresosComponent } from './ingresos-egresos.component';
 import {
   LucideUsers,
   LucideRefreshCw,
@@ -126,14 +127,14 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
   selector: 'app-analytics-dashboard',
   standalone: true,
   imports: [
-    TituloPaginaComponent, PesosPipe, CommonModule, FormsModule, NgxEchartsModule,
+    TituloPaginaComponent, PesosPipe, CommonModule, FormsModule, NgxEchartsModule, IngresosEgresosComponent,
     LucideUsers, LucideRefreshCw, LucideBarChart3,
     LucideCalendar, LucideClock, LucideFlame, LucideChefHat, LucideDownload, LucideTruck, LucideReceipt,
   ],
   template: `
     <div class="space-y-8">
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-        <app-titulo-pagina titulo="Reportes" descripcion="Ventas, utilidad, canales, personal y cocina." />
+        <app-titulo-pagina titulo="Reportes" descripcion="Ventas, utilidad, ingresos y egresos, canales, personal y cocina." />
 
         @if (sucursalesDelRestaurante() > 1) {
           <div class="inline-flex p-1 bg-slate-900/60 rounded-xl border border-slate-800" role="group" aria-label="Alcance del reporte">
@@ -144,6 +145,15 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
               class="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
               [class]="alcance() === 'todas' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">Todas las sucursales</button>
           </div>
+        }
+      </div>
+
+      <!-- Vista: ventas o el dinero que entró y salió -->
+      <div class="flex flex-wrap gap-2 -mt-2" role="tablist" aria-label="Vista del reporte">
+        @for (v of vistas; track v.id) {
+          <button type="button" role="tab" (click)="vista.set(v.id)" [attr.aria-selected]="vista() === v.id"
+            class="px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-colors min-h-[40px]"
+            [class]="vista() === v.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'">{{ v.nombre }}</button>
         }
       </div>
 
@@ -177,10 +187,12 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          @if (vista() === 'ventas') {
           <span class="text-xs text-slate-400 flex items-center gap-1"><svg lucideDownload class="w-3.5 h-3.5"></svg> Exportar:</span>
           <button type="button" (click)="exportarDias()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Ventas por día</button>
           <button type="button" (click)="exportarPlatillos()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Platillos</button>
           <button type="button" (click)="exportarMeseros()" [disabled]="isLoading()" class="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50">Meseros</button>
+          }
           <button type="button" (click)="loadAnalyticsData()" [disabled]="isLoading()" title="Actualizar"
             class="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50">
             <svg lucideRefreshCw [class.animate-spin]="isLoading()" class="w-4 h-4"></svg>
@@ -189,6 +201,11 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
         </div>
       </div>
 
+      @if (vista() === 'dinero') {
+        <app-ingresos-egresos [consulta]="consultaAplicada()" [recarga]="recargas()" [etiqueta]="getFilterLabel()" [sufijo]="sufijoArchivo()" />
+      }
+
+      @if (vista() === 'ventas') {
       <!-- Indicadores principales -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         @for (k of indicadores(); track k.titulo) {
@@ -458,6 +475,7 @@ const VACIO = 'py-8 text-center text-xs text-slate-400 italic border border-dash
           }
         </div>
       </div>
+      }
     </div>
   `,
   styles: [`:host { display: block; }`],
@@ -486,6 +504,14 @@ export class AnalyticsDashboardComponent implements OnInit {
   readonly peakHoursData = signal<PeakHour[]>([]);
   readonly kdsEfficiency = signal<KdsEfficiency[]>([]);
   readonly isLoading = signal(true);
+  readonly vistas: { id: 'ventas' | 'dinero'; nombre: string }[] = [
+    { id: 'ventas', nombre: 'Ventas' },
+    { id: 'dinero', nombre: 'Ingresos y egresos' },
+  ];
+  readonly vista = signal<'ventas' | 'dinero'>('ventas');
+  /** La consulta del último "Actualizar" o cambio de rango, para Ingresos y egresos. */
+  readonly consultaAplicada = signal('');
+  readonly recargas = signal(0);
   readonly selectedRange = signal<FilterRange>('7d');
   readonly verTodosPlatillos = signal(false);
 
@@ -621,6 +647,8 @@ export class AnalyticsDashboardComponent implements OnInit {
   }
 
   loadAnalyticsData(): void {
+    this.consultaAplicada.set(this.consulta());
+    this.recargas.update((n) => n + 1);
     this.recarga++;
     this.pendientes = 0;
     this.huboError = false;
@@ -842,7 +870,7 @@ export class AnalyticsDashboardComponent implements OnInit {
     URL.revokeObjectURL(url);
   }
 
-  private sufijoArchivo(): string {
+  sufijoArchivo(): string {
     const { startDate, endDate } = this.getDateParams();
     return startDate ? `${startDate}_a_${endDate}` : `historico-al-${this.fecha(new Date())}`;
   }
