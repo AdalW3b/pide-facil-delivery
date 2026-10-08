@@ -23,8 +23,52 @@ public class Compra {
     @Column(name = "branch_id", nullable = false)
     private UUID branchId;
 
+    /** El nombre como quedo en la nota (se conserva aunque el proveedor cambie de nombre). */
     @Column(length = 120)
     private String proveedor;
+
+    @Column(name = "proveedor_id")
+    private UUID proveedorId;
+
+    @Column(length = 40)
+    private String folio;
+
+    /** La fecha de la nota; puede ser anterior a cuando se capturo. */
+    private java.time.LocalDate fecha;
+
+    /** CAJA, TRANSFERENCIA o CREDITO. */
+    @Column(name = "forma_pago", length = 15)
+    private String formaPago;
+
+    /** INCLUIDO, APARTE o SIN. */
+    @Column(length = 10)
+    private String iva;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal subtotal;
+
+    @Column(name = "iva_monto", precision = 12, scale = 2)
+    private BigDecimal ivaMonto;
+
+    private java.time.LocalDate vence;
+
+    @Column(name = "pagada_en")
+    private LocalDateTime pagadaEn;
+
+    @Column(length = 1000)
+    private String detalle;
+
+    @Column(name = "movimiento_caja_id")
+    private UUID movimientoCajaId;
+
+    @Column(name = "anulada_en")
+    private LocalDateTime anuladaEn;
+
+    @Column(name = "anulada_por", length = 100)
+    private String anuladaPor;
+
+    @Column(name = "motivo_anulacion", length = 300)
+    private String motivoAnulacion;
 
     @Column(length = 300)
     private String nota;

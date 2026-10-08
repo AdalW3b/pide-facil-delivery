@@ -1,7 +1,8 @@
+import { ComprasInventarioComponent } from './compras-inventario.component';
+import { ProveedoresInventarioComponent } from './proveedores-inventario.component';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
 import { environment } from '../../../environments/environment';
 import { AvisosService } from '../../core/services/avisos.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -41,17 +42,6 @@ interface Renglon {
   clave: string;
   cantidad: number | null;
   unidad: string;
-  costoTotal: number | null;
-}
-
-interface CompraHecha {
-  id: string;
-  proveedor: string | null;
-  nota: string | null;
-  total: number | null;
-  usuario: string | null;
-  creadoEn: string;
-  renglones: string[];
 }
 
 interface Componente {
@@ -128,11 +118,12 @@ interface Reporte {
   renglones: RenglonReporte[];
 }
 
-type Pestana = 'existencias' | 'compras' | 'conteo' | 'preparaciones' | 'transferencias' | 'reporte';
+type Pestana = 'existencias' | 'compras' | 'proveedores' | 'conteo' | 'preparaciones' | 'transferencias' | 'reporte';
 
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'existencias', nombre: 'Existencias' },
   { id: 'compras', nombre: 'Compras' },
+  { id: 'proveedores', nombre: 'Proveedores' },
   { id: 'conteo', nombre: 'Conteo' },
   { id: 'preparaciones', nombre: 'Preparaciones' },
   { id: 'transferencias', nombre: 'Transferencias' },
@@ -150,7 +141,7 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
 @Component({
   selector: 'app-inventario',
   standalone: true,
-  imports: [FormsModule, DatePipe, TituloPaginaComponent, PesosPipe, MovimientoInventarioComponent, HistorialInventarioComponent, ControlInventarioComponent],
+  imports: [FormsModule, TituloPaginaComponent, PesosPipe, MovimientoInventarioComponent, HistorialInventarioComponent, ControlInventarioComponent, ComprasInventarioComponent, ProveedoresInventarioComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-6 min-h-screen bg-slate-950 text-slate-100 p-2 sm:p-4">
@@ -244,61 +235,12 @@ const INPUT = 'w-full bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 
 
         <!-- ============================== COMPRAS -->
         @if (pestana() === 'compras') {
-          <section class="grid grid-cols-1 xl:grid-cols-5 gap-6">
-            <div class="xl:col-span-3 space-y-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h2 class="text-sm font-bold text-white">Registrar compra</h2>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label for="c-prov" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Proveedor</label>
-                  <input id="c-prov" [ngModel]="proveedor()" (ngModelChange)="proveedor.set($event)" maxlength="120" class="${INPUT}" placeholder="Ej. Carnicería López" />
-                </div>
-                <div>
-                  <label for="c-nota" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nota</label>
-                  <input id="c-nota" [ngModel]="notaCompra()" (ngModelChange)="notaCompra.set($event)" maxlength="300" class="${INPUT}" placeholder="Opcional (folio, factura…)" />
-                </div>
-              </div>
-              <div class="space-y-2">
-                @for (r of renglonesCompra(); track $index) {
-                  <div class="grid grid-cols-12 gap-2 items-center">
-                    <select [ngModel]="r.clave" (ngModelChange)="cambiarArticulo(r, $event)" aria-label="Artículo" class="col-span-12 sm:col-span-5 ${INPUT} [color-scheme:dark]">
-                      <option value="">Elige un artículo</option>
-                      @for (a of activos(); track a.tipo + a.id) { <option [value]="clave(a)">{{ a.nombre }}</option> }
-                    </select>
-                    <input type="number" min="0" step="any" [ngModel]="r.cantidad" (ngModelChange)="r.cantidad = $event; renglonesCompra.set([...renglonesCompra()])" aria-label="Cantidad" placeholder="Cant." class="col-span-4 sm:col-span-2 ${INPUT} tabular-nums" />
-                    <select [ngModel]="r.unidad" (ngModelChange)="r.unidad = $event" aria-label="Unidad" class="col-span-3 sm:col-span-2 ${INPUT} [color-scheme:dark]">
-                      @for (u of unidadesDe(r.clave); track u) { <option [value]="u">{{ u }}</option> }
-                    </select>
-                    <input type="number" min="0" step="any" [ngModel]="r.costoTotal" (ngModelChange)="r.costoTotal = $event; renglonesCompra.set([...renglonesCompra()])" aria-label="Pagado" placeholder="$ total" class="col-span-4 sm:col-span-2 ${INPUT} tabular-nums" />
-                    <button type="button" (click)="quitarRenglon(renglonesCompra, $index)" aria-label="Quitar renglón" class="col-span-1 text-slate-500 hover:text-rose-400 cursor-pointer">✕</button>
-                  </div>
-                }
-              </div>
-              <div class="flex flex-wrap items-center gap-3">
-                <button type="button" (click)="agregarRenglon(renglonesCompra)" class="text-xs font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer">+ Agregar artículo</button>
-                <span class="ml-auto text-sm text-slate-300">Total: <strong class="tabular-nums">{{ totalCompra() | pesos }}</strong></span>
-                <button (click)="guardarCompra()" [disabled]="!listos(renglonesCompra()) || guardando()"
-                  class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
-                  {{ guardando() ? 'Guardando…' : 'Registrar compra' }}
-                </button>
-              </div>
-            </div>
-            <div class="xl:col-span-2 space-y-3">
-              <h2 class="text-sm font-bold text-white">Últimas compras</h2>
-              @for (c of compras(); track c.id) {
-                <article class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-xs space-y-1">
-                  <div class="flex items-baseline gap-2">
-                    <strong class="text-slate-200">{{ c.proveedor || 'Sin proveedor' }}</strong>
-                    <span class="text-slate-500">{{ c.creadoEn | date: 'd MMM, HH:mm' }}</span>
-                    @if (c.total) { <span class="ml-auto font-bold text-emerald-300 tabular-nums">{{ c.total | pesos }}</span> }
-                  </div>
-                  <p class="text-slate-400">{{ c.renglones.join(' · ') }}</p>
-                  @if (c.nota || c.usuario) { <p class="text-slate-500">{{ c.nota }}{{ c.nota && c.usuario ? ' · ' : '' }}{{ c.usuario }}</p> }
-                </article>
-              } @empty {
-                <p class="text-xs text-slate-500">Todavía no hay compras registradas.</p>
-              }
-            </div>
-          </section>
+          <app-compras-inventario [branchId]="branchId()" [articulos]="articulos()" [puedeAnular]="puedeMover()" (registrada)="cargarExistencias()" />
+        }
+
+        <!-- ============================== PROVEEDORES -->
+        @if (pestana() === 'proveedores') {
+          <app-proveedores-inventario [branchId]="branchId()" [articulos]="articulos()" [puedeEditar]="puedeMover()" />
         }
 
         <!-- ============================== CONTEO -->
@@ -739,13 +681,6 @@ export class InventarioComponent {
       this.cumple(a, this.filtro()));
   });
 
-  // Compras
-  readonly proveedor = signal('');
-  readonly notaCompra = signal('');
-  readonly renglonesCompra = signal<Renglon[]>([this.renglonVacio()]);
-  readonly compras = signal<CompraHecha[]>([]);
-  readonly totalCompra = computed(() => this.renglonesCompra().reduce((s, r) => s + (Number(r.costoTotal) || 0), 0));
-
   // Conteo
   readonly zonaConteo = signal('');
   readonly notaConteo = signal('');
@@ -784,7 +719,6 @@ export class InventarioComponent {
       untracked(() => {
         if (!id) return;
         this.cargarExistencias();
-        if (p === 'compras') this.cargarCompras();
         if (p === 'preparaciones') this.cargarPreparaciones();
         if (p === 'reporte') this.cargarReporte(this.dias());
       });
@@ -927,7 +861,7 @@ export class InventarioComponent {
     });
   }
 
-  // ------------------------------------------------------------------ renglones (compras y transferencias)
+  // ------------------------------------------------------------------ renglones (transferencias)
 
   clave(a: Articulo): string {
     return `${a.tipo === 'PRODUCTO' ? 'P' : 'I'}:${a.id}`;
@@ -949,14 +883,14 @@ export class InventarioComponent {
   }
 
   private renglonVacio(): Renglon {
-    return { clave: '', cantidad: null, unidad: '', costoTotal: null };
+    return { clave: '', cantidad: null, unidad: '' };
   }
 
-  agregarRenglon(lista: typeof this.renglonesCompra): void {
+  agregarRenglon(lista: typeof this.renglonesTransferencia): void {
     lista.set([...lista(), this.renglonVacio()]);
   }
 
-  quitarRenglon(lista: typeof this.renglonesCompra, i: number): void {
+  quitarRenglon(lista: typeof this.renglonesTransferencia, i: number): void {
     const nueva = lista().filter((_, j) => j !== i);
     lista.set(nueva.length ? nueva : [this.renglonVacio()]);
   }
@@ -965,45 +899,14 @@ export class InventarioComponent {
     return renglones.length > 0 && renglones.every((r) => r.clave && Number(r.cantidad) > 0);
   }
 
-  private aCuerpo(r: Renglon, conCosto: boolean) {
+  private aCuerpo(r: Renglon) {
     const [tipo, id] = r.clave.split(':');
     return {
       ingredientId: tipo === 'I' ? id : null,
       productId: tipo === 'P' ? id : null,
       cantidad: Number(r.cantidad),
       unidad: tipo === 'I' ? r.unidad : null,
-      costoTotal: conCosto && r.costoTotal ? Number(r.costoTotal) : null,
     };
-  }
-
-  // ------------------------------------------------------------------ compras
-
-  cargarCompras(): void {
-    this.http.get<CompraHecha[]>(this.api('compras')).subscribe({ next: (c) => this.compras.set(c) });
-  }
-
-  guardarCompra(): void {
-    if (!this.listos(this.renglonesCompra())) return;
-    this.guardando.set(true);
-    this.http.post<{ mensaje: string }>(this.api('compras'), {
-      proveedor: this.proveedor().trim() || null,
-      nota: this.notaCompra().trim() || null,
-      renglones: this.renglonesCompra().map((r) => this.aCuerpo(r, true)),
-    }).subscribe({
-      next: (r) => {
-        this.guardando.set(false);
-        this.avisos.exito(r.mensaje);
-        this.proveedor.set('');
-        this.notaCompra.set('');
-        this.renglonesCompra.set([this.renglonVacio()]);
-        this.cargarCompras();
-        this.cargarExistencias();
-      },
-      error: (err) => {
-        this.guardando.set(false);
-        this.avisos.error(err.error?.error || 'No se pudo registrar la compra.');
-      },
-    });
   }
 
   // ------------------------------------------------------------------ conteo
@@ -1200,7 +1103,7 @@ export class InventarioComponent {
     this.http.post<{ mensaje: string }>(this.api('transferencias'), {
       destinoId: this.destino(),
       nota: this.notaTransferencia().trim() || null,
-      renglones: this.renglonesTransferencia().map((r) => this.aCuerpo(r, false)),
+      renglones: this.renglonesTransferencia().map((r) => this.aCuerpo(r)),
     }).subscribe({
       next: (r) => {
         this.guardando.set(false);

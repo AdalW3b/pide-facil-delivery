@@ -54,31 +54,13 @@ public final class OperacionesInventarioDTOs {
             Integer orden) {
     }
 
-    /** Un renglon de compra, conteo o transferencia. */
+    /** Un renglon de conteo o transferencia. */
     public record Renglon(
             UUID ingredientId,
             UUID productId,
             @NotNull(message = "Falta la cantidad.")
             @DecimalMin(value = "0.0", message = "La cantidad no puede ser negativa.") BigDecimal cantidad,
-            @Size(max = 20) String unidad,
-            /** Solo en compras: cuanto se pago por ese renglon. */
-            @DecimalMin(value = "0.0", message = "El costo no puede ser negativo.") BigDecimal costoTotal) {
-    }
-
-    public record NuevaCompra(
-            @Size(max = 120) String proveedor,
-            @Size(max = 300) String nota,
-            @NotEmpty(message = "Agrega al menos un renglón.") @Valid List<Renglon> renglones) {
-    }
-
-    public record CompraHecha(
-            UUID id,
-            String proveedor,
-            String nota,
-            BigDecimal total,
-            String usuario,
-            LocalDateTime creadoEn,
-            List<String> renglones) {
+            @Size(max = 20) String unidad) {
     }
 
     /** Conteo fisico: solo los renglones que se contaron; lo demas no se toca. */

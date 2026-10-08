@@ -10,4 +10,10 @@ import java.util.UUID;
 @Repository
 public interface CompraRepository extends JpaRepository<Compra, UUID> {
     List<Compra> findTop30ByBranchIdOrderByCreadoEnDesc(UUID branchId);
+
+    /** Lo que se le debe a cada proveedor: compras a credito sin pagar ni anular. [proveedorId, total] */
+    @org.springframework.data.jpa.repository.Query("SELECT c.proveedorId, COALESCE(SUM(c.total), 0) FROM Compra c "
+            + "WHERE c.proveedorId IN :ids AND c.formaPago = 'CREDITO' AND c.pagadaEn IS NULL AND c.anuladaEn IS NULL "
+            + "GROUP BY c.proveedorId")
+    List<Object[]> adeudos(@org.springframework.data.repository.query.Param("ids") java.util.Collection<UUID> ids);
 }

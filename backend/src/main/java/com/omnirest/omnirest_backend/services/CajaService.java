@@ -129,6 +129,46 @@ public class CajaService {
         return aDto(movimiento);
     }
 
+    /**
+     * El efectivo que sale del cajón para pagarle a un proveedor. Sin caja
+     * abierta no se puede: el dinero tiene que salir de un turno para que el
+     * arqueo cuadre.
+     *
+     * @return el movimiento de caja, para ligarlo a la compra.
+     */
+    @Transactional
+    public UUID salidaPorCompra(UUID branchId, BigDecimal monto, String concepto, String por) {
+        TurnoCaja turno = abierta(branchId).orElseThrow(() -> new IllegalStateException(
+                "La caja está cerrada: ábrela en Caja para pagar con efectivo, o registra la compra como transferencia o a crédito."));
+        MovimientoCaja m = movimientoRepository.save(MovimientoCaja.builder()
+                .turnoId(turno.getId())
+                .tipo(MovimientoCaja.Tipo.SALIDA)
+                .monto(dinero(monto))
+                .concepto(recortar(concepto))
+                .por(por)
+                .build());
+        log.info("Caja {}: salida de ${} por compra ({})", turno.getId(), m.getMonto(), m.getConcepto());
+        return m.getId();
+    }
+
+    /** Se anuló una compra pagada en efectivo: el dinero regresa a la caja abierta. */
+    @Transactional
+    public void entradaPorCompraAnulada(UUID branchId, BigDecimal monto, String concepto, String por) {
+        TurnoCaja turno = abierta(branchId).orElseThrow(() -> new IllegalStateException(
+                "La caja está cerrada: ábrela en Caja para regresar el efectivo de esta compra."));
+        movimientoRepository.save(MovimientoCaja.builder()
+                .turnoId(turno.getId())
+                .tipo(MovimientoCaja.Tipo.ENTRADA)
+                .monto(dinero(monto))
+                .concepto(recortar(concepto))
+                .por(por)
+                .build());
+    }
+
+    private static String recortar(String texto) {
+        return texto != null && texto.length() > 200 ? texto.substring(0, 200) : texto;
+    }
+
     // ------------------------------------------------------------------
     // Cobrar una cuenta
     // ------------------------------------------------------------------

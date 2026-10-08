@@ -39,9 +39,9 @@ public class CajaController {
                 .orElse(ResponseEntity.noContent().build());
     }
 
-    /** Si hay caja abierta. Lo consulta el mesero antes de cobrar. */
+    /** Si hay caja abierta. Lo consultan el mesero antes de cobrar e Inventario antes de pagar una compra con efectivo. */
     @GetMapping("/caja/abierta")
-    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CAJA_OPERAR', 'ORDERS_UPDATE', 'TABLES_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CAJA_OPERAR', 'ORDERS_UPDATE', 'TABLES_UPDATE', 'INVENTORY_UPDATE', 'CATALOG_UPDATE')")
     public ResponseEntity<Map<String, Boolean>> abierta(@PathVariable UUID branchId) {
         securityValidationService.validateUserAccessToBranch(branchId);
         return ResponseEntity.ok(Map.of("abierta", cajaService.abierta(branchId).isPresent()));

@@ -123,23 +123,6 @@ public class InventarioController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/inventario/compras")
-    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
-    public ResponseEntity<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Lote> registrarCompra(
-            @PathVariable UUID branchId,
-            @Valid @RequestBody com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.NuevaCompra compra) {
-        securityValidationService.validateUserAccessToBranch(branchId);
-        return ResponseEntity.ok(operaciones.registrarCompra(branchId, compra));
-    }
-
-    @GetMapping("/inventario/compras")
-    @PreAuthorize("hasAnyAuthority('INVENTORY_READ', 'CATALOG_READ')")
-    public ResponseEntity<List<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.CompraHecha>> compras(
-            @PathVariable UUID branchId) {
-        securityValidationService.validateUserAccessToBranch(branchId);
-        return ResponseEntity.ok(operaciones.compras(branchId));
-    }
-
     @PostMapping("/inventario/conteos")
     @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
     public ResponseEntity<com.omnirest.omnirest_backend.dtos.OperacionesInventarioDTOs.Lote> registrarConteo(

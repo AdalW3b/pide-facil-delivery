@@ -41,7 +41,6 @@ public class OperacionesInventarioService {
     private final BranchIngredientStockRepository ingredienteStockRepository;
     private final BranchProductStockRepository productoStockRepository;
     private final MovimientoInventarioRepository movimientoRepository;
-    private final CompraRepository compraRepository;
     private final SecurityValidationService securityValidationService;
     private final ZonaInventarioRepository zonaRepository;
 
@@ -171,59 +170,6 @@ public class OperacionesInventarioService {
         ZonaInventario z = zonaRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Esa zona ya no existe."));
         if (!z.getRestaurantId().equals(restaurantId)) throw new IllegalArgumentException("Esa zona no es de esta sucursal.");
         return z;
-    }
-
-    // ------------------------------------------------------------------
-    // Compras
-    // ------------------------------------------------------------------
-
-    /** Una nota del proveedor con varios renglones: cada uno entra al inventario con su costo. */
-    @Transactional
-    public Lote registrarCompra(UUID branchId, NuevaCompra compra) {
-        UUID restaurantId = sucursal(branchId).getRestaurant().getId();
-        String proveedor = limpiar(compra.proveedor());
-        Compra hecha = compraRepository.save(Compra.builder()
-                .branchId(branchId).proveedor(proveedor).nota(limpiar(compra.nota())).usuario(quien()).build());
-
-        BigDecimal total = BigDecimal.ZERO;
-        for (Renglon r : compra.renglones()) {
-            if (r.cantidad().signum() <= 0) throw new IllegalArgumentException("Cada renglón lleva una cantidad mayor a cero.");
-            BigDecimal pagado = r.costoTotal() != null && r.costoTotal().signum() > 0 ? r.costoTotal() : null;
-            if (pagado != null) total = total.add(pagado);
-            String nota = "Compra" + (proveedor != null ? " a " + proveedor : "");
-            if (r.productId() != null) {
-                Product p = producto(r.productId(), restaurantId);
-                int piezas = piezas(r.cantidad());
-                inventoryService.moverProducto(branchId, p, piezas, TipoMovimiento.ENTRADA, false, nota,
-                        pagado != null ? pagado.divide(BigDecimal.valueOf(piezas), 4, RoundingMode.HALF_UP) : null, hecha.getId());
-            } else {
-                Ingredient i = ingrediente(r.ingredientId(), restaurantId);
-                BigDecimal cantidad = convertir(r.cantidad(), r.unidad(), i);
-                inventoryService.moverIngrediente(branchId, i, cantidad, TipoMovimiento.ENTRADA, false, nota,
-                        pagado != null ? pagado.divide(cantidad, 4, RoundingMode.HALF_UP) : null, proveedor, hecha.getId());
-            }
-        }
-        hecha.setTotal(total.signum() > 0 ? total : null);
-        compraRepository.save(hecha);
-        return new Lote(compra.renglones().size(), "Compra registrada: " + compra.renglones().size()
-                + (compra.renglones().size() == 1 ? " artículo" : " artículos")
-                + (total.signum() > 0 ? " por $" + total.setScale(2, RoundingMode.HALF_UP) : "") + ".");
-    }
-
-    @Transactional(readOnly = true)
-    public List<CompraHecha> compras(UUID branchId) {
-        List<Compra> compras = compraRepository.findTop30ByBranchIdOrderByCreadoEnDesc(branchId);
-        Map<UUID, List<MovimientoInventario>> porCompra = movimientoRepository
-                .findByGrupoIdIn(compras.stream().map(Compra::getId).toList()).stream()
-                .collect(Collectors.groupingBy(MovimientoInventario::getGrupoId));
-        Map<UUID, String> nombres = nombresDe(sucursal(branchId).getRestaurant().getId());
-        return compras.stream()
-                .map(c -> new CompraHecha(c.getId(), c.getProveedor(), c.getNota(), c.getTotal(), c.getUsuario(), c.getCreadoEn(),
-                        porCompra.getOrDefault(c.getId(), List.of()).stream()
-                                .map(m -> legible(m.getCantidad()) + " " + nombres.getOrDefault(
-                                        m.getIngredientId() != null ? m.getIngredientId() : m.getProductId(), "¿?"))
-                                .toList()))
-                .toList();
     }
 
     // ------------------------------------------------------------------
