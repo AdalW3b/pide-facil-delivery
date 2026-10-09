@@ -464,6 +464,25 @@ html[data-tema="claro"] [class~="bg-rose-400"] {
   --color-slate-900: #0f172a;
 }
 
+/* Lo que es blanco de verdad (el fondo de un QR, la perilla de un switch, la
+   vista previa de la marca) se queda blanco: en claro "white" son los títulos. */
+html[data-tema="claro"] [class~="bg-white"],
+html[data-tema="claro"] [class*="after:bg-white"],
+html[data-tema="claro"] [class*="peer-checked:after:border-white"] {
+  --color-white: #ffffff;
+}
+
+/* Campos: en claro el borde gris de siempre casi no se ve. Se marca más, y el
+   campo donde se escribe se pone blanco con el borde de la marca. */
+html[data-tema="claro"] body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea)[class*="border-slate-"]:not([class~="border-rose-500"]) {
+  border-color: #cbd5e1;
+}
+html[data-tema="claro"] body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus {
+  border-color: var(--color-indigo-500);
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-indigo-500) 18%, transparent);
+}
+
 /* Listas desplegables y calendarios nativos en claro. */
 html[data-tema="claro"] body .\[color-scheme\:dark\] {
   color-scheme: light;
