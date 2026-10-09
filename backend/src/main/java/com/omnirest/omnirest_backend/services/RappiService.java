@@ -55,6 +55,7 @@ public class RappiService {
     private final BranchRepository branchRepository;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final AreasService areasService;
     private final ProductRepository productRepository;
     private final AdicionalesService adicionalesService;
     private final DeliveryService deliveryService;
@@ -153,6 +154,7 @@ public class RappiService {
                     .specialInstructions(nota(linea.comentarios(), eleccion.avisos()))
                     .build();
             adicionalesService.aplicarALinea(item, eleccion.eleccion());
+            areasService.asignar(item);
             // Lo que cobro Rappi, que puede no ser el precio de nuestro menu.
             item.setUnitPrice(linea.precioUnitario());
             subtotal = subtotal.add(item.getUnitPrice().multiply(BigDecimal.valueOf(linea.cantidad())));

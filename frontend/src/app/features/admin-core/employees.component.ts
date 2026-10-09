@@ -39,6 +39,8 @@ export interface Employee {
   assignedTableIds?: string[];
   assigned_table_ids?: string[];
   assignedTables?: any[];
+  /** Su área de cocina (Barra, Cocina…); null si puede elegir. */
+  areaId?: string | null;
 }
 
 @Component({
@@ -278,6 +280,23 @@ export interface Employee {
               }
             </div>
 
+            <!-- Área de cocina: entra directo a ella y no ve las demás -->
+            @if (areas().length) {
+              <div>
+                <label for="emp-area" class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Área en cocina</label>
+                <select id="emp-area"
+                  formControlName="areaId"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                >
+                  <option value="" class="bg-slate-950 text-slate-400">Ninguna: puede elegir</option>
+                  @for (a of areas(); track a.id) {
+                    <option [value]="a.id" class="bg-slate-950 text-white">{{ a.nombre }}</option>
+                  }
+                </select>
+                <p class="text-[11px] text-slate-500 mt-1">Para el personal de cocina, barra o empaque: entra directo a su área y no ve las demás. Al dueño y a los gerentes no les aplica.</p>
+              </div>
+            }
+
             <!-- Sucursal Select -->
             <div>
               <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Sucursal</label>
@@ -374,10 +393,6 @@ export interface Employee {
     .animate-scaleIn {
       animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
-    /* Estilo de inputs oscuros */
-    .bg-slate-950 {
-      background-color: rgb(5, 8, 16);
-    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -391,6 +406,7 @@ export class EmployeesComponent implements OnInit {
   readonly users = signal<Employee[]>([]);
   readonly roles = signal<any[]>([]);
   readonly branches = signal<any[]>([]);
+  readonly areas = signal<{ id: string; nombre: string; activa: boolean }[]>([]);
   readonly availableBranchTables = signal<any[]>([]);
   readonly isLoading = signal(true);
   readonly isSaving = signal(false);
@@ -417,7 +433,17 @@ export class EmployeesComponent implements OnInit {
       password: ['', []],
       roleId: ['', [Validators.required]],
       branchId: [''],
-      assignedTableIds: [[]]
+      assignedTableIds: [[]],
+      areaId: ['']
+    });
+  }
+
+  /** Las áreas son del restaurante: basta cualquier sucursal suya para pedirlas. */
+  private cargarAreas(branchId: string | null | undefined): void {
+    if (!branchId || this.areas().length) return;
+    this.http.get<{ id: string; nombre: string; activa: boolean }[]>(`${environment.apiUrl}/branches/${branchId}/areas`).subscribe({
+      next: (a) => this.areas.set(a.filter((x) => x.activa)),
+      error: () => this.areas.set([]),
     });
   }
 
@@ -465,6 +491,7 @@ export class EmployeesComponent implements OnInit {
             }
           });
           this.branches.set(list);
+          this.cargarAreas(this.authService.userBranchId() || list[0]?.id);
         },
         error: (err) => console.error('Error loading admin restaurants/branches', err)
       });
@@ -472,6 +499,7 @@ export class EmployeesComponent implements OnInit {
       this.http.get<any[]>(`${environment.apiUrl}/branches`).subscribe({
         next: (data) => {
           this.branches.set(data || []);
+          this.cargarAreas(this.authService.userBranchId() || data?.[0]?.id);
         },
         error: (err) => console.error('Error loading branches', err)
       });
@@ -522,7 +550,8 @@ export class EmployeesComponent implements OnInit {
       password: '',
       roleId: '',
       branchId: '',
-      assignedTableIds: []
+      assignedTableIds: [],
+      areaId: ''
     });
     
     // Password required when creating
@@ -548,7 +577,8 @@ export class EmployeesComponent implements OnInit {
       password: '',
       roleId: user.role?.id || '',
       branchId: selectedBranch,
-      assignedTableIds: tableIds.map(id => String(id))
+      assignedTableIds: tableIds.map(id => String(id)),
+      areaId: user.areaId || ''
     });
     
     // Password optional when editing, but min length if entered
@@ -583,7 +613,8 @@ export class EmployeesComponent implements OnInit {
       phoneNumber: formVal.phoneNumber?.trim() || null,
       roleId: formVal.roleId,
       branchId: formVal.branchId || null,
-      assignedTableIds: formVal.assignedTableIds || []
+      assignedTableIds: formVal.assignedTableIds || [],
+      areaId: formVal.areaId || null
     };
 
     // Password optional on update, required on create

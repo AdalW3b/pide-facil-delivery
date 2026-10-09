@@ -81,6 +81,7 @@ public class DeliveryService {
     private final CajaService cajaService;
     private final com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
     private final Turnos turnos;
+    private final AreasService areasService;
 
     /** Desde donde se sirve el sitio del cliente y del repartidor. */
     @org.springframework.beans.factory.annotation.Value("${omnirest.url-publica:http://localhost:4200}")
@@ -366,6 +367,7 @@ public class DeliveryService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(linea.specialInstructions())
                     .build();
+            areasService.asignar(item);
             if (descontar) {
                 inventoryService.venderLinea(item, branchId);
             } else if (agotadosService.estaAgotado(branchId, product)) {
@@ -624,6 +626,15 @@ public class DeliveryService {
 
         order.setDeliveryStatus(nuevo);
 
+        // Empacado: lo que cada area dejo listo ya salio de su pantalla.
+        if (nuevo == DeliveryStatus.LISTO) {
+            List<OrderItem> listos = orderItemRepository.findByOrderId(order.getId()).stream()
+                    .filter(i -> i.getKitchenStatus() == KitchenStatus.READY)
+                    .toList();
+            listos.forEach(i -> i.setKitchenStatus(KitchenStatus.DELIVERED));
+            orderItemRepository.saveAll(listos);
+        }
+
         switch (nuevo) {
             case EN_CAMINO -> order.setRecogidoEn(LocalDateTime.now());
             case ENTREGADO -> {
@@ -677,6 +688,7 @@ public class DeliveryService {
         // Sin este aviso la comanda se quedaba a la vista hasta que alguien
         // recargara la pantalla.
         if (nuevo == DeliveryStatus.CONFIRMADO
+                || nuevo == DeliveryStatus.LISTO
                 || nuevo == DeliveryStatus.CANCELADO
                 || nuevo == DeliveryStatus.ENTREGADO) {
             messagingTemplate.convertAndSend("/topic/branches/" + branchId + "/kitchen",
@@ -1014,7 +1026,8 @@ public class DeliveryService {
                                 i.getSpecialInstructions(),
                                 i.getKitchenStatus(),
                                 i.adicionalesParaMostrar(),
-                                i.getCreatedAt()))
+                                i.getCreatedAt(),
+                                i.getAreaId()))
                         .toList(),
                 order.getDriver() != null ? order.getDriver().getNombre() : null,
                 order.getDriver() != null ? order.getDriver().getPhoneNumber() : null,

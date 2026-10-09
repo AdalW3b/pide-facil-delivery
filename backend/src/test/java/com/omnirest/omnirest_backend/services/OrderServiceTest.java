@@ -74,6 +74,9 @@ class OrderServiceTest {
     @Mock
     private com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
 
+    @Mock
+    private AreasService areasService;
+
     @InjectMocks
     private OrderService orderService;
 
@@ -152,6 +155,32 @@ class OrderServiceTest {
         // La orden completa llegó a "listo": el aviso al comensal sale una vez.
         assertEquals("READY", order.getKitchenNotified());
         verify(messagingTemplate, times(1)).convertAndSend(eq("/topic/branches/" + branchId + "/kitchen"), any(Object.class));
+    }
+
+    @Test
+    @DisplayName("Todo listo de la Barra no toca lo que sigue en la Cocina")
+    void todoListoPorArea() {
+        UUID cocina = UUID.randomUUID();
+        UUID barra = UUID.randomUUID();
+        when(areasService.restauranteDe(branchId)).thenReturn(UUID.randomUUID());
+        when(areasService.predeterminada(any(UUID.class))).thenReturn(cocina);
+        when(areasService.nombre(barra)).thenReturn("Barra");
+        Product taco = Product.builder().id(UUID.randomUUID()).name("Taco al pastor").build();
+        Product horchata = Product.builder().id(UUID.randomUUID()).name("Agua de horchata").build();
+        // Uno de antes de las areas (sin area): cuenta como de la Cocina.
+        OrderItem tacoViejo = OrderItem.builder().id(UUID.randomUUID()).order(order).product(taco).quantity(2)
+                .kitchenStatus(KitchenStatus.PREPARING).build();
+        OrderItem agua = OrderItem.builder().id(UUID.randomUUID()).order(order).product(horchata).quantity(2)
+                .kitchenStatus(KitchenStatus.PREPARING).areaId(barra).build();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderItemRepository.findByOrderId(orderId)).thenReturn(List.of(tacoViejo, agua));
+
+        int cambiaron = orderService.cambiarEstadoDeComanda(branchId, orderId,
+                java.util.Set.of(KitchenStatus.PENDING, KitchenStatus.PREPARING), KitchenStatus.READY, barra);
+
+        assertEquals(1, cambiaron);
+        assertEquals(KitchenStatus.READY, agua.getKitchenStatus());
+        assertEquals(KitchenStatus.PREPARING, tacoViejo.getKitchenStatus(), "lo de la cocina sigue en la cocina");
     }
 
     @Test

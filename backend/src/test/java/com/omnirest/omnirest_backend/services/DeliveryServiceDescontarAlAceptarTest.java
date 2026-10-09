@@ -55,6 +55,7 @@ class DeliveryServiceDescontarAlAceptarTest {
     @Mock CajaService cajaService;
     @Mock com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
     @Mock Turnos turnos;
+    @Mock AreasService areasService;
     @InjectMocks DeliveryService servicio;
 
     private final UUID branchId = UUID.randomUUID();

@@ -16,5 +16,7 @@ public record KitchenTicketDTO(
     LocalDateTime createdAt,
     List<KitchenTicketItemDTO> items,
     OrderType orderType,
-    String etiqueta
+    String etiqueta,
+    /** Domicilio y para llevar: CONFIRMADO mientras se prepara, LISTO ya empacado. Null en mesas. */
+    com.omnirest.omnirest_backend.domain.enums.DeliveryStatus deliveryStatus
 ) {}

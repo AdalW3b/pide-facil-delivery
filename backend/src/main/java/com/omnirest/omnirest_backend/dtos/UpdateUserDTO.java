@@ -13,5 +13,7 @@ public record UpdateUserDTO(
     @NotNull UUID roleId,
     UUID branchId,
     List<UUID> assignedTableIds,
-    @Pattern(regexp = "^\\+?[1-9]\\d{6,14}$", message = "Número de teléfono inválido") String phoneNumber
+    @Pattern(regexp = "^\\+?[1-9]\\d{6,14}$", message = "Número de teléfono inválido") String phoneNumber,
+    /** Su area de cocina (Barra, Cocina…). Null = puede elegir. */
+    UUID areaId
 ) {}

@@ -45,6 +45,7 @@ public class OrderService {
     private final PaymentMethodService paymentMethodService;
     private final org.springframework.context.ApplicationEventPublisher eventos;
     private final com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
+    private final AreasService areasService;
 
     public OrderResponseDTO openOrder(UUID branchId, Integer tableNumber) {
         return openOrder(branchId, tableNumber, null);
@@ -134,6 +135,8 @@ public class OrderService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(itemDto.specialInstructions())
                     .build();
+            // A su area (Cocina, Barra…); un refresco nace listo.
+            areasService.asignar(orderItem);
             inventoryService.venderLinea(orderItem, order.getBranch().getId());
             // El mesero elige de la misma ficha que el cliente: mismas reglas.
             adicionalesService.aplicarALinea(orderItem,
@@ -484,6 +487,8 @@ public class OrderService {
                     .unitPrice(product.getPrice())
                     .specialInstructions(conAvisos(itemDto.special_instructions(), eleccion.avisos()))
                     .build();
+            // A su area (Cocina, Barra…); un refresco nace listo.
+            areasService.asignar(orderItem);
             inventoryService.venderLinea(orderItem, order.getBranch().getId());
             adicionalesService.aplicarALinea(orderItem, eleccion.eleccion());
             inventoryService.descontarAdicionales(orderItem, order.getBranch().getId());
@@ -669,6 +674,9 @@ public class OrderService {
     public List<KitchenTicketDTO> getKitchenTickets(UUID branchId) {
         List<Order> activeOrders = orderRepository.findActiveOrdersWithDetailsByBranch(branchId);
         List<KitchenTicketDTO> tickets = new java.util.ArrayList<>();
+        // Lo pedido antes de las areas no tiene area: va a la predeterminada.
+        UUID predeterminada = activeOrders.isEmpty() ? null
+                : areasService.predeterminada(areasService.restauranteDe(branchId));
 
         for (Order order : activeOrders) {
             List<KitchenTicketItemDTO> items = new java.util.ArrayList<>();
@@ -682,7 +690,8 @@ public class OrderService {
                                 item.getSpecialInstructions(),
                                 item.getKitchenStatus(),
                                 item.adicionalesParaMostrar(),
-                                item.getCreatedAt()));
+                                item.getCreatedAt(),
+                                item.getAreaId() != null ? item.getAreaId() : predeterminada));
                     }
                 }
             }
@@ -696,7 +705,8 @@ public class OrderService {
                         order.getCreatedAt(),
                         items,
                         order.getOrderType(),
-                        etiquetaDeCocina(order, mesa)));
+                        etiquetaDeCocina(order, mesa),
+                        order.getOrderType() == OrderType.SALON ? null : order.getDeliveryStatus()));
             }
         }
         return tickets;
@@ -800,6 +810,16 @@ public class OrderService {
      */
     @Transactional
     public int cambiarEstadoDeComanda(UUID branchId, UUID orderId, java.util.Set<KitchenStatus> desde, KitchenStatus hacia) {
+        return cambiarEstadoDeComanda(branchId, orderId, desde, hacia, null);
+    }
+
+    /**
+     * Igual, pero solo lo de un area: "Todo listo" en la Barra no toca lo
+     * que sigue en la Cocina. Sin area, toda la comanda.
+     */
+    @Transactional
+    public int cambiarEstadoDeComanda(UUID branchId, UUID orderId, java.util.Set<KitchenStatus> desde, KitchenStatus hacia,
+                                      UUID areaId) {
         if (hacia == null || hacia == KitchenStatus.CANCELLED) {
             throw new IllegalArgumentException("Para cancelar, hazlo platillo por platillo.");
         }
@@ -809,8 +829,10 @@ public class OrderService {
             throw new org.springframework.security.access.AccessDeniedException("La comanda no es de esta sucursal.");
         }
 
+        UUID predeterminada = areaId != null ? areasService.predeterminada(areasService.restauranteDe(branchId)) : null;
         List<OrderItem> cambian = orderItemRepository.findByOrderId(orderId).stream()
                 .filter(i -> i.getKitchenStatus() != KitchenStatus.CANCELLED)
+                .filter(i -> areaId == null || areaId.equals(i.getAreaId() != null ? i.getAreaId() : predeterminada))
                 .filter(i -> desde == null || desde.isEmpty() || desde.contains(i.getKitchenStatus()))
                 .filter(i -> i.getKitchenStatus() != hacia)
                 .toList();
@@ -829,7 +851,11 @@ public class OrderService {
         // Al mesero, un solo aviso con todo lo que salio, no uno por platillo.
         Table table = order.getTable();
         if (hacia == KitchenStatus.READY && table != null) {
-            StringBuilder mensaje = new StringBuilder("🍽️ ¡Pedido Listo en Cocina!\n");
+            // Cada area avisa lo suyo: el mesero lleva las bebidas sin esperar la comida.
+            String area = areaId != null ? areasService.nombre(areaId) : null;
+            StringBuilder mensaje = new StringBuilder(area != null
+                    ? "🍽️ ¡" + area + ": listo para la mesa " + table.getTableNumber() + "!\n"
+                    : "🍽️ ¡Pedido Listo en Cocina!\n");
             for (OrderItem item : cambian) {
                 mensaje.append(item.getQuantity() != null ? item.getQuantity() : 1).append("x ")
                         .append(item.getProduct() != null ? item.getProduct().getName() : "Producto").append("\n");

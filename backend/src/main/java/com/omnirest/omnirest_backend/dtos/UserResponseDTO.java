@@ -11,7 +11,9 @@ public record UserResponseDTO(
     BranchInfo branch,
     Boolean active,
     List<UUID> assignedTableIds,
-    String phoneNumber
+    String phoneNumber,
+    /** Su area de cocina; null si puede elegir. */
+    UUID areaId
 ) {
     public record RoleInfo(UUID id, String name, String defaultRoute) {}
     public record BranchInfo(UUID id, String name) {}

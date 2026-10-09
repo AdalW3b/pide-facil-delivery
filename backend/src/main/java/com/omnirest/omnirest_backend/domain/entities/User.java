@@ -61,6 +61,10 @@ public class User implements UserDetails {
     @Column(name = "usa_asistente", nullable = false)
     private Boolean usaAsistente = false;
 
+    /** El area de cocina donde trabaja (Barra, Cocina…): entra directo a ella y no ve las demas. */
+    @Column(name = "area_id")
+    private java.util.UUID areaId;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "user_tables", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "table_id"))
     @ToString.Exclude

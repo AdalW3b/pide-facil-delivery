@@ -47,6 +47,10 @@ public class OrderItem {
     @Column(name = "ready_at")
     private java.time.LocalDateTime readyAt;
 
+    /** El area que lo prepara, fijada al pedirlo. Null en lo de antes: va a la predeterminada. */
+    @Column(name = "area_id")
+    private java.util.UUID areaId;
+
     /** Cuando se pidio; lo pone la base (los renglones viejos quedan en null). */
     @Column(name = "created_at", insertable = false, updatable = false)
     private java.time.LocalDateTime createdAt;

@@ -26,6 +26,10 @@ public class Category {
     @Column(nullable = false, length = 50)
     private String name;
 
+    /** El area que prepara lo de esta categoria. Null = la predeterminada (Cocina). */
+    @Column(name = "area_id")
+    private java.util.UUID areaId;
+
     @Builder.Default
     private Boolean active = true;
 

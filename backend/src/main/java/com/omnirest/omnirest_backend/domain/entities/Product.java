@@ -30,6 +30,15 @@ public class Product {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
+    /** Su area, si no es la de su categoria (el cafe en "Postres"). Null = la de la categoria. */
+    @Column(name = "area_id")
+    private java.util.UUID areaId;
+
+    /** Refrescos, agua embotellada: nace listo, ningun area lo prepara. */
+    @Column(name = "sin_preparacion", nullable = false)
+    @Builder.Default
+    private Boolean sinPreparacion = false;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

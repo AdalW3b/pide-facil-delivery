@@ -2,6 +2,8 @@ import { AgotadosCocinaComponent } from './agotados-cocina.component';
 import { ComandaCocinaComponent } from './comanda-cocina.component';
 import { ComandaDetalleComponent } from './comanda-detalle.component';
 import { TableroCocinaComponent } from './tablero-cocina.component';
+import { EmpaqueCocinaComponent } from './empaque-cocina.component';
+import { AreasConfigComponent } from './areas-config.component';
 import { estadoDe, etiquetaDe, minutosDe } from './comanda';
 import { NgTemplateOutlet } from '@angular/common';
 import { SonidosService } from '../../core/services/sonidos.service';
@@ -22,7 +24,10 @@ import {
   LucideVolume2,
   LucideVolumeX,
   LucideBuilding,
-  LucideMonitor
+  LucideMonitor,
+  LucideSettings2,
+  LucideMaximize,
+  LucideMinimize
 } from '@lucide/angular';
 
 export type KitchenItemStatus = 'PENDING' | 'PREPARING' | 'READY' | 'DELIVERED';
@@ -46,6 +51,26 @@ export interface KitchenTicketItemDTO {
   adicionales?: string[];
   /** Cuándo se pidió; separa las rondas de una mesa. Null si acaba de entrar. */
   createdAt?: string | null;
+  /** El área que lo prepara (Cocina, Barra…). */
+  areaId?: string | null;
+}
+
+/** Un área de la cocina con su propia pantalla. */
+export interface AreaCocina {
+  id: string;
+  nombre: string;
+  /** PREPARACION o EMPAQUE. */
+  tipo: string;
+  orden: number;
+  activa: boolean;
+  predeterminada: boolean;
+}
+
+/** Cómo va otra área del mismo pedido, abajo de la comanda. */
+export interface OtraArea {
+  nombre: string;
+  texto: string;
+  listo: boolean;
 }
 
 export interface KitchenTicketDTO {
@@ -58,12 +83,16 @@ export interface KitchenTicketDTO {
   orderType?: string | null;
   /** "Mesa 5", "Domicilio ABC123", "Turno A-007 · Para llevar". */
   etiqueta?: string | null;
+  /** Domicilio y para llevar: CONFIRMADO mientras se prepara, LISTO ya empacado. */
+  deliveryStatus?: string | null;
+  /** Solo en la pantalla de un área: cómo van las demás áreas del mismo pedido. */
+  otras?: OtraArea[];
 }
 
 @Component({
   selector: 'app-kitchen',
   standalone: true,
-  imports: [AgotadosCocinaComponent, ComandaCocinaComponent, ComandaDetalleComponent, TableroCocinaComponent, NgTemplateOutlet, TituloPaginaComponent, EstadoEnVivoComponent, LucideMonitor,
+  imports: [AgotadosCocinaComponent, ComandaCocinaComponent, ComandaDetalleComponent, TableroCocinaComponent, EmpaqueCocinaComponent, AreasConfigComponent, NgTemplateOutlet, TituloPaginaComponent, EstadoEnVivoComponent, LucideMonitor, LucideSettings2, LucideMaximize, LucideMinimize,
     LucideChefHat,
     LucideTriangleAlert,
     LucideVolume2,
@@ -76,7 +105,7 @@ export interface KitchenTicketDTO {
       <div class="fixed inset-0 z-[70] bg-slate-950 text-slate-100 flex flex-col">
         <header class="shrink-0 flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-slate-800">
           <div class="flex items-baseline gap-4">
-            <h1 class="text-2xl font-black text-white">Cocina</h1>
+            <h1 class="text-2xl font-black text-white">{{ areaActual()?.nombre ?? 'Cocina' }}</h1>
             <p class="text-lg text-slate-300 tabular-nums">
               <strong class="text-white">{{ comandasActivas().length }}</strong> comandas ·
               <strong class="text-amber-300">{{ tarde() }}</strong> tarde
@@ -91,6 +120,9 @@ export interface KitchenTicketDTO {
           <ng-container *ngTemplateOutlet="barraPlatillos; context: { $implicit: true }" />
         }
         <div class="flex-1 min-h-0 overflow-y-auto p-4">
+          @if (esEmpaque()) {
+            <app-empaque-cocina [tickets]="tickets()" [areas]="areas()" [ahora]="currentTime()" [tv]="true" />
+          } @else {
           <div class="grid gap-4 items-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))]">
             @for (ticket of comandasActivas(); track ticket.orderId) {
               <app-comanda-cocina [ticket]="ticket" [ahora]="currentTime()" [tv]="true" [maxLineas]="null" [nueva]="nuevas().has(ticket.orderId)" />
@@ -98,6 +130,73 @@ export interface KitchenTicketDTO {
               <p class="col-span-full py-24 text-center text-2xl text-slate-500">Todo al día</p>
             }
           </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Pantalla completa para trabajar: las mismas tarjetas con sus botones, sin menú y con la comanda entera -->
+    @if (completa() && !modoTv()) {
+      <div class="fixed inset-0 z-[70] bg-slate-950 text-slate-100 flex flex-col">
+        <header class="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-800">
+          <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h1 class="text-2xl font-black text-white">{{ areaActual()?.nombre ?? 'Cocina' }}</h1>
+            @if (!esEmpaque()) {
+              <p class="text-base text-slate-300 tabular-nums">
+                <strong class="text-white">{{ comandasActivas().length }}</strong> comandas ·
+                <strong class="text-amber-300">{{ tarde() }}</strong> tarde
+              </p>
+            }
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            @if (areasActivas().length > 1 && !areaFija()) {
+              <div class="flex flex-wrap gap-1.5" role="group" aria-label="Área de este equipo">
+                <button type="button" (click)="elegirArea('')" [attr.aria-pressed]="!area()"
+                  class="px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer min-h-[40px]"
+                  [class]="!area() ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'">Todas</button>
+                @for (a of areasActivas(); track a.id) {
+                  <button type="button" (click)="elegirArea(a.id)" [attr.aria-pressed]="area() === a.id"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer min-h-[40px]"
+                    [class]="area() === a.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'">
+                    {{ a.nombre }}
+                    @if (pendientesDe(a); as n) { <span class="px-1.5 rounded-md bg-black/25 text-xs font-bold tabular-nums">{{ n }}</span> }
+                  </button>
+                }
+              </div>
+            }
+            <span class="text-xl font-black tabular-nums text-slate-300 px-2">{{ reloj() }}</span>
+            <button type="button" (click)="salirCompleta()"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 text-sm font-bold text-slate-300 hover:text-white cursor-pointer min-h-[44px]">
+              <svg lucideMinimize class="w-4 h-4"></svg> Salir
+            </button>
+          </div>
+        </header>
+        @if (porPlatillo().length && !esEmpaque()) {
+          <div class="shrink-0 px-4 py-2 border-b border-slate-800">
+            <ng-container *ngTemplateOutlet="barraPlatillos; context: { $implicit: false }" />
+          </div>
+        }
+        <div class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4">
+          @if (esEmpaque()) {
+            <app-empaque-cocina [tickets]="tickets()" [areas]="areas()" [ahora]="currentTime()" (empacar)="empacar($event)" />
+          } @else {
+            <div class="grid gap-3 items-start [grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))]">
+              @for (ticket of comandasActivas(); track ticket.orderId) {
+                <app-comanda-cocina
+                  [ticket]="ticket"
+                  [ahora]="currentTime()"
+                  [nueva]="nuevas().has(ticket.orderId)"
+                  [maxLineas]="null"
+                  (ver)="comandaAbierta.set(ticket.orderId)"
+                  (avanzarItem)="toggleItemStatus($event)"
+                  (cancelarItem)="cancelItem($event)"
+                  (cambiarTodo)="cambiarTodo(ticket, $event.de, $event.a)"
+                />
+              } @empty {
+                <p class="col-span-full py-24 text-center text-2xl text-slate-500">Todo al día</p>
+              }
+            </div>
+          }
         </div>
       </div>
     }
@@ -116,7 +215,8 @@ export interface KitchenTicketDTO {
 
       <!-- Encabezado -->
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-800/60 pb-5">
-        <app-titulo-pagina titulo="Cocina" descripcion="Comandas por preparar, la más atrasada primero." />
+        <app-titulo-pagina [titulo]="areaActual()?.nombre ?? 'Cocina'"
+          [descripcion]="esEmpaque() ? 'Domicilio y para llevar: junta lo de cada área y entrégalo al repartidor.' : areaActual() ? 'Solo lo de esta área, la comanda más atrasada primero.' : 'Comandas por preparar, la más atrasada primero.'" />
 
         <div class="flex flex-wrap items-center gap-2">
           <!-- Cómo se ven las comandas; cada equipo recuerda la suya -->
@@ -128,12 +228,27 @@ export interface KitchenTicketDTO {
               class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer"
               [class]="vista() === 'tarjetas' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">Tarjetas</button>
           </div>
+          <button type="button" (click)="entrarCompleta()"
+            class="flex items-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+            title="Las tarjetas a pantalla completa, con sus botones y cada comanda entera: para la tablet de cada área">
+            <svg lucideMaximize class="w-4 h-4"></svg>
+            <span>Pantalla completa</span>
+          </button>
           <button type="button" (click)="entrarTv()"
             class="flex items-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
             title="Pantalla completa, letra grande y sin botones: para una TV en la cocina">
             <svg lucideMonitor class="w-4 h-4"></svg>
             <span>Modo TV</span>
           </button>
+
+          @if (puedeConfigurarAreas()) {
+            <button type="button" (click)="configAreas.set(true)"
+              class="flex items-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+              title="Crear áreas y decidir qué va a cada una">
+              <svg lucideSettings2 class="w-4 h-4"></svg>
+              <span>Áreas</span>
+            </button>
+          }
 
           <!-- Se acabó un platillo: deja de ofrecerse hoy -->
           <app-agotados-cocina [branchId]="activeBranchId()" />
@@ -163,6 +278,24 @@ export interface KitchenTicketDTO {
         </div>
       </div>
 
+      <!-- Qué área es este equipo: cada tablet o pantalla elige la suya y se queda así -->
+      @if (areasActivas().length > 1 && !areaFija()) {
+        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Área de este equipo">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1">Este equipo es</span>
+          <button type="button" (click)="elegirArea('')" [attr.aria-pressed]="!area()"
+            class="px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer min-h-[40px]"
+            [class]="!area() ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'">Todas</button>
+          @for (a of areasActivas(); track a.id) {
+            <button type="button" (click)="elegirArea(a.id)" [attr.aria-pressed]="area() === a.id"
+              class="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer min-h-[40px]"
+              [class]="area() === a.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'">
+              {{ a.nombre }}
+              @if (pendientesDe(a); as n) { <span class="px-1.5 rounded-md bg-black/25 text-xs font-bold tabular-nums">{{ n }}</span> }
+            </button>
+          }
+        </div>
+      }
+
       @if (isSuperAdmin() && !selectedBranchId()) {
         <div class="py-24 border border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center gap-4 bg-slate-900/10">
           <div class="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
@@ -186,6 +319,8 @@ export interface KitchenTicketDTO {
             <div class="h-80 bg-slate-900/40 border border-slate-800 rounded-2xl"></div>
           }
         </div>
+      } @else if (esEmpaque()) {
+        <app-empaque-cocina [tickets]="tickets()" [areas]="areas()" [ahora]="currentTime()" (empacar)="empacar($event)" />
       } @else if (comandasActivas().length === 0) {
         <div class="py-24 border border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-center gap-4 bg-slate-900/10">
           <div class="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
@@ -250,6 +385,10 @@ export interface KitchenTicketDTO {
       />
     }
 
+    @if (configAreas() && activeBranchId(); as b) {
+      <app-areas-config [branchId]="b" (cerrar)="configAreas.set(false)" (cambiaron)="cargarAreas(b)" />
+    }
+
     <ng-template #barraPlatillos let-grande>
       <div class="flex flex-wrap items-center gap-2" [class]="grande ? 'px-5 py-3 border-b border-slate-800' : ''" aria-label="Por preparar, por platillo">
         <span class="font-bold uppercase tracking-wider text-slate-500" [class]="grande ? 'text-sm' : 'text-[11px]'">Por preparar</span>
@@ -279,7 +418,20 @@ export class KitchenComponent implements OnInit, OnDestroy {
   private wsSubscription: Subscription | null = null;
 
   // State Signals
+  /** Todas las comandas de la sucursal, como llegan del servidor. */
   readonly tickets = signal<KitchenTicketDTO[]>([]);
+  readonly areas = signal<AreaCocina[]>([]);
+  /** El área de este equipo ('' = todas). Se recuerda en el dispositivo. */
+  readonly area = signal(this.leer('pidefacil.cocina.area') ?? '');
+  readonly configAreas = signal(false);
+  readonly areasActivas = computed(() => this.areas().filter((a) => a.activa));
+  /** El área fija del empleado (cocina, barra…): entra directo a ella y no ve las demás. */
+  readonly areaFija = signal<string | null>(null);
+  readonly areaActual = computed(() => this.areasActivas().find((a) => a.id === (this.areaFija() ?? this.area())) ?? null);
+  readonly esEmpaque = computed(() => this.areaActual()?.tipo === 'EMPAQUE');
+  readonly puedeConfigurarAreas = computed(() => this.authService.hasPermission('CATALOG_UPDATE') || this.authService.userRole() === 'SUPER_ADMIN');
+  /** Lo que ve este equipo: en un área, solo lo suyo y abajo cómo van las demás. */
+  readonly visibles = computed(() => this.filtrar(this.tickets()));
   readonly isLoading = signal(true);
   readonly errorMessage = signal<string | null>(null);
   /** El estado real de la conexión lo lleva el servicio, no esta pantalla. */
@@ -299,6 +451,8 @@ export class KitchenComponent implements OnInit, OnDestroy {
   readonly vista = signal<'tablero' | 'tarjetas'>(this.leerVista());
   /** Pantalla completa para una TV: solo leer. Se recuerda en este equipo. */
   readonly modoTv = signal(this.leer('pidefacil.cocina.tv') === 'si');
+  /** Tarjetas a pantalla completa, para trabajar (con botones). Se recuerda en este equipo. */
+  readonly completa = signal(this.leer('pidefacil.cocina.completa') === 'si');
   /** Avisos de lo que acaba de pasar en cocina (se van solos). */
   readonly avisosCocina = signal<AvisoCocina[]>([]);
   private siguienteAviso = 1;
@@ -313,7 +467,7 @@ export class KitchenComponent implements OnInit, OnDestroy {
   readonly comandaAbierta = signal<string | null>(null);
   readonly comandaVista = computed(() => {
     const id = this.comandaAbierta();
-    return id ? this.tickets().find((t) => t.orderId === id) ?? null : null;
+    return id ? this.visibles().find((t) => t.orderId === id) ?? null : null;
   });
 
   /** Mesas que siguen abiertas con todo entregado: en el tablero son solo un número. */
@@ -325,7 +479,7 @@ export class KitchenComponent implements OnInit, OnDestroy {
   /** "14 Tacos al pastor · 6 Gringa": lo que falta hacer, sumado entre comandas. */
   readonly porPlatillo = computed(() => {
     const suma = new Map<string, number>();
-    for (const t of this.tickets()) {
+    for (const t of this.visibles()) {
       for (const i of t.items) {
         if (i.kitchenStatus === 'PENDING' || i.kitchenStatus === 'PREPARING') {
           suma.set(i.productName, (suma.get(i.productName) ?? 0) + (i.quantity ?? 0));
@@ -408,7 +562,7 @@ export class KitchenComponent implements OnInit, OnDestroy {
 
   // Tickets sorted so that oldest command (longest elapsed time) is first, filtering out empty tickets
   readonly sortedTickets = computed(() => {
-    return [...this.tickets()]
+    return [...this.visibles()]
       .filter((t) => t.items.length > 0)
       .sort((a, b) => {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -421,6 +575,7 @@ export class KitchenComponent implements OnInit, OnDestroy {
       if (branchId) {
         this.loadTickets(branchId);
         this.setupWebSocket(branchId);
+        untracked(() => this.cargarAreas(branchId));
       } else {
         this.unsubscribeWebSocket();
         this.tickets.set([]);
@@ -588,8 +743,12 @@ export class KitchenComponent implements OnInit, OnDestroy {
     if (!branchId || items.length === 0) return;
     items.forEach((i) => this.updateLocalItemStatus(i.itemId, a));
     if (a === 'READY') this.completedSessionItemsCount.update((c) => c + items.length);
+    const area = this.areaActual();
+    // En un área, "Todo listo" mueve solo lo suyo: lo de las otras sigue en su pantalla.
+    const params: Record<string, string> = { desde: de.join(','), a };
+    if (area && area.tipo === 'PREPARACION') params['area'] = area.id;
     this.http.patch(`${environment.apiUrl}/branches/${branchId}/kitchen/orders/${ticket.orderId}/status`, null, {
-      params: { desde: de.join(','), a },
+      params,
     }).subscribe({
       error: (err) => {
         this.avisos.error(err.error?.error || 'No se pudo actualizar la comanda. Se volvió a cargar.');
@@ -604,6 +763,18 @@ export class KitchenComponent implements OnInit, OnDestroy {
   }
 
   /** Pantalla completa si el navegador lo permite; si no, igual ocupa toda la ventana. */
+  entrarCompleta(): void {
+    this.completa.set(true);
+    this.guardar('pidefacil.cocina.completa', 'si');
+    document.documentElement.requestFullscreen?.().catch(() => undefined);
+  }
+
+  salirCompleta(): void {
+    this.completa.set(false);
+    this.guardar('pidefacil.cocina.completa', 'no');
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+  }
+
   entrarTv(): void {
     this.modoTv.set(true);
     this.guardar('pidefacil.cocina.tv', 'si');
@@ -773,7 +944,8 @@ export class KitchenComponent implements OnInit, OnDestroy {
   }
 
   private handleIncomingTickets(newTickets: KitchenTicketDTO[]): void {
-    this.avisarCambios(this.tickets(), newTickets);
+    // Cada área suena solo con lo suyo.
+    this.avisarCambios(this.filtrar(this.tickets()), this.filtrar(newTickets));
     this.tickets.set(newTickets);
   }
 
@@ -809,6 +981,82 @@ export class KitchenComponent implements OnInit, OnDestroy {
     } catch {
       /* sin almacenamiento: vale solo esta visita */
     }
+  }
+
+  // ------------------------------------------------------------------ áreas
+
+  cargarAreas(branchId: string): void {
+    // Dueño y gerentes eligen; el resto del personal con área asignada trabaja solo en la suya.
+    const rol = this.authService.userRole();
+    if (rol !== 'SUPER_ADMIN' && rol !== 'SYSTEM_ADMIN' && rol !== 'BRANCH_MANAGER' && rol !== 'ADMIN') {
+      this.http.get<{ areaId: string | null }>(`${environment.apiUrl}/branches/${branchId}/areas/mia`).subscribe({
+        next: (r) => this.areaFija.set(r.areaId),
+        error: () => this.areaFija.set(null),
+      });
+    }
+    this.http.get<AreaCocina[]>(`${environment.apiUrl}/branches/${branchId}/areas`).subscribe({
+      next: (a) => {
+        this.areas.set(a);
+        // El área que tenía este equipo ya no existe o se apagó: vuelve a "Todas".
+        if (this.area() && !a.some((x) => x.id === this.area() && x.activa)) this.elegirArea('');
+        if (this.areaFija() && !a.some((x) => x.id === this.areaFija() && x.activa)) this.areaFija.set(null);
+      },
+      error: () => this.areas.set([]),
+    });
+  }
+
+  elegirArea(id: string): void {
+    this.area.set(id);
+    this.guardar('pidefacil.cocina.area', id);
+    this.comandaAbierta.set(null);
+  }
+
+  /** Cuántas comandas tiene por hacer un área, para el botón de cada una. */
+  pendientesDe(a: AreaCocina): number {
+    if (a.tipo === 'EMPAQUE') {
+      return this.tickets().filter((t) => t.orderType && t.orderType !== 'SALON' && t.deliveryStatus === 'CONFIRMADO'
+        && t.items.some((i) => i.kitchenStatus === 'READY')).length;
+    }
+    return this.tickets().filter((t) => t.items.some((i) => i.areaId === a.id
+      && (i.kitchenStatus === 'PENDING' || i.kitchenStatus === 'PREPARING'))).length;
+  }
+
+  /**
+   * En la pantalla de un área: cada comanda solo con lo suyo, y abajo cómo
+   * van las otras áreas del mismo pedido. Sin área (o en empaque), todo.
+   */
+  private filtrar(lista: KitchenTicketDTO[]): KitchenTicketDTO[] {
+    const area = this.areaActual();
+    if (!area || area.tipo !== 'PREPARACION') return lista;
+    const nombre = (id: string | null | undefined) => this.areas().find((a) => a.id === id)?.nombre ?? 'Otra';
+    return lista
+      .filter((t) => t.items.some((i) => i.areaId === area.id))
+      .map((t) => {
+        const otras = new Map<string, KitchenTicketItemDTO[]>();
+        for (const i of t.items) {
+          if (i.areaId === area.id || i.kitchenStatus === 'DELIVERED') continue;
+          const k = i.areaId ?? '';
+          otras.set(k, [...(otras.get(k) ?? []), i]);
+        }
+        return {
+          ...t,
+          items: t.items.filter((i) => i.areaId === area.id),
+          otras: [...otras.entries()].map(([id, items]) => {
+            const listo = items.every((i) => i.kitchenStatus === 'READY');
+            return { nombre: nombre(id), listo, texto: listo ? 'listo' : items.some((i) => i.kitchenStatus === 'PREPARING') ? 'preparando' : 'pendiente' };
+          }),
+        };
+      });
+  }
+
+  /** Empaque: con todas las áreas listas, el pedido pasa a "listo para repartidor" o se llama el turno. */
+  empacar(t: KitchenTicketDTO): void {
+    const branchId = this.activeBranchId();
+    if (!branchId) return;
+    this.http.post(`${environment.apiUrl}/branches/${branchId}/kitchen/orders/${t.orderId}/empacar`, {}).subscribe({
+      next: () => this.avisos.exito(`${etiquetaDe(t)}: empacado.`),
+      error: (err) => this.avisos.error(err.error?.error || err.error?.message || 'No se pudo marcar como empacado.'),
+    });
   }
 
   playNotificationSound(): void {

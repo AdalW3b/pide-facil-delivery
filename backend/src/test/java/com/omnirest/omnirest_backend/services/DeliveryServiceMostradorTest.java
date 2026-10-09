@@ -57,6 +57,7 @@ class DeliveryServiceMostradorTest {
     @Mock CajaService cajaService;
     @Mock PagoRepository pagoRepository;
     @Mock Turnos turnos;
+    @Mock AreasService areasService;
     @InjectMocks DeliveryService servicio;
 
     private final UUID branchId = UUID.randomUUID();

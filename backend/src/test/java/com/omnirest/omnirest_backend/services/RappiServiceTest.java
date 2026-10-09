@@ -53,7 +53,7 @@ class RappiServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new RappiService(tiendaRepository, pedidoRappiRepository, branchRepository, orderRepository,
-                orderItemRepository, productRepository, adicionalesService, deliveryService);
+                orderItemRepository, mock(AreasService.class), productRepository, adicionalesService, deliveryService);
 
         queso.setGrupo(extras);
         when(tiendaRepository.findByStoreId("900")).thenReturn(Optional.of(

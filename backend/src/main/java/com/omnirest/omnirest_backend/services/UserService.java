@@ -39,6 +39,7 @@ public class UserService {
     private final TableRepository tableRepository;
     private final PasswordEncoder passwordEncoder;
     private final SimpMessagingTemplate messagingTemplate;
+    private final com.omnirest.omnirest_backend.repositories.AreaPreparacionRepository areaRepository;
 
     @Transactional(readOnly = true)
     public List<UserResponseDTO> listUsers(CustomUserDetails userDetails) {
@@ -147,6 +148,7 @@ public class UserService {
                 .branch(branch)
                 .tables(tables)
                 .phoneNumber(request.phoneNumber())
+                .areaId(areaDelRestaurante(request.areaId(), restaurantId))
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -232,6 +234,8 @@ public class UserService {
         user.setUsername(request.username());
         user.setRole(role);
         user.setBranch(branch);
+        user.setAreaId(areaDelRestaurante(request.areaId(),
+                user.getRestaurant() != null ? user.getRestaurant().getId() : userDetails.restaurantId()));
 
         if (request.phoneNumber() != null) {
             user.setPhoneNumber(request.phoneNumber());
@@ -409,6 +413,16 @@ public class UserService {
                 branchInfo,
                 user.getActive(),
                 assignedTableIds,
-                user.getPhoneNumber());
+                user.getPhoneNumber(),
+                user.getAreaId());
+    }
+
+    /** El area tiene que ser del restaurante del empleado y estar encendida. */
+    private java.util.UUID areaDelRestaurante(java.util.UUID areaId, java.util.UUID restaurantId) {
+        if (areaId == null) return null;
+        return areaRepository.findById(areaId)
+                .filter(a -> a.getRestaurantId().equals(restaurantId) && Boolean.TRUE.equals(a.getActiva()))
+                .map(com.omnirest.omnirest_backend.domain.entities.AreaPreparacion::getId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esa área no existe o está apagada."));
     }
 }

@@ -97,6 +97,14 @@ import {
         }
       </div>
 
+      @if (ticket.otras?.length) {
+        <p class="flex flex-wrap gap-1.5 px-3 pb-2" aria-label="Las otras áreas de este pedido">
+          @for (o of ticket.otras; track o.nombre) {
+            <span class="px-1.5 py-0.5 rounded font-semibold" [class]="(o.listo ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400') + (tv ? ' text-sm' : ' text-[11px]')">{{ o.nombre }}: {{ o.texto }}</span>
+          }
+        </p>
+      }
+
       @if (!tv) {
         <footer class="grid gap-2 p-2 border-t border-slate-800 grid-cols-2">
           <button type="button" (click)="ver.emit()" class="py-3 rounded-xl border border-slate-700 text-slate-200 text-sm font-bold cursor-pointer hover:bg-slate-800">Ver comanda</button>
@@ -108,6 +116,9 @@ import {
               <button type="button" (click)="cambiarTodo.emit({ de: ['PENDING', 'PREPARING'], a: 'READY' })"
                 class="py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold cursor-pointer hover:bg-emerald-500">Todo listo</button>
             }
+          } @else if (ticket.otras && tipo() !== 'SALON') {
+            <!-- Domicilio y para llevar: lo listo de un área lo junta Empaque -->
+            <span class="py-3 rounded-xl bg-violet-500/10 text-violet-300 text-sm font-bold text-center">En empaque</span>
           } @else {
             <button type="button" (click)="cambiarTodo.emit({ de: ['READY'], a: 'DELIVERED' })"
               class="py-3 rounded-xl bg-slate-800 text-slate-200 text-sm font-bold cursor-pointer hover:bg-slate-700">Entregado</button>
