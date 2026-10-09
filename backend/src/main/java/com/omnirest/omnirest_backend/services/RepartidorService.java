@@ -305,6 +305,9 @@ public class RepartidorService {
         aCobrar = aCobrar
                 .add(order.getEnvioCobrado() != null ? order.getEnvioCobrado() : BigDecimal.ZERO)
                 .add(order.getPropina() != null ? order.getPropina() : BigDecimal.ZERO);
+        // Pagado con tarjeta en linea: en la puerta no se cobra nada.
+        boolean yaPagado = Boolean.TRUE.equals(order.getPagadoEnLinea());
+        if (yaPagado) aCobrar = BigDecimal.ZERO;
 
         BigDecimal cambio = null;
         if (order.getPagaCon() != null && order.getPagaCon().compareTo(aCobrar) > 0) {
@@ -341,7 +344,8 @@ public class RepartidorService {
                 paraDecidir ? aCobrar : null,
                 paraDecidir ? order.getPagaCon() : null,
                 paraDecidir ? cambio : null,
-                paraDecidir ? (order.getPagoRepartidor() != null ? order.getPagoRepartidor() : calcularPago(order)) : null);
+                paraDecidir ? (order.getPagoRepartidor() != null ? order.getPagoRepartidor() : calcularPago(order)) : null,
+                yaPagado);
     }
 
     private String describir(OrderItem item) {

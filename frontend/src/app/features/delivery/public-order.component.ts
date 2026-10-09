@@ -643,6 +643,25 @@ interface PedidoCreado {
                   <p class="text-xs text-stone-600">Este restaurante recibe el pago con tarjeta al pedir.</p>
                 }
 
+                <!-- Propina: a domicilio siempre; para recoger solo con tarjeta (en caja se deja ahí) -->
+                @if (modo() === 'DOMICILIO' || formaPago() === 'TARJETA') {
+                  <fieldset>
+                    <legend class="block text-xs font-semibold text-stone-600 mb-1">Propina (opcional)</legend>
+                    <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Propina">
+                      @for (pct of porcentajesPropina; track pct) {
+                        <button type="button" role="radio" [attr.aria-checked]="propinaPct() === pct" (click)="elegirPropina(pct)"
+                          class="rounded-lg border-2 px-3 py-1.5 text-sm font-semibold cursor-pointer"
+                          [class]="propinaPct() === pct ? 'border-orange-600 bg-orange-50 text-orange-800' : 'border-stone-200 text-stone-600'">
+                          {{ pct === 0 ? 'Sin propina' : pct + '%' }}
+                        </button>
+                      }
+                    </div>
+                    @if (propina() > 0) {
+                      <p class="text-[11px] text-stone-500 mt-1">{{ propina() | pesos }} para el equipo. ¡Gracias!</p>
+                    }
+                  </fieldset>
+                }
+
                 @if (modo() === 'DOMICILIO' && formaPago() === 'EFECTIVO') {
                 <div>
                   <label for="po-paga" class="block text-xs font-semibold text-stone-600 mb-1">¿Con cuánto vas a pagar? (opcional)</label>
@@ -704,6 +723,12 @@ interface PedidoCreado {
                   } @else {
                     <span class="font-semibold tabular-nums">{{ envio()! | pesos }}</span>
                   }
+                </div>
+              }
+              @if (propina() > 0) {
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-stone-600">Propina</span>
+                  <span class="font-semibold tabular-nums">{{ propina() | pesos }}</span>
                 </div>
               }
               <div class="flex items-center justify-between font-bold">
@@ -1061,7 +1086,19 @@ export class PublicOrderComponent implements OnInit {
     return c.pagaCliente;
   });
 
-  readonly totalAPagar = computed(() => this.subtotal() + (this.envio() ?? 0));
+  /** Propina en porcentaje de la comida; 0 = sin propina. */
+  readonly porcentajesPropina = [0, 10, 15, 20];
+  readonly propinaPct = signal(0);
+  readonly propina = computed(() => {
+    if (this.modo() === 'RECOGER' && this.formaPago() !== 'TARJETA') return 0;
+    return Math.round(this.subtotal() * this.propinaPct()) / 100;
+  });
+
+  elegirPropina(pct: number): void {
+    this.propinaPct.set(pct);
+  }
+
+  readonly totalAPagar = computed(() => this.subtotal() + (this.envio() ?? 0) + this.propina());
 
   readonly distanciaKm = computed(() => {
     const c = this.cotizacion();
@@ -1523,6 +1560,7 @@ export class PublicOrderComponent implements OnInit {
             consumo: 'LLEVAR',
             notas: this.notas().trim() || null,
             formaPago: this.formaPago(),
+            propina: this.propina() > 0 ? this.propina() : null,
             items,
           })
         .subscribe({
@@ -1547,6 +1585,7 @@ export class PublicOrderComponent implements OnInit {
         notas: this.notas().trim() || null,
         pagaCon: this.formaPago() === 'EFECTIVO' ? this.pagaCon() : null,
         formaPago: this.formaPago(),
+        propina: this.propina() > 0 ? this.propina() : null,
         guardarDireccion: this.cuenta.esCliente() && this.direccionElegida() === null && this.guardarDireccion(),
         items,
       })

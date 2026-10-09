@@ -83,6 +83,7 @@ public class DeliveryService {
     private final Turnos turnos;
     private final AreasService areasService;
     private final com.omnirest.omnirest_backend.services.pagoslinea.CobrosLineaService cobrosLinea;
+    private final org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     /** Desde donde se sirve el sitio del cliente y del repartidor. */
     @org.springframework.beans.factory.annotation.Value("${omnirest.url-publica:http://localhost:4200}")
@@ -572,6 +573,7 @@ public class DeliveryService {
                 .origen(delKiosko ? "KIOSKO" : "WEB")
                 .descontarAlAceptar(delKiosko || conTarjeta)
                 .esperandoPagoLinea(conTarjeta)
+                .propina(conTarjeta && p.propina() != null && p.propina().signum() > 0 ? p.propina() : null)
                 .build());
 
         List<OrderItem> items = new ArrayList<>();
@@ -581,7 +583,8 @@ public class DeliveryService {
         orderRepository.save(order);
 
         com.omnirest.omnirest_backend.dtos.PagoEnLineaDTO pago = conTarjeta
-                ? cobrosLinea.iniciar(order, subtotal, BigDecimal.ZERO, customer != null ? customer.getPhoneNumber() : null)
+                ? cobrosLinea.iniciar(order, subtotal.add(order.getPropina() != null ? order.getPropina() : BigDecimal.ZERO),
+                        order.getPropina(), customer != null ? customer.getPhoneNumber() : null)
                 : null;
         if (!conTarjeta) {
             publicarTablero(branchId);
@@ -944,7 +947,9 @@ public class DeliveryService {
         if (order.getDistanciaKm() != null) {
             renglones.add("🛣️ " + order.getDistanciaKm() + " km");
         }
-        renglones.add("💵 Cobrar $" + aCobrar);
+        renglones.add(Boolean.TRUE.equals(order.getPagadoEnLinea())
+                ? "💳 Ya pagado con tarjeta: *no cobres nada*"
+                : "💵 Cobrar $" + aCobrar);
         // El pago exacto de esta entrega, el mismo que ve el tablero. Antes decia
         // "desde $12" (solo el fijo) y no cuadraba con lo que se le pagaba.
         if (config.getPagoRepartidorFijo() != null || config.getPagoRepartidorKm() != null) {
@@ -973,17 +978,39 @@ public class DeliveryService {
      */
     @org.springframework.context.event.EventListener
     public void alResolverPagoLinea(com.omnirest.omnirest_backend.services.pagoslinea.PagoLineaResuelto r) {
-        if (!r.pagado()) {
-            orderRepository.findById(r.orderId())
-                    .filter(o -> o.getDeliveryStatus() != DeliveryStatus.CANCELADO)
-                    .ifPresent(o -> {
-                        o.setDeliveryStatus(DeliveryStatus.CANCELADO);
-                        o.setEsperandoPagoLinea(false);
-                        cancelarPedido(o);
-                        orderRepository.save(o);
-                    });
-        }
+        if (r.pagado()) return; // Lo acepta aceptarPagado(), ya guardado el pago.
+        orderRepository.findById(r.orderId())
+                .filter(o -> o.getDeliveryStatus() != DeliveryStatus.CANCELADO)
+                .ifPresent(o -> {
+                    o.setDeliveryStatus(DeliveryStatus.CANCELADO);
+                    o.setEsperandoPagoLinea(false);
+                    cancelarPedido(o);
+                    orderRepository.save(o);
+                });
         publicarTablero(r.branchId());
+    }
+
+    /**
+     * Pagado con tarjeta: entra a cocina sin que nadie lo acepte, y al cliente le
+     * llega la confirmacion con su pago. Va en su propia transaccion, ya guardado
+     * el pago: si algo se acabo y no se puede descontar, el pedido se queda en
+     * NUEVO (pagado) para que el mostrador decida, y el pago no se pierde.
+     */
+    @org.springframework.transaction.event.TransactionalEventListener(fallbackExecution = true)
+    public void aceptarPagado(com.omnirest.omnirest_backend.services.pagoslinea.PagoLineaResuelto r) {
+        if (!r.pagado()) return;
+        try {
+            // Despues de confirmar la transaccion del pago hace falta una nueva: unirse
+            // a la ya terminada no guardaria nada.
+            var nueva = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+            nueva.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            nueva.executeWithoutResult(s ->
+                    cambiarEstado(r.branchId(), r.orderId(), new CambiarEstadoEntregaDTO(DeliveryStatus.CONFIRMADO, null)));
+            log.info("Pedido {} pagado en linea: entra solo a cocina", r.orderId());
+        } catch (RuntimeException e) {
+            log.warn("Pedido {} pagado en linea no se pudo aceptar solo: {}", r.orderId(), e.getMessage());
+            publicarTablero(r.branchId());
+        }
     }
 
     public void publicarTableroDe(UUID branchId) {
@@ -1011,6 +1038,9 @@ public class DeliveryService {
             case CONFIRMADO -> texto = "✅ Confirmamos tu pedido " + codigoParaCliente(order) + "."
                     + (order.getMinutosEstimados() != null
                             ? " Calculamos unos " + order.getMinutosEstimados() + " minutos."
+                            : "")
+                    + (Boolean.TRUE.equals(order.getPagadoEnLinea())
+                            ? "\n💳 " + cobrosLinea.comprobante(order.getId())
                             : "");
             case EN_CAMINO -> texto = "🛵 Tu pedido " + codigoParaCliente(order) + " ya va en camino.";
             // Para llevar, "listo" es justo lo que el cliente espera oir.
@@ -1121,7 +1151,8 @@ public class DeliveryService {
                 Boolean.TRUE.equals(order.getRepartoExterno()),
                 order.getTurno(),
                 order.getConsumo(),
-                porCobrar(order, subtotal));
+                porCobrar(order, subtotal),
+                Boolean.TRUE.equals(order.getPagadoEnLinea()));
     }
 
     /**

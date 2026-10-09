@@ -23,6 +23,10 @@ public interface TransaccionLineaRepository extends JpaRepository<TransaccionLin
 
     List<TransaccionLinea> findByOrderIdOrderByCreadoEnDesc(UUID orderId);
 
+    /** Los abiertos que nadie ha revisado desde {@code antes}: se le pregunta a Stripe. */
+    List<TransaccionLinea> findTop50ByEstadoInAndActualizadoEnBeforeOrderByActualizadoEnAsc(
+            java.util.Collection<TransaccionLinea.Estado> estados, java.time.LocalDateTime antes);
+
     /** Los que siguen abiertos y ya pasaron su hora: se cancelan. */
     List<TransaccionLinea> findTop50ByEstadoInAndExpiraEnBeforeOrderByExpiraEnAsc(
             java.util.Collection<TransaccionLinea.Estado> estados, java.time.LocalDateTime ahora);

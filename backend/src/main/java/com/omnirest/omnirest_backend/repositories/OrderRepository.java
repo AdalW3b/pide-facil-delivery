@@ -96,11 +96,17 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
                                         @Param("soloActivos") boolean soloActivos,
                                         @Param("desde") java.time.LocalDateTime desde);
 
-    /** Por repartidor, las entregas cerradas que todavia no pasan por caja. */
+    /**
+     * Por repartidor, las entregas cerradas que todavia no pasan por caja. Lo
+     * pagado con tarjeta en linea no lo cobro el: no cuenta como efectivo suyo,
+     * y su propina va al fondo de propinas, no a su bolsillo.
+     */
     @Query("SELECT new com.omnirest.omnirest_backend.dtos.CuadreDTOs$Pendiente(" +
            "  d.id, d.nombre, d.phoneNumber, count(o), " +
-           "  coalesce(sum(o.totalAmount + coalesce(o.envioCobrado, 0)), 0), " +
-           "  coalesce(sum(o.pagoRepartidor), 0), coalesce(sum(o.propina), 0), min(o.entregadoEn), max(o.entregadoEn)) " +
+           "  coalesce(sum(CASE WHEN o.pagadoEnLinea = true THEN 0 ELSE o.totalAmount + coalesce(o.envioCobrado, 0) END), 0), " +
+           "  coalesce(sum(o.pagoRepartidor), 0), " +
+           "  coalesce(sum(CASE WHEN o.pagadoEnLinea = true THEN 0 ELSE coalesce(o.propina, 0) END), 0), " +
+           "  min(o.entregadoEn), max(o.entregadoEn)) " +
            "FROM Order o JOIN o.driver d " +
            "WHERE o.branch.id = :branchId AND o.corteId IS NULL " +
            "AND o.deliveryStatus = com.omnirest.omnirest_backend.domain.enums.DeliveryStatus.ENTREGADO " +
@@ -118,7 +124,8 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     int liquidar(@Param("branchId") UUID branchId, @Param("driverId") UUID driverId, @Param("corteId") UUID corteId);
 
     /** Totales de lo que quedo en un corte: [entregas, cobrado, pago]. */
-    @Query("SELECT count(o), coalesce(sum(o.totalAmount + coalesce(o.envioCobrado, 0)), 0), " +
+    @Query("SELECT count(o), " +
+           "coalesce(sum(CASE WHEN o.pagadoEnLinea = true THEN 0 ELSE o.totalAmount + coalesce(o.envioCobrado, 0) END), 0), " +
            "coalesce(sum(o.pagoRepartidor), 0) FROM Order o WHERE o.corteId = :corteId")
     List<Object[]> totalesDelCorte(@Param("corteId") UUID corteId);
 

@@ -319,6 +319,54 @@ public class CobrosLineaService {
         eventos.publishEvent(new PagoLineaResuelto(t.getOrderId(), t.getBranchId(), false));
     }
 
+    /** "Pagado con tarjeta Visa •••• 4242: $640.00. No pagas nada al recibir." */
+    @Transactional(readOnly = true)
+    public String comprobante(UUID orderId) {
+        return transacciones.findByOrderIdOrderByCreadoEnDesc(orderId).stream()
+                .filter(t -> t.getEstado() == Estado.PAGADO)
+                .findFirst()
+                .map(t -> "Pagado con tarjeta"
+                        + (t.getMarcaTarjeta() != null ? " " + marca(t.getMarcaTarjeta()) : "")
+                        + (t.getUltimos4() != null ? " •••• " + t.getUltimos4() : "")
+                        + ": $" + t.getMonto().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                        + ". No pagas nada al recibir.")
+                .orElse("Pagado con tarjeta. No pagas nada al recibir.");
+    }
+
+    private static String marca(String m) {
+        return switch (m.toLowerCase()) {
+            case "visa" -> "Visa";
+            case "mastercard" -> "Mastercard";
+            case "amex" -> "American Express";
+            default -> m.substring(0, 1).toUpperCase() + m.substring(1);
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Revision: lo que Stripe no aviso
+    // ------------------------------------------------------------------
+
+    /**
+     * Cada 2 minutos se le pregunta a Stripe por los cobros abiertos que nadie
+     * ha revisado en un rato: si el aviso de Stripe se perdio y el cliente
+     * cerro la pagina, el pedido pagado aparece de todos modos.
+     */
+    @Scheduled(fixedDelay = 120_000, initialDelay = 90_000)
+    public void revisarAbiertos() {
+        LocalDateTime hace = LocalDateTime.now().minusMinutes(2);
+        for (TransaccionLinea t : transacciones.findTop50ByEstadoInAndActualizadoEnBeforeOrderByActualizadoEnAsc(
+                ABIERTOS, hace)) {
+            try {
+                PaymentIntent pi = stripe.cobro(t.getStripeAccountId(), t.getPaymentIntentId());
+                enTransaccion.executeWithoutResult(s -> transacciones.bloquear(t.getId())
+                        .filter(x -> ABIERTOS.contains(x.getEstado()))
+                        .ifPresent(x -> aplicar(x, pi)));
+            } catch (Exception e) {
+                log.warn("Stripe: no se pudo revisar el cobro {}: {}", t.getPaymentIntentId(), e.getMessage());
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Los que no se pagaron a tiempo
     // ------------------------------------------------------------------

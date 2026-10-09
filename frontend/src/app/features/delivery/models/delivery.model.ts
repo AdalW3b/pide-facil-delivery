@@ -72,6 +72,8 @@ export interface DeliveryOrder {
   consumo?: 'AQUI' | 'LLEVAR' | null;
   /** Lo que falta cobrar en caja (mostrador). 0 si ya se pagó o no aplica. */
   porCobrar?: number;
+  /** Pagado con tarjeta en el menú en línea: nadie le cobra al entregar. */
+  pagadoEnLinea?: boolean;
 }
 
 export interface CambiarEstadoEntrega {

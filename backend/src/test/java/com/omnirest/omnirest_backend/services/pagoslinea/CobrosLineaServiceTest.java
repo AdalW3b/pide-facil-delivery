@@ -225,6 +225,16 @@ class CobrosLineaServiceTest {
     }
 
     @Test
+    @DisplayName("El comprobante para el cliente dice la tarjeta y el monto")
+    void comprobante() {
+        TransaccionLinea t = transaccion(Estado.PAGADO);
+        t.setMarcaTarjeta("visa");
+        t.setUltimos4("4242");
+        when(transacciones.findByOrderIdOrderByCreadoEnDesc(pedido.getId())).thenReturn(List.of(t));
+        assertEquals("Pagado con tarjeta Visa •••• 4242: $250.00. No pagas nada al recibir.", servicio.comprobante(pedido.getId()));
+    }
+
+    @Test
     @DisplayName("La comisión de Pide Fácil se redondea al centavo")
     void comision() {
         assertEquals(new BigDecimal("0.00"), CobrosLineaService.comision(new BigDecimal("199.90"), BigDecimal.ZERO));

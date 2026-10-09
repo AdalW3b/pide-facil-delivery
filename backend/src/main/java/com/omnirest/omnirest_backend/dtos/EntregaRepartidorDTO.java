@@ -41,5 +41,7 @@ public record EntregaRepartidorDTO(
         BigDecimal pagaCon,
         BigDecimal cambio,
         /** Lo que el negocio le paga por esta entrega. */
-        BigDecimal tuPago) {
+        BigDecimal tuPago,
+        /** Pagado con tarjeta en el menu en linea: no se le cobra al cliente. */
+        boolean yaPagado) {
 }

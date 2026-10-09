@@ -447,6 +447,9 @@ interface Columna {
                         @if (p.origen === 'RAPPI') {
                           <span class="px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300 text-[11px] font-bold uppercase tracking-wider">Rappi{{ p.pedidoExterno ? ' #' + p.pedidoExterno : '' }}</span>
                         }
+                        @if (p.pagadoEnLinea) {
+                          <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">💳 Pagado en línea</span>
+                        }
                       </p>
                       <p class="text-xs text-slate-300 truncate">{{ p.clienteNombre || 'Cliente' }}</p>
                     </div>
@@ -524,7 +527,7 @@ interface Columna {
                     </div>
                     @if (p.propina > 0) {
                       <div class="flex justify-between text-slate-400">
-                        <span>Propina (del repartidor)</span><span class="tabular-nums">{{ p.propina | pesos }}</span>
+                        <span>{{ p.pagadoEnLinea ? 'Propina (al fondo de propinas)' : 'Propina (del repartidor)' }}</span><span class="tabular-nums">{{ p.propina | pesos }}</span>
                       </div>
                     }
                     <div class="flex justify-between font-bold text-white">
@@ -536,7 +539,10 @@ interface Columna {
                         <span class="tabular-nums">{{ p.porCobrar! | pesos }}</span>
                       </p>
                     }
-                    @if (p.cambio !== null) {
+                    @if (p.pagadoEnLinea) {
+                      <p class="text-emerald-400 font-semibold pt-1">Ya pagado con tarjeta: no se cobra al entregar.</p>
+                    }
+                    @if (p.cambio !== null && !p.pagadoEnLinea) {
                       <p class="flex items-center gap-1.5 text-emerald-400 font-semibold pt-1">
                         <svg lucideBanknote class="w-3.5 h-3.5 shrink-0"></svg>
                         <span>Paga con {{ p.pagaCon! | pesos }} — llevar {{ p.cambio! | pesos }} de cambio</span>

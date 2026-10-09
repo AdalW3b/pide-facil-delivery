@@ -65,5 +65,7 @@ public record PedidoDomicilioPanelDTO(
         /** AQUI o LLEVAR en pedidos de mostrador. */
         String consumo,
         /** Lo que falta cobrar en caja (pedidos de mostrador); cero si ya se pago o no aplica. */
-        BigDecimal porCobrar) {
+        BigDecimal porCobrar,
+        /** Pagado con tarjeta en el menu en linea: nadie le cobra al entregar. */
+        boolean pagadoEnLinea) {
 }

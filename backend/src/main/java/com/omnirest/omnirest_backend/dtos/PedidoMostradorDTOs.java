@@ -25,7 +25,10 @@ public final class PedidoMostradorDTOs {
             @Pattern(regexp = "AQUI|LLEVAR", message = "Elige si es para comer aquí o para llevar.") String consumo,
             @Size(max = 300) String notas,
             /** Pasar a recoger: TARJETA (en linea) o TIENDA (en caja al recoger). Vacio = en tienda. */
-            @Pattern(regexp = "TARJETA|TIENDA", message = "Elige cómo vas a pagar.") String formaPago) {
+            @Pattern(regexp = "TARJETA|TIENDA", message = "Elige cómo vas a pagar.") String formaPago,
+            /** Solo con tarjeta: va en el mismo cobro. En caja la propina se deja ahí. */
+            @jakarta.validation.constraints.DecimalMin(value = "0.0", message = "La propina no puede ser negativa.")
+            @jakarta.validation.constraints.DecimalMax(value = "10000.0", message = "Revisa la propina.") BigDecimal propina) {
     }
 
     public record Creado(

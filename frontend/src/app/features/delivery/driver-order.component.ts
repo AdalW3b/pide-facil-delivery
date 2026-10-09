@@ -55,6 +55,8 @@ interface EntregaRepartidor {
   pagaCon: number | null;
   cambio: number | null;
   tuPago: number | null;
+  /** Pagado con tarjeta en el menú en línea: no se le cobra al cliente. */
+  yaPagado?: boolean;
 }
 
 /** Dónde se recuerda al repartidor en su propio teléfono. */
@@ -228,11 +230,17 @@ const CLAVE_NOMBRE = 'pidefacil.repartidor.nombre';
 
             <!-- Dinero -->
             <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+              @if (e.yaPagado) {
+                <p class="text-base font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2.5">
+                  💳 Ya pagado con tarjeta: no cobres nada
+                </p>
+              } @else {
               <div class="flex items-center justify-between">
                 <span class="text-sm text-slate-400">Cobrar al cliente</span>
                 <span class="text-2xl font-black tabular-nums">{{ (e.aCobrar ?? 0) | pesos }}</span>
               </div>
-              @if (e.cambio !== null) {
+              }
+              @if (e.cambio !== null && !e.yaPagado) {
                 <p class="flex items-center gap-2 text-sm text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                   <svg lucideBanknote class="w-4 h-4 shrink-0"></svg>
                   Paga con {{ e.pagaCon! | pesos }} — lleva {{ e.cambio | pesos }} de cambio
