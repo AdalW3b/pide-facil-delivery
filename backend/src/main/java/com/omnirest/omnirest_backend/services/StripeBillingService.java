@@ -207,19 +207,27 @@ public class StripeBillingService {
     }
 
     /**
-     * Procesa eventos de Webhook enviados por Stripe
+     * Procesa eventos de Webhook enviados por Stripe.
+     *
+     * Solo se acepta un evento con la firma de Stripe. Antes, sin el secreto
+     * configurado, se procesaba cualquier JSON: cualquiera podia mandar un
+     * "invoice.paid" falso y dar por pagada la renta de un restaurante.
      */
     public void processWebhook(String payload, String sigHeader) {
+        if (stripeWebhookSecret == null || stripeWebhookSecret.isBlank() || stripeWebhookSecret.equals("whsec_placeholder")) {
+            log.error("[StripeBillingService] Webhook rechazado: falta STRIPE_WEBHOOK_SECRET en el servidor.");
+            throw new IllegalStateException("El webhook de Stripe no está configurado en el servidor.");
+        }
+        if (sigHeader == null || sigHeader.isBlank()) {
+            log.warn("[StripeBillingService] Webhook rechazado: llegó sin firma de Stripe.");
+            throw new IllegalArgumentException("Falta la firma de Stripe.");
+        }
         Event event;
         try {
-            if (stripeWebhookSecret != null && !stripeWebhookSecret.isBlank() && !stripeWebhookSecret.equals("whsec_placeholder")) {
-                event = Webhook.constructEvent(payload, sigHeader, stripeWebhookSecret);
-            } else {
-                event = Event.GSON.fromJson(payload, Event.class);
-            }
+            event = Webhook.constructEvent(payload, sigHeader, stripeWebhookSecret);
         } catch (Exception e) {
-            log.error("[StripeBillingService] Error verificando firma del Webhook: {}", e.getMessage());
-            throw new IllegalArgumentException("Firma de webhook inválida: " + e.getMessage());
+            log.warn("[StripeBillingService] Webhook rechazado, firma inválida: {}", e.getMessage());
+            throw new IllegalArgumentException("Firma de webhook inválida.");
         }
 
         log.info("[StripeBillingService] Webhook recibido: {}", event.getType());

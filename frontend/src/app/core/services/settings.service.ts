@@ -14,12 +14,12 @@ export class SettingsService {
     return this.http.get<PaymentMethod[]>(`${environment.apiUrl}/branches/${branchId}/payment-methods`);
   }
 
-  createPaymentMethod(branchId: string, name: string, instructions?: string): Observable<PaymentMethod> {
-    return this.http.post<PaymentMethod>(`${environment.apiUrl}/branches/${branchId}/payment-methods`, { name, instructions });
+  createPaymentMethod(branchId: string, name: string, instructions?: string, esEfectivo?: boolean): Observable<PaymentMethod> {
+    return this.http.post<PaymentMethod>(`${environment.apiUrl}/branches/${branchId}/payment-methods`, { name, instructions, esEfectivo });
   }
 
-  updatePaymentMethod(branchId: string, id: string | number, name: string, instructions?: string): Observable<PaymentMethod> {
-    return this.http.put<PaymentMethod>(`${environment.apiUrl}/branches/${branchId}/payment-methods/${id}`, { name, instructions });
+  updatePaymentMethod(branchId: string, id: string | number, name: string, instructions?: string, esEfectivo?: boolean): Observable<PaymentMethod> {
+    return this.http.put<PaymentMethod>(`${environment.apiUrl}/branches/${branchId}/payment-methods/${id}`, { name, instructions, esEfectivo });
   }
 
   togglePaymentMethod(branchId: string, id: string | number): Observable<PaymentMethod> {

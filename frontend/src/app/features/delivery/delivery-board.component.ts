@@ -583,7 +583,7 @@ interface Columna {
                     }
                     @if (siguientePaso(p); as paso) {
                       <button
-                        (click)="avanzar(p, paso.estado)"
+                        (click)="avanzarOCobrar(p, paso.estado)"
                         [disabled]="enviando().has(p.orderId)"
                         class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                       >
@@ -627,8 +627,8 @@ interface Columna {
           [orderId]="c.orderId"
           [total]="c.porCobrar ?? 0"
           [titulo]="'Cobrar ' + (c.turno ? 'turno ' + c.turno : c.tokenSeguimiento)"
-          [accion]="c.origen === 'KIOSKO' && c.deliveryStatus === 'NUEVO' ? 'Cobrar y mandar a cocina' : 'Cobrar'"
-          (cerrar)="cobrandoPedido.set(null)"
+          [accion]="c.origen === 'KIOSKO' && c.deliveryStatus === 'NUEVO' ? 'Cobrar y mandar a cocina' : entregarAlCobrar() === c.orderId ? 'Cobrar y entregar' : 'Cobrar'"
+          (cerrar)="cobrandoPedido.set(null); entregarAlCobrar.set(null)"
           (cobrado)="alCobrarPedido($event)"
         />
       }
@@ -704,6 +704,8 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
 
   /** El pedido de mostrador que se está cobrando. */
   readonly cobrandoPedido = signal<DeliveryOrder | null>(null);
+  /** Se está cobrando para entregarlo: al cobrar, se marca entregado. */
+  readonly entregarAlCobrar = signal<string | null>(null);
   readonly kioscos = signal<{ id: string; nombre: string; ultimoUso: string | null }[]>([]);
   readonly activandoKiosko = signal(false);
   readonly puedeActivarKiosko = computed(() =>
@@ -717,8 +719,14 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
   });
 
   alCobrarPedido(r: { cambio: number }): void {
+    const pedido = this.cobrandoPedido();
     this.cobrandoPedido.set(null);
     this.avisos.exito(r.cambio > 0 ? `Cobrado. Cambio: ${formatearPesos(r.cambio)}` : 'Cobrado.');
+    if (pedido && this.entregarAlCobrar() === pedido.orderId) {
+      this.entregarAlCobrar.set(null);
+      this.cambiarEstado({ ...pedido, porCobrar: 0 }, 'ENTREGADO');
+      return;
+    }
     this.recargar();
   }
 
@@ -976,6 +984,20 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
   }
 
   avanzar(p: DeliveryOrder, estado: DeliveryStatus): void {
+    this.cambiarEstado(p, estado);
+  }
+
+  /**
+   * Para llevar se paga al recogerlo: si falta cobrar, primero se cobra con
+   * el método que use el cliente (efectivo, tarjeta, transferencia) y luego
+   * se entrega. Antes se daba por pagado en efectivo y descuadraba el arqueo.
+   */
+  avanzarOCobrar(p: DeliveryOrder, estado: DeliveryStatus): void {
+    if (estado === 'ENTREGADO' && p.orderType === 'PARA_LLEVAR' && p.origen !== 'RAPPI' && (p.porCobrar ?? 0) > 0) {
+      this.entregarAlCobrar.set(p.orderId);
+      this.cobrandoPedido.set(p);
+      return;
+    }
     this.cambiarEstado(p, estado);
   }
 

@@ -61,6 +61,9 @@ public class BillingController {
             return ResponseEntity.ok("Webhook processed");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (IllegalStateException e) {
+            // Sin secreto no se procesa nada; Stripe reintenta cuando se configure.
+            return ResponseEntity.status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE).body(e.getMessage());
         } catch (Exception e) {
             log.error("[BillingController] Error procesando webhook: {}", e.getMessage());
             return ResponseEntity.internalServerError().body("Error interno");

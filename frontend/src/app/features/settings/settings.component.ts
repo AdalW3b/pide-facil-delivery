@@ -224,6 +224,11 @@ import { environment } from '../../../environments/environment';
                 </button>
               </div>
 
+              <!-- Efectivo o no: de esto depende el arqueo de la caja -->
+              <p class="mt-3 text-xs font-semibold" [class]="method.esEfectivo ? 'text-emerald-400' : 'text-slate-400'">
+                {{ method.esEfectivo ? '💵 Efectivo: entra al cajón y se cuenta en el arqueo' : '💳 No es efectivo: no toca el cajón' }}
+              </p>
+
               <!-- Instructions / Bank Info preview -->
               @if (method.instructions) {
                 <div class="mt-3">
@@ -270,7 +275,7 @@ import { environment } from '../../../environments/environment';
                 <input aria-label="Nombre del método de pago"
                   type="text"
                   [ngModel]="newMethodName()"
-                  (ngModelChange)="newMethodName.set($event)"
+                  (ngModelChange)="cambiarNombre($event)"
                   placeholder="Ej. Transferencia BBVA, Mercado Pago, Efectivo"
                   class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   (keyup.enter)="saveMethod()"
@@ -295,6 +300,15 @@ import { environment } from '../../../environments/environment';
                   Instrucciones de pago o datos bancarios para transferencias.
                 </p>
               </div>
+
+              <label class="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 cursor-pointer">
+                <input type="checkbox" [checked]="newMethodEsEfectivo()" (change)="marcarEfectivo($any($event.target).checked)"
+                  class="mt-0.5 w-5 h-5 accent-emerald-500 cursor-pointer" />
+                <span>
+                  <span class="block text-sm font-bold text-white">Es efectivo</span>
+                  <span class="block text-[11px] text-slate-400 mt-0.5">El dinero entra al cajón: se cuenta en el arqueo de la caja y el cambio se calcula al cobrar. Tarjeta, transferencia o vales no lo son.</span>
+                </span>
+              </label>
             </div>
 
             <!-- Modal Footer / Actions -->
@@ -345,6 +359,9 @@ export class SettingsComponent {
   readonly editingMethodId = signal<string | number | null>(null);
   readonly newMethodName = signal('');
   readonly newMethodInstructions = signal('');
+  /** Si el método es efectivo. Al crear, se sugiere por el nombre hasta que alguien toque la casilla. */
+  readonly newMethodEsEfectivo = signal(false);
+  private efectivoTocado = false;
   readonly isSaving = signal(false);
 
   // Active Tab
@@ -465,13 +482,28 @@ export class SettingsComponent {
     this.editingMethodId.set(null);
     this.newMethodName.set('');
     this.newMethodInstructions.set('');
+    this.newMethodEsEfectivo.set(false);
+    this.efectivoTocado = false;
     this.isAddModalOpen.set(true);
+  }
+
+  cambiarNombre(nombre: string): void {
+    this.newMethodName.set(nombre);
+    // "Efectivo", "Cash": se marca solo mientras nadie haya decidido otra cosa.
+    if (!this.efectivoTocado && !this.editingMethodId()) this.newMethodEsEfectivo.set(/efectivo|cash/i.test(nombre));
+  }
+
+  marcarEfectivo(si: boolean): void {
+    this.efectivoTocado = true;
+    this.newMethodEsEfectivo.set(si);
   }
 
   openEditModal(method: PaymentMethod): void {
     this.editingMethodId.set(method.id);
     this.newMethodName.set(method.name || '');
     this.newMethodInstructions.set(method.instructions || '');
+    this.newMethodEsEfectivo.set(!!method.esEfectivo);
+    this.efectivoTocado = true;
     this.isAddModalOpen.set(true);
   }
 
@@ -485,6 +517,7 @@ export class SettingsComponent {
   saveMethod(): void {
     const name = this.newMethodName().trim();
     const instructions = this.newMethodInstructions().trim();
+    const esEfectivo = this.newMethodEsEfectivo();
     const branchId = this.activeBranchId();
     const editId = this.editingMethodId();
 
@@ -493,10 +526,10 @@ export class SettingsComponent {
     this.isSaving.set(true);
 
     if (editId) {
-      this.settingsService.updatePaymentMethod(branchId, editId, name, instructions).subscribe({
+      this.settingsService.updatePaymentMethod(branchId, editId, name, instructions, esEfectivo).subscribe({
         next: (updated) => {
           this.paymentMethods.update(list =>
-            list.map(m => m.id === editId ? { ...m, ...updated, name, instructions } : m)
+            list.map(m => m.id === editId ? { ...m, ...updated, name, instructions, esEfectivo } : m)
           );
           this.isSaving.set(false);
           this.closeAddModal();
@@ -509,7 +542,7 @@ export class SettingsComponent {
         }
       });
     } else {
-      this.settingsService.createPaymentMethod(branchId, name, instructions).subscribe({
+      this.settingsService.createPaymentMethod(branchId, name, instructions, esEfectivo).subscribe({
         next: (created) => {
           this.paymentMethods.update(list => [...list, created]);
           this.isSaving.set(false);
