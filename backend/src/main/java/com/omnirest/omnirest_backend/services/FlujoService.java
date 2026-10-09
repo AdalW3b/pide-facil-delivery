@@ -221,10 +221,26 @@ public class FlujoService {
                 rs.getString("por"), rs.getString("sucursal")));
         BigDecimal otrasSalidas = otras.stream().map(FlujoDTOs.Salida::monto).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal total = caja.add(transferencia).add(sinForma).add(pagosCredito).add(gastos).add(otrasSalidas);
+        // Pagos con tarjeta en linea: las comisiones (Stripe y Pide Facil) y lo devuelto.
+        MapSqlParameterSource l = new MapSqlParameterSource();
+        BigDecimal comisionesLinea = dinero(jdbc().queryForObject("""
+                SELECT COALESCE(SUM(COALESCE(t.comision_stripe, 0) + t.comision_plataforma), 0)
+                FROM transacciones_linea t JOIN branches b ON b.id = t.branch_id
+                WHERE t.estado IN ('PAGADO', 'REEMBOLSADO', 'REEMBOLSO_PARCIAL')"""
+                + donde(restaurantId, branchId, periodo, "t.branch_id", "t.pagado_en", false, l), l, BigDecimal.class));
+        MapSqlParameterSource d = new MapSqlParameterSource();
+        BigDecimal reembolsosLinea = dinero(jdbc().queryForObject("""
+                SELECT COALESCE(SUM(r.monto), 0)
+                FROM reembolsos_linea r JOIN transacciones_linea t ON t.id = r.transaccion_id
+                JOIN branches b ON b.id = t.branch_id
+                WHERE r.estado = 'HECHO'"""
+                + donde(restaurantId, branchId, periodo, "t.branch_id", "r.creado_en", false, d), d, BigDecimal.class));
+
+        BigDecimal total = caja.add(transferencia).add(sinForma).add(pagosCredito).add(gastos).add(otrasSalidas)
+                .add(comisionesLinea).add(reembolsosLinea);
         return new FlujoDTOs.Egresos(dinero(total), caja, transferencia, sinForma, pagosCredito,
                 dinero(gastos), porCategoria, dinero(otrasSalidas),
-                otras.size() > 100 ? otras.subList(0, 100) : otras);
+                otras.size() > 100 ? otras.subList(0, 100) : otras, comisionesLinea, reembolsosLinea);
     }
 
     private BigDecimal compradoSinPagar(UUID restaurantId, UUID branchId, Periodo periodo) {

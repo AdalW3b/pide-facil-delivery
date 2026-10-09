@@ -4,15 +4,19 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.Account;
 import com.stripe.model.AccountLink;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.Refund;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.AccountCreateParams;
 import com.stripe.param.AccountLinkCreateParams;
 import com.stripe.param.PaymentIntentCancelParams;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.stripe.param.PaymentIntentRetrieveParams;
+import com.stripe.param.RefundCreateParams;
+import com.stripe.param.RefundListParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -132,6 +136,30 @@ public class StripeConnect {
         PaymentIntent pi = PaymentIntent.retrieve(paymentIntentId, opciones(cuenta));
         return pi.cancel(PaymentIntentCancelParams.builder()
                 .setCancellationReason(PaymentIntentCancelParams.CancellationReason.ABANDONED).build(), opciones(cuenta));
+    }
+
+    /**
+     * Devuelve al cliente (todo o una parte) en la cuenta del restaurante. La
+     * comision de Pide Facil se devuelve en proporcion: no se cobra sobre lo
+     * que el restaurante regreso.
+     */
+    public Refund reembolsar(String cuenta, String paymentIntentId, long centavos, String motivo, String idempotencia)
+            throws StripeException {
+        RefundCreateParams params = RefundCreateParams.builder()
+                .setPaymentIntent(paymentIntentId)
+                .setAmount(centavos)
+                .setRefundApplicationFee(true)
+                .putMetadata("motivo", motivo != null ? motivo : "")
+                .build();
+        RequestOptions opciones = RequestOptions.builder().setApiKey(llaveExigida()).setStripeAccount(cuenta)
+                .setIdempotencyKey(idempotencia).build();
+        return Refund.create(params, opciones);
+    }
+
+    /** Las devoluciones de un cobro, hechas aqui o desde el panel de Stripe. */
+    public List<Refund> reembolsos(String cuenta, String paymentIntentId) throws StripeException {
+        return Refund.list(RefundListParams.builder().setPaymentIntent(paymentIntentId).setLimit(100L).build(),
+                opciones(cuenta)).getData();
     }
 
     private String llaveExigida() {

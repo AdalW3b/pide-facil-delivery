@@ -1,6 +1,7 @@
 import { SonidosService } from '../../core/services/sonidos.service';
 import { TituloPaginaComponent } from '../../shared/components/titulo-pagina.component';
 import { AvisosService } from '../../core/services/avisos.service';
+import { PagosLineaService } from '../../core/services/pagos-linea.service';
 import { SucursalActivaService } from '../../core/services/sucursal-activa.service';
 import { PesosPipe, formatearPesos } from '../../shared/utils/pesos';
 import { Component, ChangeDetectionStrategy, signal, computed, inject, OnInit, OnDestroy, effect, untracked } from '@angular/core';
@@ -647,6 +648,7 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
   /** Pedidos que ya se vieron en esta sucursal: los que no estén aquí son nuevos y suenan. */
   private conocidos: Set<string> | null = null;
   private readonly http = inject(HttpClient);
+  private readonly pagosLinea = inject(PagosLineaService);
   private readonly authService = inject(AuthService);
   private readonly webSocketService = inject(WebSocketService);
 
@@ -1015,10 +1017,29 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
     );
     // prompt devuelve null solo si cerró el diálogo: ahí no se cancela nada.
     if (motivo === null) return;
-    this.cambiarEstado(p, 'CANCELADO', motivo.trim() || undefined);
+    this.cambiarEstado(p, 'CANCELADO', motivo.trim() || undefined,
+      p.pagadoEnLinea ? () => this.ofrecerDevolucion(p, motivo.trim() || null) : undefined);
   }
 
-  private cambiarEstado(p: DeliveryOrder, estado: DeliveryStatus, motivo?: string): void {
+  /** Cancelado un pedido que el cliente ya pagó con tarjeta: devolverle su dinero. */
+  private async ofrecerDevolucion(p: DeliveryOrder, motivo: string | null): Promise<void> {
+    const si = await this.avisos.confirmar({
+      titulo: '¿Devolver el pago con tarjeta?',
+      mensaje: `El cliente pagó ${formatearPesos(p.total)} con tarjeta. Si lo devuelves, Stripe se lo regresa a su tarjeta (tarda de 5 a 10 días en verlo).`,
+      confirmar: 'Devolver el pago',
+      cancelar: 'Ahora no',
+    });
+    if (!si) {
+      this.avisos.info('Puedes devolverlo después desde Cobros en línea.');
+      return;
+    }
+    this.pagosLinea.reembolsarPedido(p.orderId, motivo).subscribe({
+      next: () => this.avisos.exito('Pago devuelto al cliente.'),
+      error: (err) => this.avisos.error(err.error?.error || 'No se pudo devolver. Hazlo desde Cobros en línea.'),
+    });
+  }
+
+  private cambiarEstado(p: DeliveryOrder, estado: DeliveryStatus, motivo?: string, despues?: () => void): void {
     const branchId = this.activeBranchId();
     if (!branchId) return;
 
@@ -1035,6 +1056,7 @@ export class DeliveryBoardComponent implements OnInit, OnDestroy {
           // El WebSocket ya trae el tablero completo, pero se aplica el cambio
           // de una vez para que el botón responda sin esperar al servidor.
           this.aplicarCambio(actualizado);
+          despues?.();
         },
         error: (err) => {
           this.marcarEnviando(p.orderId, false);

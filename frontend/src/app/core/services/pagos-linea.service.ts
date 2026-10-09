@@ -37,6 +37,46 @@ export interface MovimientoPagosLinea {
   en: string;
 }
 
+export type EstadoCobro = 'PENDIENTE' | 'PROCESANDO' | 'PAGADO' | 'FALLIDO' | 'CANCELADO' | 'REEMBOLSADO' | 'REEMBOLSO_PARCIAL';
+
+/** Un cobro con tarjeta del menú en línea. */
+export interface CobroLinea {
+  id: string;
+  creadoEn: string;
+  pagadoEn: string | null;
+  sucursal: string | null;
+  orderId: string;
+  pedido: string | null;
+  estado: EstadoCobro;
+  monto: number;
+  propina: number;
+  montoReembolsado: number;
+  comisionStripe: number | null;
+  comisionPlataforma: number;
+  neto: number;
+  marca: string | null;
+  ultimos4: string | null;
+  cliente: string | null;
+  error: string | null;
+}
+
+export interface ReembolsoCobro {
+  id: string;
+  monto: number;
+  motivo: string | null;
+  estado: 'PENDIENTE' | 'HECHO' | 'FALLIDO';
+  hechoPor: string | null;
+  creadoEn: string;
+}
+
+export interface DetalleCobro {
+  cobro: CobroLinea;
+  paymentIntentId: string;
+  reembolsable: number;
+  reembolsos: ReembolsoCobro[];
+  puedeReembolsar: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PagosLineaService {
   private readonly http = inject(HttpClient);
@@ -65,6 +105,24 @@ export class PagosLineaService {
 
   bitacora(): Observable<MovimientoPagosLinea[]> {
     return this.http.get<MovimientoPagosLinea[]>(`${this.api}/bitacora`);
+  }
+
+  // Cobros (lista, detalle y devoluciones)
+
+  cobros(desde: string, hasta: string, todos: boolean): Observable<CobroLinea[]> {
+    return this.http.get<CobroLinea[]>(`${this.api}/transacciones`, { params: { desde, hasta, todos } });
+  }
+
+  detalleCobro(id: string): Observable<DetalleCobro> {
+    return this.http.get<DetalleCobro>(`${this.api}/transacciones/${id}`);
+  }
+
+  reembolsar(id: string, monto: number | null, motivo: string): Observable<DetalleCobro> {
+    return this.http.post<DetalleCobro>(`${this.api}/transacciones/${id}/reembolsos`, { monto, motivo });
+  }
+
+  reembolsarPedido(orderId: string, motivo: string | null): Observable<DetalleCobro> {
+    return this.http.post<DetalleCobro>(`${this.api}/pedidos/${orderId}/reembolso`, { motivo });
   }
 
   // Operador de la plataforma

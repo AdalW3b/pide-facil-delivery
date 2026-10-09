@@ -53,7 +53,11 @@ public final class FlujoDTOs {
             List<Concepto> gastosPorCategoria,
             /** Retiros de la caja que no son compras, gastos ni propinas. */
             BigDecimal otrasSalidas,
-            List<Salida> detalleOtrasSalidas) {
+            List<Salida> detalleOtrasSalidas,
+            /** Lo que cobraron Stripe y Pide Facil por los pagos con tarjeta en linea. */
+            BigDecimal comisionesLinea,
+            /** Lo devuelto a clientes que pagaron con tarjeta en linea. */
+            BigDecimal reembolsosLinea) {
     }
 
     public record Dia(LocalDate fecha, BigDecimal ingresos, BigDecimal egresos) {

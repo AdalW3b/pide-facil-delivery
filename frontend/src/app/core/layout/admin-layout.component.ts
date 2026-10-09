@@ -464,6 +464,7 @@ export class AdminLayoutComponent {
       items: [
         { ruta: '/caja', nombre: 'Caja', icono: 'caja', exacta: false, visible: () => this.hasPermission('CAJA_OPERAR') },
         { ruta: '/gastos', nombre: 'Gastos', icono: 'gastos', exacta: false, visible: () => this.isBranchManagerOrHigher() },
+        { ruta: '/cobros-en-linea', nombre: 'Cobros en línea', icono: 'pagosLinea', exacta: false, visible: () => this.isBranchManagerOrHigher() && !this.esOperador() },
         {
           ruta: '/sales-history', nombre: 'Historial de ventas', corto: 'Ventas', icono: 'historial', exacta: false,
           visible: () => this.hasPermission('TABLES_READ') || this.hasPermission('ORDERS_READ'),

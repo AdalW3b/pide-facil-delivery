@@ -92,6 +92,13 @@ export const routes: Routes = [
         data: { requiredPermission: 'CAJA_OPERAR' },
       },
       {
+        // Pagos con tarjeta del menú en línea: lista, detalle y devoluciones.
+        path: 'cobros-en-linea',
+        loadComponent: () => import('./features/caja/cobros-linea.component').then((m) => m.CobrosLineaComponent),
+        canActivate: [roleGuard],
+        data: { expectedRoles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
+      },
+      {
         // Renta, luz, nómina: lo lleva el dueño o el gerente.
         path: 'gastos',
         loadComponent: () => import('./features/gastos/gastos.component').then((m) => m.GastosComponent),

@@ -16,7 +16,7 @@ import java.util.UUID;
 public class BitacoraPagosLinea {
 
     /** Lo que se anota. */
-    public enum Accion { CONECTAR, DESCONECTAR, ESTADO_CUENTA, ACTIVAR, DESACTIVAR, CONFIGURAR, COMISION, REEMBOLSO }
+    public enum Accion { CONECTAR, DESCONECTAR, ESTADO_CUENTA, ACTIVAR, DESACTIVAR, CONFIGURAR, COMISION, REEMBOLSO, DISPUTA }
 
     private final BitacoraPagoLineaRepository repositorio;
 

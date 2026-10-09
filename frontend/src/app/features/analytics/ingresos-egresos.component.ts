@@ -32,6 +32,8 @@ interface Flujo {
     gastos: number;
     gastosPorCategoria: Concepto[];
     otrasSalidas: number;
+    comisionesLinea?: number;
+    reembolsosLinea?: number;
     detalleOtrasSalidas: Salida[];
   };
   resultado: number;
@@ -287,6 +289,8 @@ export class IngresosEgresosComponent implements OnChanges {
       { nombre: 'Pagos de compras a crédito', monto: e.pagosCredito },
       ...e.gastosPorCategoria.map((c) => ({ nombre: CATEGORIAS[c.nombre] ?? c.nombre, monto: c.monto })),
       { nombre: 'Otras salidas de caja', monto: e.otrasSalidas },
+      { nombre: 'Comisiones de pagos con tarjeta en línea', monto: e.comisionesLinea ?? 0 },
+      { nombre: 'Devoluciones de pagos en línea', monto: e.reembolsosLinea ?? 0 },
     ].filter((c) => c.monto > 0);
   });
 
