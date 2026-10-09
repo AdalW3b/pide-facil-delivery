@@ -120,6 +120,17 @@ class DeliveryServiceMostradorTest {
     }
 
     @Test
+    @DisplayName("Kiosko con WhatsApp: le llega su turno y que pase a pagar a caja")
+    void kioskoAvisaPagarEnCaja() {
+        servicio.crearPedidoMostrador(branchId, pedidoDePastor("9511234567", "AQUI"), kiosko);
+
+        org.mockito.ArgumentCaptor<String> texto = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(colaWhatsapp).encolar(eq(branchId), anyString(), texto.capture(), any(), startsWith("kiosko:"));
+        assertTrue(texto.getValue().contains("A-023"), texto.getValue());
+        assertTrue(texto.getValue().contains("Pasa a pagar a caja *$50.00*"), texto.getValue());
+    }
+
+    @Test
     @DisplayName("Kiosko: lo agotado se rechaza al pedir aunque no se descuente inventario")
     void kioskoAgotado() {
         when(agotadosService.estaAgotado(branchId, pastor)).thenReturn(true);

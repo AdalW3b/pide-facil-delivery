@@ -547,6 +547,13 @@ public class DeliveryService {
         orderRepository.save(order);
 
         publicarTablero(branchId);
+        // Del kiosko se paga en caja antes de prepararse: si dejo su numero, se
+        // le recuerda por WhatsApp con su turno y lo que va a pagar.
+        if (delKiosko && customer != null) {
+            colaWhatsapp.encolar(branchId, customer.getPhoneNumber(), mensajePagarEnCaja(order, subtotal),
+                    com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.ESTADO_PEDIDO,
+                    "kiosko:" + order.getId());
+        }
         log.info("Pedido de mostrador {} ({}, {}) en sucursal {}{}: ${}", order.getTurno(), consumo,
                 delKiosko ? "kiosko" : "para recoger", branchId,
                 delKiosko ? " desde " + kiosko.getNombre() : "", subtotal);
@@ -969,6 +976,18 @@ public class DeliveryService {
         colaWhatsapp.encolar(order.getBranch().getId(), order.getCustomer().getPhoneNumber(), texto,
                 estado == DeliveryStatus.CANCELADO ? com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.CANCELACION : com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.ESTADO_PEDIDO,
                 "estado:" + order.getId());
+    }
+
+    /** "Hola Ana, tu turno es A-032. Pasa a pagar a caja $185.00…". */
+    static String mensajePagarEnCaja(Order order, BigDecimal total) {
+        String nombre = order.getClienteExterno() != null && !order.getClienteExterno().isBlank()
+                ? " " + order.getClienteExterno().trim() : "";
+        return "🧾 Hola" + nombre + ", recibimos tu pedido. Tu turno es *" + order.getTurno() + "*.\n"
+                + "👉 Pasa a pagar a caja *$" + total.setScale(2, java.math.RoundingMode.HALF_UP) + "*: "
+                + "en cuanto pagues lo empezamos a preparar.\n"
+                + ("AQUI".equals(order.getConsumo())
+                        ? "Toma asiento, te llamamos por tu turno."
+                        : "Te avisamos por aquí cuando esté listo para recoger.");
     }
 
     /** Como conoce el cliente su pedido: el turno en mostrador, el codigo en domicilio. */

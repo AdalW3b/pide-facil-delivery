@@ -70,15 +70,19 @@ interface Creado {
   total: number;
 }
 
-type Pantalla = 'inicio' | 'menu' | 'datos' | 'listo' | 'sin-activar';
+type Pantalla = 'espera' | 'inicio' | 'menu' | 'datos' | 'listo' | 'sin-activar';
 type Consumo = 'AQUI' | 'LLEVAR';
 
 /** Sin tocar la pantalla este tiempo, se pregunta si sigue ahí. */
 const INACTIVIDAD_MS = 90_000;
 /** Y si no contesta en este tiempo, se vuelve al inicio. */
 const CUENTA_REGRESIVA = 15;
-/** La pantalla del turno se queda este tiempo antes de volver al inicio. */
-const SEGUNDOS_TURNO = 20;
+/** La pantalla del turno se queda este tiempo antes de volver a la espera. */
+const SEGUNDOS_TURNO = 25;
+/** En la bienvenida sin que nadie toque, vuelve la pantalla de espera. */
+const ESPERA_MS = 40_000;
+/** Cada cuánto cambia el platillo de la pantalla de espera. */
+const CAMBIO_FOTO_MS = 6_000;
 
 /**
  * El kiosko de la sucursal: una tablet donde el cliente pide solo. Elige si
@@ -94,6 +98,19 @@ const SEGUNDOS_TURNO = 20;
   imports: [FormsModule, NgTemplateOutlet, PesosPipe, LucidePlus, LucideMinus, LucideX],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block' },
+  styles: [`
+    /* La foto se acerca despacio mientras se ve: la pantalla se siente viva. */
+    @keyframes acercar { from { transform: scale(1); } to { transform: scale(1.14); } }
+    .acercar { animation: acercar 9s ease-out both; }
+    /* El botón late para invitar a tocar. */
+    @keyframes latido { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,.45); } 50% { transform: scale(1.05); box-shadow: 0 0 0 18px rgba(255,255,255,0); } }
+    .latido { animation: latido 2.2s ease-in-out infinite; }
+    @keyframes subir { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .subir { animation: subir .7s cubic-bezier(.16,1,.3,1) both; }
+    @keyframes flotar { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-18px) rotate(4deg); } }
+    .flotar { display: inline-block; animation: flotar 5s ease-in-out infinite; filter: drop-shadow(0 18px 24px rgba(0,0,0,.35)); }
+    @media (prefers-reduced-motion: reduce) { .acercar, .latido, .subir, .flotar { animation: none; } }
+  `],
   template: `
     <div class="fixed inset-0 bg-stone-50 text-stone-900 select-none overflow-hidden flex flex-col">
 
@@ -106,6 +123,66 @@ const SEGUNDOS_TURNO = 20;
           </p>
           <button type="button" (click)="router.navigateByUrl('/')" class="mt-2 px-6 py-3 rounded-2xl bg-stone-900 text-white font-bold cursor-pointer">Ir al inicio</button>
         </div>
+      }
+
+      <!-- ============================== ESPERA: invita a pedir cuando nadie usa el kiosko -->
+      @if (pantalla() === 'espera') {
+        <button type="button" (click)="despertar()" class="relative flex-1 overflow-hidden bg-stone-950 text-white text-left cursor-pointer" aria-label="Toca para ordenar">
+          @if (hayFotos()) {
+            @for (d of destacados(); track d.id; let i = $index) {
+              @if (i === fotoActual() && (d.foto || d.miniatura)) {
+                <img [src]="urlFoto(d.foto || d.miniatura || '')" alt="" class="absolute inset-0 w-full h-full object-cover acercar" />
+              }
+            }
+          } @else {
+            <!-- Sin fotos: fondo con el color de la marca y comida flotando -->
+            <div class="absolute inset-0 bg-gradient-to-br from-orange-500 via-orange-600 to-stone-950"></div>
+            <div class="absolute -right-24 -top-24 w-[34rem] h-[34rem] rounded-full bg-orange-300/30 blur-3xl"></div>
+            <div class="absolute right-[4%] top-[12%] hidden md:grid grid-cols-2 gap-6 text-[7rem] lg:text-[9rem] leading-none select-none" aria-hidden="true">
+              <span class="flotar" style="animation-delay: 0s">🌮</span>
+              <span class="flotar" style="animation-delay: .8s">🥤</span>
+              <span class="flotar" style="animation-delay: 1.6s">🌯</span>
+              <span class="flotar" style="animation-delay: 2.4s">🍰</span>
+            </div>
+          }
+          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20"></div>
+
+          <div class="absolute top-0 inset-x-0 flex items-center gap-4 p-6 sm:p-10">
+            @if (marca.urlLogo(); as logo) {
+              <img [src]="logo" alt="" class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-contain bg-white/95 p-1.5 shadow-xl" />
+            }
+            <p class="text-2xl sm:text-3xl font-black tracking-tight drop-shadow">{{ marca.marca()?.nombre || restaurante() }}</p>
+          </div>
+
+          <div class="absolute inset-x-0 bottom-0 p-6 sm:p-12 lg:p-16 space-y-6">
+            @if (destacadoActual(); as d) {
+              <p class="subir inline-flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-full bg-white/15 backdrop-blur px-5 py-2.5 text-lg sm:text-xl">
+                <span class="font-semibold text-white/80">Hoy se antoja</span>
+                <span class="font-black">{{ d.nombre }}</span>
+                <span class="font-black text-orange-300 tabular-nums">{{ d.precio | pesos }}</span>
+              </p>
+            }
+            <h1 class="text-6xl sm:text-7xl lg:text-8xl font-black leading-[0.92] tracking-tight drop-shadow-lg">¿Se te antoja<br />algo rico?</h1>
+            <p class="max-w-2xl text-xl sm:text-2xl text-white/85">Pide aquí en un minuto, paga en caja y te llamamos por tu turno.</p>
+            <div class="flex flex-wrap items-center gap-x-10 gap-y-5 pt-2">
+              <span class="latido inline-flex items-center gap-3 rounded-full bg-orange-500 px-10 py-6 text-3xl sm:text-4xl font-black shadow-2xl">
+                <span aria-hidden="true">👆</span> Toca para ordenar
+              </span>
+              <ol class="flex flex-wrap gap-x-6 gap-y-2 text-lg font-semibold text-white/85">
+                <li class="flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black">1</span>Elige</li>
+                <li class="flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black">2</span>Paga en caja</li>
+                <li class="flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black">3</span>Te llamamos</li>
+              </ol>
+            </div>
+            @if (destacados().length > 1) {
+              <div class="flex gap-2" aria-hidden="true">
+                @for (d of destacados(); track d.id; let i = $index) {
+                  <span class="h-1.5 rounded-full transition-all duration-500" [class]="i === fotoActual() ? 'w-10 bg-white' : 'w-4 bg-white/35'"></span>
+                }
+              </div>
+            }
+          </div>
+        </button>
       }
 
       <!-- ============================== BIENVENIDA -->
@@ -149,7 +226,7 @@ const SEGUNDOS_TURNO = 20;
               {{ consumo() === 'AQUI' ? '🍽️ Comer aquí' : '🛍️ Para llevar' }} · cambiar
             </button>
           </div>
-          <button type="button" (click)="reiniciar()" class="shrink-0 px-3 py-2 rounded-xl text-sm font-bold text-stone-600 hover:bg-stone-100 cursor-pointer">Empezar de nuevo</button>
+          <button type="button" (click)="reiniciar('inicio')" class="shrink-0 px-3 py-2 rounded-xl text-sm font-bold text-stone-600 hover:bg-stone-100 cursor-pointer">Empezar de nuevo</button>
         </header>
 
         <div class="flex-1 min-h-0 flex">
@@ -245,14 +322,22 @@ const SEGUNDOS_TURNO = 20;
 
       <!-- ============================== TURNO -->
       @if (pantalla() === 'listo' && creado(); as c) {
-        <div class="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center bg-orange-500 text-white">
-          <p class="text-xl font-bold opacity-90">{{ nombre() }}, tu turno es</p>
-          <p class="text-[9rem] leading-none font-black tracking-tight tabular-nums">{{ c.turno }}</p>
-          <p class="text-2xl font-extrabold">Pasa a caja a pagar {{ c.total | pesos }}</p>
-          <p class="max-w-md text-lg opacity-90">
-            {{ c.consumo === 'AQUI' ? 'Toma asiento: te llamamos por tu turno cuando esté listo.' : 'Te llamamos por tu turno para que pases a recogerlo.' }}
+        <div class="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center bg-gradient-to-br from-orange-500 to-orange-600 text-white" role="status">
+          <p class="subir text-2xl font-bold">¡Gracias, {{ nombre() }}! Tu pedido quedó registrado.</p>
+          <div class="subir rounded-[2rem] bg-white text-stone-900 px-12 py-7 shadow-2xl">
+            <p class="text-sm font-black uppercase tracking-[0.3em] text-orange-600">Tu turno</p>
+            <p class="text-[7rem] sm:text-[9rem] leading-none font-black tracking-tight tabular-nums">{{ c.turno }}</p>
+          </div>
+          <p class="subir text-5xl sm:text-6xl font-black tracking-tight">👉 Pasa a pagar a caja</p>
+          <p class="text-4xl font-black tabular-nums">{{ c.total | pesos }}</p>
+          <p class="max-w-xl text-xl opacity-95">
+            Dile tu turno al cajero. En cuanto pagues lo empezamos a preparar.
+            {{ c.consumo === 'AQUI' ? 'Después toma asiento: te llamamos por tu turno.' : 'Te llamamos por tu turno para que pases a recogerlo.' }}
           </p>
-          <button type="button" (click)="reiniciar()" class="mt-4 px-8 py-4 rounded-2xl bg-white text-orange-600 text-lg font-black cursor-pointer">
+          @if (telefono().trim()) {
+            <p class="rounded-full bg-white/15 px-5 py-2 text-lg font-semibold">📲 También te lo mandamos por WhatsApp.</p>
+          }
+          <button type="button" (click)="reiniciar()" class="mt-2 px-10 py-4 rounded-2xl bg-white text-orange-600 text-xl font-black cursor-pointer">
             Listo ({{ segundosTurno() }})
           </button>
         </div>
@@ -374,7 +459,17 @@ export class KioskoComponent implements OnInit, OnDestroy {
   private readonly sucursal = signal<string | null>(null);
   readonly marca = usarMarcaDeSucursal(() => this.sucursal());
 
-  readonly pantalla = signal<Pantalla>('inicio');
+  readonly pantalla = signal<Pantalla>('espera');
+  /** La foto que se ve en la pantalla de espera. */
+  readonly fotoActual = signal(0);
+  /** Platillos para la pantalla de espera: los que se pueden pedir, los que tienen foto primero. */
+  readonly destacados = computed(() => {
+    const disponibles = this.categorias().flatMap((c) => c.items).filter((p) => !p.agotado);
+    const conFoto = disponibles.filter((p) => p.foto || p.miniatura);
+    return (conFoto.length ? conFoto : disponibles).slice(0, 8);
+  });
+  readonly hayFotos = computed(() => this.destacados().some((p) => p.foto || p.miniatura));
+  readonly destacadoActual = computed(() => this.destacados()[this.fotoActual()] ?? null);
   readonly restaurante = signal('');
   readonly errorActivacion = signal<string | null>(null);
   readonly categorias = signal<Categoria[]>([]);
@@ -399,6 +494,8 @@ export class KioskoComponent implements OnInit, OnDestroy {
   private temporizadorInactividad: ReturnType<typeof setTimeout> | null = null;
   private reloj: ReturnType<typeof setInterval> | null = null;
   private temporizadorSalida: ReturnType<typeof setTimeout> | null = null;
+  private temporizadorEspera: ReturnType<typeof setTimeout> | null = null;
+  private carrusel: ReturnType<typeof setInterval> | null = null;
 
   /** En una tablet en la sucursal se habla directo con el backend del entorno. */
   private readonly api = (() => {
@@ -443,9 +540,16 @@ export class KioskoComponent implements OnInit, OnDestroy {
       error: (e: HttpErrorResponse) => this.desactivado(e),
     });
     this.cargarMenu();
+    // La pantalla de espera va pasando los platillos con foto.
+    this.carrusel = setInterval(() => {
+      if (this.pantalla() !== 'espera' || this.destacados().length < 2) return;
+      this.fotoActual.update((i) => (i + 1) % this.destacados().length);
+    }, CAMBIO_FOTO_MS);
   }
 
   ngOnDestroy(): void {
+    if (this.carrusel) clearInterval(this.carrusel);
+    this.pararEspera();
     this.pararInactividad();
     this.pararReloj();
     if (this.temporizadorSalida) clearTimeout(this.temporizadorSalida);
@@ -455,7 +559,27 @@ export class KioskoComponent implements OnInit, OnDestroy {
   // Flujo
   // ------------------------------------------------------------------
 
+  /** Alguien tocó la pantalla de espera: a la bienvenida. */
+  despertar(): void {
+    this.pantalla.set('inicio');
+    this.esperarEnInicio();
+  }
+
+  /** En la bienvenida, si nadie elige nada, vuelve la pantalla de espera. */
+  private esperarEnInicio(): void {
+    this.pararEspera();
+    this.temporizadorEspera = setTimeout(() => {
+      if (this.pantalla() === 'inicio') this.pantalla.set('espera');
+    }, ESPERA_MS);
+  }
+
+  private pararEspera(): void {
+    if (this.temporizadorEspera) clearTimeout(this.temporizadorEspera);
+    this.temporizadorEspera = null;
+  }
+
   empezar(consumo: Consumo): void {
+    this.pararEspera();
     this.consumo.set(consumo);
     this.pantalla.set('menu');
     this.vigilar();
@@ -465,8 +589,11 @@ export class KioskoComponent implements OnInit, OnDestroy {
     this.consumo.update((c) => (c === 'AQUI' ? 'LLEVAR' : 'AQUI'));
   }
 
-  /** Borra todo y vuelve a la bienvenida, para el siguiente cliente. */
-  reiniciar(): void {
+  /**
+   * Borra todo para el siguiente cliente. Por omisión vuelve a la pantalla de
+   * espera; "Empezar de nuevo" regresa a la bienvenida.
+   */
+  reiniciar(destino: 'espera' | 'inicio' = 'espera'): void {
     this.pararInactividad();
     this.pararReloj();
     this.preguntando.set(false);
@@ -476,7 +603,8 @@ export class KioskoComponent implements OnInit, OnDestroy {
     this.telefono.set('');
     this.error.set(null);
     this.creado.set(null);
-    this.pantalla.set('inicio');
+    this.pantalla.set(destino);
+    if (destino === 'inicio') this.esperarEnInicio();
     // De paso, el menú se refresca: lo agotado entre clientes ya no aparece.
     this.cargarMenu();
   }
@@ -616,6 +744,7 @@ export class KioskoComponent implements OnInit, OnDestroy {
   @HostListener('document:pointerdown')
   @HostListener('document:keydown')
   alTocar(): void {
+    if (this.pantalla() === 'inicio') this.esperarEnInicio();
     if (this.pantalla() === 'menu' || this.pantalla() === 'datos') {
       if (!this.preguntando()) this.vigilar();
     }
