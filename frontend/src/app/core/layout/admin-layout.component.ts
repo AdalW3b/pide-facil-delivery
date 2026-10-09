@@ -29,10 +29,13 @@ import {
   LucideBanknote,
   LucideLifeBuoy,
   LucideSparkles,
-  LucidePalette
+  LucidePalette,
+  LucideSun,
+  LucideMoon
 } from '@lucide/angular';
 import { AsistenteService } from '../services/asistente.service';
 import { SucursalActivaService } from '../services/sucursal-activa.service';
+import { TemaService } from '../services/tema.service';
 import { FranjaSoporteComponent } from '../../shared/components/franja-soporte.component';
 import { CampanaAvisosComponent } from '../../shared/components/campana-avisos.component';
 import { AvisosOperacionComponent } from '../../shared/components/avisos-operacion.component';
@@ -88,6 +91,8 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideLifeBuoy,
     LucideSparkles,
     LucidePalette,
+    LucideSun,
+    LucideMoon,
     NgTemplateOutlet,
     FranjaSoporteComponent,
     CampanaAvisosComponent,
@@ -265,6 +270,12 @@ const NOMBRES_DE_ROL: Record<string, string> = {
           </div>
 
           <div class="flex items-center gap-1 shrink-0">
+          <button type="button" (click)="tema.alternar()"
+            class="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            [attr.aria-label]="tema.tema() === 'claro' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'"
+            [attr.title]="tema.tema() === 'claro' ? 'Modo oscuro' : 'Modo claro'">
+            @if (tema.tema() === 'claro') { <svg lucideMoon class="w-5 h-5"></svg> } @else { <svg lucideSun class="w-5 h-5"></svg> }
+          </button>
           @if (userRole() === 'SUPER_ADMIN') {
             <app-campana-avisos />
           }
@@ -349,6 +360,7 @@ export class AdminLayoutComponent {
   readonly sucursalActiva = inject(SucursalActivaService);
   private readonly asistente = inject(AsistenteService);
   readonly marca = inject(MarcaService);
+  readonly tema = inject(TemaService);
 
   // Sidebar state Signal
   readonly isSidebarCollapsed = signal(false);
@@ -383,7 +395,10 @@ export class AdminLayoutComponent {
     // El equipo ve el panel con la marca de su restaurante; al salir (cerrar
     // sesión, ir a la landing) se regresa a la de Pide Facil.
     this.marca.cargarPropia();
+    // Claro u oscuro, como lo dejó cada quien en este dispositivo.
+    this.tema.activar();
     inject(DestroyRef).onDestroy(() => {
+      this.tema.desactivar();
       consulta.removeEventListener('change', alCambiar);
       navegacion.unsubscribe();
       this.marca.quitar();
