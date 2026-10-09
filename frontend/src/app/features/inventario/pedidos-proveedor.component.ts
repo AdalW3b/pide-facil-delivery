@@ -148,6 +148,11 @@ const DIAS_JS = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
               <strong class="text-sm text-white truncate">{{ p.proveedor }}</strong>
               <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded" [class]="pill(p).clase">{{ pill(p).texto }}</span>
             </div>
+            @if (p.estado === 'PENDIENTE') {
+              <p class="text-[11px]" [class]="p.enviadoEn ? 'text-emerald-300' : 'text-amber-300'">
+                {{ p.enviadoEn ? '✓ Mandado por WhatsApp a las ' + hora(p.enviadoEn) : 'Sin mandar: falta el WhatsApp del proveedor' }}
+              </p>
+            }
             <ul class="text-xs text-slate-300 space-y-0.5">
               @for (r of p.renglones; track r.id) {
                 <li>
@@ -186,19 +191,33 @@ const DIAS_JS = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
               <svg lucideX class="w-4 h-4"></svg>
             </button>
           </div>
+          @if (m.enviadoEn) {
+            <p class="rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2.5 text-sm text-emerald-200" role="status">
+              ✓ Se le mandó por el WhatsApp de la sucursal a las {{ hora(m.enviadoEn) }}. Si la sesión de WhatsApp está caída, sale en cuanto se reconecte.
+            </p>
+          } @else if (m.telefono) {
+            <p class="rounded-xl bg-amber-500/10 border border-amber-500/30 px-3.5 py-2.5 text-sm text-amber-200">Todavía no se le manda.</p>
+          } @else {
+            <p class="rounded-xl bg-amber-500/10 border border-amber-500/30 px-3.5 py-2.5 text-sm text-amber-200">
+              {{ m.proveedor }} no tiene WhatsApp en su ficha: ponlo en Proveedores para que el pedido le llegue solo. Mientras, ábrelo en tu WhatsApp o cópialo.
+            </p>
+          }
           <pre class="whitespace-pre-wrap rounded-xl border border-emerald-900 bg-emerald-950/60 p-3.5 font-mono text-[13px] leading-relaxed text-emerald-100">{{ m.mensaje }}</pre>
           <div class="flex flex-wrap items-center gap-2">
+            @if (m.telefono && m.estado === 'PENDIENTE') {
+              <button type="button" (click)="enviar(m)" [disabled]="enviando()"
+                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold cursor-pointer disabled:opacity-40 min-h-[44px]">
+                <svg lucideMessageCircle class="w-4 h-4"></svg> {{ m.enviadoEn ? 'Volver a mandar' : 'Mandar por WhatsApp' }}
+              </button>
+            }
             <a [href]="enlaceWhatsapp(m)" target="_blank" rel="noopener"
-              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold min-h-[44px]">
-              <svg lucideMessageCircle class="w-4 h-4"></svg> Enviar por WhatsApp
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-700 text-sm font-semibold text-slate-200 hover:border-slate-500 min-h-[44px]">
+              Abrir en mi WhatsApp
             </a>
             <button type="button" (click)="copiar(m)" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-700 text-sm font-semibold text-slate-200 hover:border-slate-500 cursor-pointer min-h-[44px]">
               <svg lucideCopy class="w-4 h-4"></svg> Copiar
             </button>
           </div>
-          <p class="text-[11px] text-slate-500">
-            {{ m.telefono ? 'Se abre WhatsApp con el chat de ' + m.proveedor + ' y el mensaje listo.' : m.proveedor + ' no tiene WhatsApp en su ficha: WhatsApp te pedirá elegir el contacto.' }}
-          </p>
         </div>
       </div>
     }
@@ -225,6 +244,7 @@ export class PedidosProveedorComponent implements OnChanges {
   readonly lineas = signal<LineaPedido[]>([]);
   readonly guardando = signal(false);
   readonly mensaje = signal<Pedido | null>(null);
+  readonly enviando = signal(false);
   private readonly listaProveedores = signal<Proveedor[]>([]);
   private readonly listaArticulos = signal<ArticuloCompra[]>([]);
 
@@ -355,6 +375,7 @@ export class PedidosProveedorComponent implements OnChanges {
         this.lineas.set([]);
         this.nota.set('');
         this.mensaje.set(pedido);
+        if (pedido.enviadoEn) this.avisos.exito(`Pedido mandado por WhatsApp a ${pedido.proveedor}.`);
         this.cambio.emit();
       },
       error: (err) => {
@@ -377,6 +398,28 @@ export class PedidosProveedorComponent implements OnChanges {
       },
       error: (err) => this.avisos.error(err.error?.error || 'No se pudo cancelar el pedido.'),
     });
+  }
+
+  /** Lo manda (o lo vuelve a mandar) por el WhatsApp de la sucursal. */
+  enviar(p: Pedido): void {
+    if (this.enviando()) return;
+    this.enviando.set(true);
+    this.http.post<Pedido>(this.api(`pedidos/${p.id}/enviar`), {}).subscribe({
+      next: (r) => {
+        this.enviando.set(false);
+        this.mensaje.set(r);
+        this.avisos.exito(`Pedido mandado por WhatsApp a ${r.proveedor}.`);
+        this.cambio.emit();
+      },
+      error: (err) => {
+        this.enviando.set(false);
+        this.avisos.error(err.error?.error || 'No se pudo mandar el pedido.');
+      },
+    });
+  }
+
+  hora(iso: string): string {
+    return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
   }
 
   enlaceWhatsapp(p: Pedido): string {

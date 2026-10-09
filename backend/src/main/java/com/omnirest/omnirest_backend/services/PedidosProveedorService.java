@@ -33,6 +33,7 @@ public class PedidosProveedorService {
     private final PedidoProveedorRepository pedidoRepository;
     private final ComprasService compras;
     private final OperacionesInventarioService operaciones;
+    private final ColaWhatsapp colaWhatsapp;
 
     /** Lo que conviene pedir para una semana y quien lo surte. */
     @Transactional(readOnly = true)
@@ -87,21 +88,57 @@ public class PedidosProveedorService {
             pedido.getRenglones().add(renglon(pedido, r, restaurantId, orden++));
         }
         pedido = pedidoRepository.save(pedido);
+        // Como al repartidor: si el proveedor tiene WhatsApp, el pedido le
+        // llega solo desde el numero de la sucursal.
+        if (TelefonoMx.esValido(proveedor.getTelefono())) {
+            mandar(pedido, proveedor, sucursal);
+        }
         return aDto(pedido, proveedor, sucursal);
+    }
+
+    /** Lo manda (o lo vuelve a mandar) por el WhatsApp de la sucursal. */
+    @Transactional
+    public ComprasDTOs.Pedido enviar(UUID branchId, UUID id) {
+        Branch sucursal = sucursal(branchId);
+        PedidoProveedor p = pedido(branchId, id);
+        if (!PedidoProveedor.PENDIENTE.equals(p.getEstado())) {
+            throw new IllegalStateException("Ese pedido ya está " + p.getEstado().toLowerCase() + ".");
+        }
+        Proveedor proveedor = p.getProveedorId() != null ? proveedorRepository.findById(p.getProveedorId()).orElse(null) : null;
+        if (proveedor == null || !TelefonoMx.esValido(proveedor.getTelefono())) {
+            throw new IllegalArgumentException("Ponle el WhatsApp a " + p.getProveedor() + " en Proveedores para mandarle el pedido.");
+        }
+        mandar(p, proveedor, sucursal);
+        return aDto(p, proveedor, sucursal);
+    }
+
+    private void mandar(PedidoProveedor p, Proveedor proveedor, Branch sucursal) {
+        String telefono = TelefonoMx.canonico(proveedor.getTelefono());
+        colaWhatsapp.encolar(sucursal.getId(), telefono, mensaje(p, sucursal),
+                com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.PEDIDO_PROVEEDOR, "proveedor:" + p.getId());
+        p.setEnviadoEn(LocalDateTime.now());
+        p.setEnviadoA(telefono);
+        pedidoRepository.save(p);
     }
 
     /** Un pedido que ya no va a llegar. */
     @Transactional
     public ComprasDTOs.Resultado cancelar(UUID branchId, UUID id) {
-        PedidoProveedor p = pedidoRepository.findById(id)
-                .filter(x -> x.getBranchId().equals(branchId))
-                .orElseThrow(() -> new IllegalArgumentException("Ese pedido no es de esta sucursal."));
+        PedidoProveedor p = pedido(branchId, id);
         if (!PedidoProveedor.PENDIENTE.equals(p.getEstado())) {
             throw new IllegalStateException("Solo se cancela un pedido que no ha llegado.");
         }
         p.setEstado(PedidoProveedor.CANCELADO);
         p.setCerradoEn(LocalDateTime.now());
         pedidoRepository.save(p);
+        // Si ya le habia llegado, se le avisa por el mismo medio.
+        if (p.getEnviadoA() != null) {
+            Branch sucursal = sucursal(branchId);
+            colaWhatsapp.encolar(branchId, p.getEnviadoA(),
+                    "Buen día, le escribe " + quienEscribe(sucursal) + ". Le pedimos *cancelar* el pedido"
+                            + (p.getPara() != null ? " para el " + p.getPara().format(DIA) : "") + " que le enviamos. Gracias.",
+                    com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.PEDIDO_PROVEEDOR, "proveedor:" + p.getId());
+        }
         return new ComprasDTOs.Resultado("Pedido a " + p.getProveedor() + " cancelado.");
     }
 
@@ -154,7 +191,7 @@ public class PedidosProveedorService {
         return new ComprasDTOs.Pedido(p.getId(), p.getProveedorId(), p.getProveedor(),
                 proveedor != null ? proveedor.getTelefono() : null,
                 p.getPara(), p.getNota(), p.getEstado(), p.getCreadoPor(), p.getCreadoEn(), p.getCerradoEn(), p.getCompraId(),
-                renglones, mensaje(p, sucursal));
+                renglones, mensaje(p, sucursal), p.getEnviadoEn(), p.getEnviadoA());
     }
 
     /**
@@ -164,12 +201,7 @@ public class PedidosProveedorService {
      * Gracias.
      */
     static String mensaje(PedidoProveedor p, Branch sucursal) {
-        String restaurante = sucursal.getRestaurant() != null ? sucursal.getRestaurant().getName() : null;
-        String quien = restaurante != null ? restaurante : sucursal.getName();
-        if (restaurante != null && sucursal.getName() != null && !sucursal.getName().equalsIgnoreCase(restaurante)) {
-            quien += " (sucursal " + sucursal.getName() + ")";
-        }
-        StringBuilder sb = new StringBuilder("Buen día, le escribe ").append(quien).append(".\n");
+        StringBuilder sb = new StringBuilder("Buen día, le escribe ").append(quienEscribe(sucursal)).append(".\n");
         if (p.getPara() != null) {
             LocalDate hoy = Combos.hoy();
             String dia = p.getPara().format(DIA);
@@ -184,8 +216,24 @@ public class PedidosProveedorService {
         return sb.append("Gracias.").toString();
     }
 
+    private PedidoProveedor pedido(UUID branchId, UUID id) {
+        return pedidoRepository.findById(id)
+                .filter(x -> x.getBranchId().equals(branchId))
+                .orElseThrow(() -> new IllegalArgumentException("Ese pedido no es de esta sucursal."));
+    }
+
     private Branch sucursal(UUID branchId) {
         return branchRepository.findById(branchId).orElseThrow(() -> new IllegalArgumentException("Sucursal no encontrada."));
+    }
+
+    /** "Tacos Prime (sucursal Centro)". */
+    static String quienEscribe(Branch sucursal) {
+        String restaurante = sucursal.getRestaurant() != null ? sucursal.getRestaurant().getName() : null;
+        String quien = restaurante != null ? restaurante : sucursal.getName();
+        if (restaurante != null && sucursal.getName() != null && !sucursal.getName().equalsIgnoreCase(restaurante)) {
+            quien += " (sucursal " + sucursal.getName() + ")";
+        }
+        return quien;
     }
 
     private static String recortar(String s) {

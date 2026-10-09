@@ -194,7 +194,10 @@ public final class ComprasDTOs {
             UUID compraId,
             List<RenglonDePedido> renglones,
             /** El texto para WhatsApp: "Buen día, le escribe…". */
-            String mensaje) {
+            String mensaje,
+            /** Cuando salio por el WhatsApp de la sucursal (null si no se ha mandado). */
+            LocalDateTime enviadoEn,
+            String enviadoA) {
     }
 
     /** Lo que conviene pedir (consumo de la ultima semana contra lo que hay) y quien lo surte. */

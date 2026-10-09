@@ -33,7 +33,9 @@ public class MensajeWhatsapp {
         /** La cuenta que el mesero le manda al cliente desde el panel. */
         CUENTA(60),
         /** El ticket que le llega al cliente cuando se cobra su cuenta. */
-        TICKET(120);
+        TICKET(120),
+        /** El pedido de mercancia a un proveedor: vale la mitad del dia. */
+        PEDIDO_PROVEEDOR(720);
 
         /** Cuanto sigue valiendo la pena mandarlo. */
         public final int minutosDeVida;

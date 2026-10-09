@@ -154,6 +154,14 @@ public class ComprasController {
         return ResponseEntity.ok(pedidos.crear(branchId, datos));
     }
 
+    /** Lo manda (o lo vuelve a mandar) por el WhatsApp de la sucursal. */
+    @PostMapping("/pedidos/{id}/enviar")
+    @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
+    public ResponseEntity<ComprasDTOs.Pedido> enviarPedido(@PathVariable UUID branchId, @PathVariable UUID id) {
+        seguridad.validateUserAccessToBranch(branchId);
+        return ResponseEntity.ok(pedidos.enviar(branchId, id));
+    }
+
     @PostMapping("/pedidos/{id}/cancelar")
     @PreAuthorize("hasAnyAuthority('INVENTORY_UPDATE', 'CATALOG_UPDATE')")
     public ResponseEntity<ComprasDTOs.Resultado> cancelarPedido(@PathVariable UUID branchId, @PathVariable UUID id) {

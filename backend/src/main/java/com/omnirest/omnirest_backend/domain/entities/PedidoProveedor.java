@@ -60,6 +60,13 @@ public class PedidoProveedor {
     @Column(name = "cerrado_en")
     private LocalDateTime cerradoEn;
 
+    /** Cuando se le mando por WhatsApp al proveedor, y a que numero. */
+    @Column(name = "enviado_en")
+    private LocalDateTime enviadoEn;
+
+    @Column(name = "enviado_a", length = 30)
+    private String enviadoA;
+
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("orden ASC")
     @Builder.Default

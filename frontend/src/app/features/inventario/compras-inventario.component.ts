@@ -96,6 +96,9 @@ export interface Pedido {
   compraId: string | null;
   renglones: RenglonDePedido[];
   mensaje: string;
+  /** Cuándo salió por el WhatsApp de la sucursal; null si no se ha mandado. */
+  enviadoEn: string | null;
+  enviadoA: string | null;
 }
 
 /** Un renglón de la nota. "u:kg" = unidad suelta; "p:<id>" = presentación del proveedor. */
