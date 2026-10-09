@@ -18,5 +18,7 @@ public record PedidoDomicilioResponseDTO(
         BigDecimal total,
         BigDecimal distanciaKm,
         Integer minutosEstimados,
-        BigDecimal cambioSugerido) {
+        BigDecimal cambioSugerido,
+        /** Solo si eligio tarjeta: con esto el menu muestra el formulario de pago. */
+        PagoEnLineaDTO pago) {
 }

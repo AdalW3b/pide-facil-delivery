@@ -58,6 +58,7 @@ class DeliveryServiceMostradorTest {
     @Mock PagoRepository pagoRepository;
     @Mock Turnos turnos;
     @Mock AreasService areasService;
+    @Mock com.omnirest.omnirest_backend.services.pagoslinea.CobrosLineaService cobrosLinea;
     @InjectMocks DeliveryService servicio;
 
     private final UUID branchId = UUID.randomUUID();
@@ -91,7 +92,7 @@ class DeliveryServiceMostradorTest {
 
     private PedidoMostradorDTOs.Crear pedidoDePastor(String telefono, String consumo) {
         return new PedidoMostradorDTOs.Crear(
-                List.of(new PedidoDomicilioItemDTO(pastor.getId(), 2, null, List.of())), "Ana", telefono, consumo, null);
+                List.of(new PedidoDomicilioItemDTO(pastor.getId(), 2, null, List.of())), "Ana", telefono, consumo, null, null);
     }
 
     private Order ultimo() {

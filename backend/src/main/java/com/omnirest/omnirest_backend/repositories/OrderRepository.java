@@ -67,6 +67,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
            "LEFT JOIN FETCH o.customer " +
            "WHERE o.branch.id = :branchId " +
            "AND o.orderType <> com.omnirest.omnirest_backend.domain.enums.OrderType.SALON " +
+           "AND o.esperandoPagoLinea = false " +
            "AND (:soloActivos = false OR o.deliveryStatus NOT IN (" +
            "     com.omnirest.omnirest_backend.domain.enums.DeliveryStatus.ENTREGADO, " +
            "     com.omnirest.omnirest_backend.domain.enums.DeliveryStatus.CANCELADO)) " +
@@ -85,6 +86,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
            "LEFT JOIN FETCH o.customer " +
            "WHERE o.branch.id = :branchId " +
            "AND o.orderType <> com.omnirest.omnirest_backend.domain.enums.OrderType.SALON " +
+           "AND o.esperandoPagoLinea = false " +
            "AND o.createdAt >= :desde " +
            "AND (:soloActivos = false OR o.deliveryStatus NOT IN (" +
            "     com.omnirest.omnirest_backend.domain.enums.DeliveryStatus.ENTREGADO, " +

@@ -22,6 +22,7 @@ import {
   LucideUsers,
   LucideReceipt,
   LucideCreditCard,
+  LucideGlobe,
   LucideChevronDown,
   LucideX,
   LucideBarChart3,
@@ -83,6 +84,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
     LucideUsers,
     LucideReceipt,
     LucideCreditCard,
+    LucideGlobe,
     LucideChevronDown,
     LucideX,
     LucideBarChart3,
@@ -115,6 +117,7 @@ const NOMBRES_DE_ROL: Record<string, string> = {
         @case ('inventario') { <svg lucideBoxes class="w-5 h-5 shrink-0"></svg> }
         @case ('sucursales') { <svg lucideStore class="w-5 h-5 shrink-0"></svg> }
         @case ('pagos') { <svg lucideCreditCard class="w-5 h-5 shrink-0"></svg> }
+        @case ('pagosLinea') { <svg lucideGlobe class="w-5 h-5 shrink-0"></svg> }
         @case ('whatsapp') { <svg lucideMessageSquare class="w-5 h-5 shrink-0"></svg> }
         @case ('empleados') { <svg lucideUsers class="w-5 h-5 shrink-0"></svg> }
         @case ('roles') { <svg lucideUserCheck class="w-5 h-5 shrink-0"></svg> }
@@ -493,6 +496,7 @@ export class AdminLayoutComponent {
       items: [
         { ruta: '/settings/sucursales', nombre: 'Sucursales', icono: 'sucursales', exacta: false, visible: () => this.hasPermission('BRANCH_UPDATE') },
         { ruta: '/settings', nombre: 'Métodos de pago', icono: 'pagos', exacta: true, visible: () => this.isBranchManagerOrHigher() || this.esOperador() },
+        { ruta: '/settings/pagos-en-linea', nombre: 'Pagos en línea', icono: 'pagosLinea', exacta: false, visible: () => this.userRole() === 'SUPER_ADMIN' },
         { ruta: '/settings/whatsapp', nombre: 'WhatsApp', icono: 'whatsapp', exacta: false, visible: () => this.isBranchManagerOrHigher() || this.esOperador() },
         { ruta: '/admin/employees', nombre: 'Empleados', icono: 'empleados', exacta: false, visible: () => this.isBranchManagerOrHigher() },
         { ruta: '/admin/roles', nombre: 'Roles y permisos', icono: 'roles', exacta: false, visible: () => this.isBranchManagerOrHigher() },

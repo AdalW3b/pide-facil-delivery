@@ -23,8 +23,13 @@ public class Pago {
     @Column(name = "order_id", nullable = false)
     private UUID orderId;
 
-    @Column(name = "turno_id", nullable = false)
+    /** El turno de caja. Vacio en un pago en linea: no toca el efectivo del cajon. */
+    @Column(name = "turno_id")
     private UUID turnoId;
+
+    /** El cobro de Stripe, si se pago en linea. */
+    @Column(name = "transaccion_linea_id")
+    private UUID transaccionLineaId;
 
     @Column(name = "payment_method_id")
     private UUID paymentMethodId;

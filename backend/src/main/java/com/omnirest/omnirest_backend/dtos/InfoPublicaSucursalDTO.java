@@ -15,5 +15,10 @@ public record InfoPublicaSucursalDTO(
         /** Lo que paga el cliente dentro de los km incluidos (0 = gratis). */
         BigDecimal envioDesde,
         BigDecimal kmIncluidos,
-        BigDecimal pedidoMinimo
-) {}
+        BigDecimal pedidoMinimo,
+        /** Como puede pagar: tarjeta en linea (si el restaurante la activo), efectivo, en tienda. */
+        FormasPago formasPago
+) {
+    public record FormasPago(boolean tarjeta, boolean efectivo, boolean enTienda) {
+    }
+}

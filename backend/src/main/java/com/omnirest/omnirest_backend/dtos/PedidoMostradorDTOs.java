@@ -23,7 +23,9 @@ public final class PedidoMostradorDTOs {
             @Size(max = 20) String telefono,
             /** AQUI o LLEVAR. Pasar a recoger siempre es LLEVAR. */
             @Pattern(regexp = "AQUI|LLEVAR", message = "Elige si es para comer aquí o para llevar.") String consumo,
-            @Size(max = 300) String notas) {
+            @Size(max = 300) String notas,
+            /** Pasar a recoger: TARJETA (en linea) o TIENDA (en caja al recoger). Vacio = en tienda. */
+            @Pattern(regexp = "TARJETA|TIENDA", message = "Elige cómo vas a pagar.") String formaPago) {
     }
 
     public record Creado(
@@ -33,6 +35,8 @@ public final class PedidoMostradorDTOs {
             String consumo,
             BigDecimal total,
             /** Del kiosko: hay que pasar a caja antes de que se prepare. */
-            boolean pagarEnCaja) {
+            boolean pagarEnCaja,
+            /** Solo si eligio tarjeta: con esto el menu muestra el formulario de pago. */
+            PagoEnLineaDTO pago) {
     }
 }

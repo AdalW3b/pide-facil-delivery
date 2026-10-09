@@ -177,6 +177,16 @@ public class Order {
     @Builder.Default
     private Boolean repartoExterno = false;
 
+    /** Pagado con tarjeta en el menu en linea y Stripe todavia no lo confirma: no lo ve nadie. */
+    @Column(name = "esperando_pago_linea", nullable = false)
+    @Builder.Default
+    private Boolean esperandoPagoLinea = false;
+
+    /** Ya pagado con tarjeta en linea: el repartidor no cobra. */
+    @Column(name = "pagado_en_linea", nullable = false)
+    @Builder.Default
+    private Boolean pagadoEnLinea = false;
+
     @Column(name = "token_seguimiento", length = 40)
     private String tokenSeguimiento;
 

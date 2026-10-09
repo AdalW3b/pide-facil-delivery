@@ -82,6 +82,7 @@ public class DeliveryService {
     private final com.omnirest.omnirest_backend.repositories.PagoRepository pagoRepository;
     private final Turnos turnos;
     private final AreasService areasService;
+    private final com.omnirest.omnirest_backend.services.pagoslinea.CobrosLineaService cobrosLinea;
 
     /** Desde donde se sirve el sitio del cliente y del repartidor. */
     @org.springframework.beans.factory.annotation.Value("${omnirest.url-publica:http://localhost:4200}")
@@ -114,7 +115,13 @@ public class DeliveryService {
                 config != null ? config.getMinutosEstimados() : null,
                 envioDesde,
                 config != null ? config.getKmIncluidos() : null,
-                config != null ? config.getPedidoMinimo() : null);
+                config != null ? config.getPedidoMinimo() : null,
+                formasPago(branch.getRestaurant().getId()));
+    }
+
+    private com.omnirest.omnirest_backend.dtos.InfoPublicaSucursalDTO.FormasPago formasPago(UUID restaurantId) {
+        var f = cobrosLinea.formas(restaurantId);
+        return new com.omnirest.omnirest_backend.dtos.InfoPublicaSucursalDTO.FormasPago(f.tarjeta(), f.efectivo(), f.enTienda());
     }
 
     /**
@@ -207,10 +214,22 @@ public class DeliveryService {
 
     @Transactional
     public PedidoDomicilioResponseDTO crearPedido(UUID branchId, CrearPedidoDomicilioRequestDTO request) {
+        return crearPedido(branchId, request, true);
+    }
+
+    /**
+     * @param delCliente lo pidio el cliente en el menu: se respetan las formas de
+     *                   pago que abrio el restaurante. Por telefono lo captura el
+     *                   mostrador y se paga al recibir.
+     */
+    private PedidoDomicilioResponseDTO crearPedido(UUID branchId, CrearPedidoDomicilioRequestDTO request,
+                                                   boolean delCliente) {
         Branch branch = buscarSucursal(branchId);
         UUID restaurantId = branch.getRestaurant().getId();
 
         planLimitService.checkDeliveryAvailable(restaurantId);
+        // Con tarjeta, el pedido espera el pago antes de que alguien lo vea.
+        boolean conTarjeta = delCliente && cobrosLinea.exigirForma(restaurantId, request.formaPago(), false);
 
         BranchDeliverySettings config = deliverySettingsRepository.findById(branchId)
                 .filter(BranchDeliverySettings::listoParaRepartir)
@@ -249,16 +268,19 @@ public class DeliveryService {
                 .envioTotal(envio.costoTotal())
                 .envioAbsorbido(envio.absorbeRestaurante())
                 .envioCobrado(envio.pagaCliente())
-                .pagaCon(request.pagaCon())
+                .pagaCon(conTarjeta ? null : request.pagaCon())
                 .propina(request.propina())
                 .minutosEstimados(config.getMinutosEstimados())
                 .tokenSeguimiento(nuevoToken())
                 .origen("WEB")
+                // Si no se paga, se cancela sin haber tocado el inventario: se descuenta al aceptarlo.
+                .esperandoPagoLinea(conTarjeta)
+                .descontarAlAceptar(conTarjeta)
                 .build();
         order = orderRepository.save(order);
 
         List<OrderItem> items = new ArrayList<>();
-        BigDecimal subtotal = armarPlatillos(order, request.items(), restaurantId, branchId, items);
+        BigDecimal subtotal = armarPlatillos(order, request.items(), restaurantId, branchId, items, !conTarjeta);
 
         // 3. El pedido minimo se mide sobre la comida, sin contar el envio: de
         // otro modo un envio caro haria pasar un pedido chico.
@@ -281,13 +303,21 @@ public class DeliveryService {
         }
 
         // El pedido nace en NUEVO, asi que todavia no va a cocina: quien tiene
-        // que verlo aparecer es el mostrador, para aceptarlo.
-        publicarTablero(branchId);
+        // que verlo aparecer es el mostrador, para aceptarlo. Con tarjeta, hasta
+        // que Stripe confirme el pago.
+        if (!conTarjeta) {
+            publicarTablero(branchId);
+        }
 
         BigDecimal envioCobrado = envio.pagaCliente();
         BigDecimal propina = request.propina() != null ? request.propina() : BigDecimal.ZERO;
         BigDecimal total = subtotal.add(envioCobrado).add(propina);
-        exigirQueAlcance(request.pagaCon(), total);
+        com.omnirest.omnirest_backend.dtos.PagoEnLineaDTO pago = null;
+        if (conTarjeta) {
+            pago = cobrosLinea.iniciar(order, total, propina, customer.getPhoneNumber());
+        } else {
+            exigirQueAlcance(request.pagaCon(), total);
+        }
 
         log.info("Pedido a domicilio {} creado en sucursal {}: {} km, comida ${}, envio ${}",
                 order.getTokenSeguimiento(), branchId, envio.distanciaKm(), subtotal, envioCobrado);
@@ -301,7 +331,8 @@ public class DeliveryService {
                 total,
                 envio.distanciaKm(),
                 order.getMinutosEstimados(),
-                cambio(request.pagaCon(), total));
+                conTarjeta ? null : cambio(request.pagaCon(), total),
+                pago);
     }
 
     /** Pedidos sin confirmar que puede tener un mismo telefono a la vez. */
@@ -434,7 +465,7 @@ public class DeliveryService {
             creado = crearPedido(branchId, new CrearPedidoDomicilioRequestDTO(
                     p.phoneNumber(), p.nombre(), p.direccion().trim(), p.referencias(),
                     p.latitud(), p.longitud(), p.notas(), p.guardarDireccion(), p.aliasDireccion(),
-                    p.items(), p.pagaCon(), null));
+                    p.items(), p.pagaCon(), null, null), false);
         } else {
             creado = crearParaLlevar(branchId, p);
         }
@@ -451,7 +482,7 @@ public class DeliveryService {
         log.info("Pedido telefonico {} ({}) creado en sucursal {}", creado.tokenSeguimiento(), p.tipo(), branchId);
         return new PedidoDomicilioResponseDTO(creado.orderId(), creado.tokenSeguimiento(), DeliveryStatus.CONFIRMADO,
                 creado.subtotal(), creado.envioCobrado(), creado.total(), creado.distanciaKm(),
-                creado.minutosEstimados(), creado.cambioSugerido());
+                creado.minutosEstimados(), creado.cambioSugerido(), null);
     }
 
     /** Para llevar: sin direccion, sin envio y sin repartidor. */
@@ -486,7 +517,7 @@ public class DeliveryService {
         orderRepository.save(order);
 
         return new PedidoDomicilioResponseDTO(order.getId(), order.getTokenSeguimiento(), order.getDeliveryStatus(),
-                subtotal, BigDecimal.ZERO, subtotal, null, order.getMinutosEstimados(), cambio(p.pagaCon(), subtotal));
+                subtotal, BigDecimal.ZERO, subtotal, null, order.getMinutosEstimados(), cambio(p.pagaCon(), subtotal), null);
     }
 
     // ------------------------------------------------------------------
@@ -513,6 +544,8 @@ public class DeliveryService {
             planLimitService.checkDeliveryAvailable(restaurantId);
         }
 
+        // Pasar a recoger puede pagarse con tarjeta al pedir; el kiosko se paga en caja.
+        boolean conTarjeta = !delKiosko && cobrosLinea.exigirForma(restaurantId, p.formaPago(), true);
         String consumo = delKiosko && "AQUI".equals(p.consumo()) ? "AQUI" : "LLEVAR";
         String telefono = p.telefono() != null ? p.telefono().trim() : "";
         if (!delKiosko && telefono.isEmpty()) {
@@ -537,16 +570,22 @@ public class DeliveryService {
                 .turno(turnos.siguiente(branchId))
                 .consumo(consumo)
                 .origen(delKiosko ? "KIOSKO" : "WEB")
-                .descontarAlAceptar(delKiosko)
+                .descontarAlAceptar(delKiosko || conTarjeta)
+                .esperandoPagoLinea(conTarjeta)
                 .build());
 
         List<OrderItem> items = new ArrayList<>();
-        BigDecimal subtotal = armarPlatillos(order, p.items(), restaurantId, branchId, items, !delKiosko);
+        BigDecimal subtotal = armarPlatillos(order, p.items(), restaurantId, branchId, items, !delKiosko && !conTarjeta);
         orderItemRepository.saveAll(items);
         order.setTotalAmount(subtotal);
         orderRepository.save(order);
 
-        publicarTablero(branchId);
+        com.omnirest.omnirest_backend.dtos.PagoEnLineaDTO pago = conTarjeta
+                ? cobrosLinea.iniciar(order, subtotal, BigDecimal.ZERO, customer != null ? customer.getPhoneNumber() : null)
+                : null;
+        if (!conTarjeta) {
+            publicarTablero(branchId);
+        }
         // Del kiosko se paga en caja antes de prepararse: si dejo su numero, se
         // le recuerda por WhatsApp con su turno y lo que va a pagar.
         if (delKiosko && customer != null) {
@@ -558,7 +597,7 @@ public class DeliveryService {
                 delKiosko ? "kiosko" : "para recoger", branchId,
                 delKiosko ? " desde " + kiosko.getNombre() : "", subtotal);
         return new com.omnirest.omnirest_backend.dtos.PedidoMostradorDTOs.Creado(
-                order.getId(), order.getTurno(), order.getTokenSeguimiento(), consumo, subtotal, delKiosko);
+                order.getId(), order.getTurno(), order.getTokenSeguimiento(), consumo, subtotal, delKiosko, pago);
     }
 
     // ------------------------------------------------------------------
@@ -596,6 +635,10 @@ public class DeliveryService {
 
         DeliveryStatus actual = order.getDeliveryStatus() != null ? order.getDeliveryStatus() : DeliveryStatus.NUEVO;
         DeliveryStatus nuevo = peticion.estado();
+
+        if (Boolean.TRUE.equals(order.getEsperandoPagoLinea())) {
+            throw new IllegalStateException("Este pedido todavía espera el pago con tarjeta del cliente.");
+        }
 
         if (!actual.puedeAvanzarA(nuevo)) {
             throw new IllegalStateException(actual.esFinal()
@@ -921,6 +964,26 @@ public class DeliveryService {
     @org.springframework.context.event.EventListener
     public void alCambiarPedido(PedidoDomicilioCambio cambio) {
         publicarTablero(cambio.branchId());
+    }
+
+    /**
+     * Stripe resolvio el pago en linea. Pagado: el pedido aparece en el
+     * mostrador como cualquier otro. No pagado: se cancela; nunca llego a
+     * cocina ni desconto inventario.
+     */
+    @org.springframework.context.event.EventListener
+    public void alResolverPagoLinea(com.omnirest.omnirest_backend.services.pagoslinea.PagoLineaResuelto r) {
+        if (!r.pagado()) {
+            orderRepository.findById(r.orderId())
+                    .filter(o -> o.getDeliveryStatus() != DeliveryStatus.CANCELADO)
+                    .ifPresent(o -> {
+                        o.setDeliveryStatus(DeliveryStatus.CANCELADO);
+                        o.setEsperandoPagoLinea(false);
+                        cancelarPedido(o);
+                        orderRepository.save(o);
+                    });
+        }
+        publicarTablero(r.branchId());
     }
 
     public void publicarTableroDe(UUID branchId) {

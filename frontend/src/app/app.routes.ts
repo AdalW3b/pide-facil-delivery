@@ -150,6 +150,14 @@ export const routes: Routes = [
         data: { expectedRoles: ['SUPER_ADMIN'] },
       },
       {
+        // El dueño conecta su cuenta de Stripe para cobrar en el menú en línea.
+        path: 'settings/pagos-en-linea',
+        loadComponent: () =>
+          import('./features/settings/pagos-linea-settings.component').then((m) => m.PagosLineaSettingsComponent),
+        canActivate: [roleGuard],
+        data: { expectedRoles: ['SUPER_ADMIN'] },
+      },
+      {
         path: 'admin',
         component: SuperAdminDashboardComponent,
         canActivate: [roleGuard],

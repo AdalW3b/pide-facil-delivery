@@ -9,11 +9,13 @@ import {
   OnInit,
 } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CuentaService, DireccionGuardada } from '../cuenta/cuenta.service';
 import { usarMarcaDeSucursal } from '../../core/services/marca.service';
 import { environment } from '../../../environments/environment';
+import { EstadoPago, PagoEnLinea, PagoTarjetaComponent } from './pago-tarjeta.component';
 import {
   LucideMapPin,
   LucideLocateFixed,
@@ -108,7 +110,11 @@ interface InfoSucursal {
   envioDesde: number | null;
   kmIncluidos: number | null;
   pedidoMinimo: number | null;
+  /** Ausente si responde un backend anterior a los pagos en línea. */
+  formasPago?: { tarjeta: boolean; efectivo: boolean; enTienda: boolean };
 }
+
+type FormaPago = 'TARJETA' | 'EFECTIVO' | 'TIENDA';
 
 /** "Jamaica" encuentra "jamaica" y "Café" encuentra "cafe". */
 function normalizar(texto: string): string {
@@ -125,6 +131,10 @@ interface PedidoCreado {
   cambioSugerido: number | null;
   /** Paso a recoger: el código es el turno y no hay envío. */
   paraRecoger?: boolean;
+  /** Eligió tarjeta: falta pagarlo antes de que el restaurante lo vea. */
+  pago?: PagoEnLinea | null;
+  /** Ya pagado con tarjeta (Stripe lo confirmó). */
+  pagadoCon?: { marca: string | null; ultimos4: string | null } | null;
 }
 
 /**
@@ -134,7 +144,7 @@ interface PedidoCreado {
 @Component({
   selector: 'app-public-order',
   standalone: true,
-  imports: [PesosPipe, 
+  imports: [PesosPipe, PagoTarjetaComponent, TitleCasePipe, 
     FormsModule,
     RouterLink,
     LucideMapPin,
@@ -152,14 +162,17 @@ interface PedidoCreado {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
-      <!-- Confirmación: ocupa toda la pantalla, es el final del camino -->
-      @if (pedidoCreado(); as p) {
+      <!-- Pago con tarjeta: el pedido ya existe, pero nadie lo ve hasta que se pague -->
+      @if (cobro(); as c) {
+        <app-pago-tarjeta [pago]="c.pago!" [api]="api" [soloEsperar]="soloEsperarPago()"
+          (pagado)="alPagar(c, $event)" (cancelar)="volverDelPago()" />
+      } @else if (pedidoCreado(); as p) {
         <div class="max-w-md mx-auto px-4 py-16 text-center">
           <svg lucideCheckCircle class="w-16 h-16 text-emerald-600 mx-auto"></svg>
-          <h1 class="text-2xl font-bold mt-4">¡Pedido recibido!</h1>
+          <h1 class="text-2xl font-bold mt-4">{{ p.pagadoCon ? '¡Pago recibido!' : '¡Pedido recibido!' }}</h1>
           <p class="text-stone-600 mt-2 text-sm">
             @if (p.paraRecoger) {
-              Te avisamos por WhatsApp cuando esté listo. Pasa a recogerlo y págalo en caja.
+              Te avisamos por WhatsApp cuando esté listo. {{ p.pagadoCon ? 'Pasa a recogerlo: ya está pagado.' : 'Pasa a recogerlo y págalo en caja.' }}
             } @else {
               El restaurante lo va a confirmar en un momento y te avisamos por WhatsApp.
             }
@@ -176,6 +189,11 @@ interface PedidoCreado {
                 <div class="flex justify-between"><span class="text-stone-600">Envío</span><span class="tabular-nums">{{ p.envioCobrado | pesos }}</span></div>
               }
               <div class="flex justify-between font-bold text-base pt-1"><span>Total</span><span class="tabular-nums">{{ p.total | pesos }}</span></div>
+              @if (p.pagadoCon; as t) {
+                <p class="text-emerald-700 text-xs pt-1 font-semibold">
+                  Pagado con tarjeta{{ t.marca ? ' ' + (t.marca | titlecase) : '' }}{{ t.ultimos4 ? ' •••• ' + t.ultimos4 : '' }}. No pagas nada al recibir.
+                </p>
+              }
               @if (p.cambioSugerido !== null) {
                 <p class="text-emerald-700 text-xs pt-1">El repartidor te lleva {{ p.cambioSugerido | pesos }} de cambio.</p>
               }
@@ -488,7 +506,7 @@ interface PedidoCreado {
                 </div>
                 <h2 class="font-bold text-sm">{{ modo() === 'RECOGER' ? '¿A nombre de quién?' : '¿A dónde te lo llevamos?' }}</h2>
                 @if (modo() === 'RECOGER' && info()?.direccion) {
-                  <p class="text-xs text-stone-600">Lo recoges en <strong>{{ info()!.direccion }}</strong> y lo pagas en caja.</p>
+                  <p class="text-xs text-stone-600">Lo recoges en <strong>{{ info()!.direccion }}</strong>{{ formaPago() === 'TARJETA' ? '.' : ' y lo pagas en caja.' }}</p>
                 }
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -604,6 +622,28 @@ interface PedidoCreado {
                   }
                 }
 
+                }
+
+                <!-- Cómo paga: solo si hay de dónde elegir -->
+                @if (formasDisponibles().length > 1) {
+                  <fieldset class="space-y-2">
+                    <legend class="font-bold text-sm mb-2">¿Cómo vas a pagar?</legend>
+                    <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Forma de pago">
+                      @for (f of formasDisponibles(); track f) {
+                        <button type="button" role="radio" [attr.aria-checked]="formaPago() === f" (click)="formaElegida.set(f)"
+                          class="rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer text-left"
+                          [class]="formaPago() === f ? 'border-orange-600 bg-orange-50 text-orange-800' : 'border-stone-200 text-stone-600'">
+                          {{ nombreForma(f) }}
+                          <span class="block text-[11px] font-normal" [class]="formaPago() === f ? 'text-orange-700' : 'text-stone-500'">{{ detalleForma(f) }}</span>
+                        </button>
+                      }
+                    </div>
+                  </fieldset>
+                } @else if (formaPago() === 'TARJETA') {
+                  <p class="text-xs text-stone-600">Este restaurante recibe el pago con tarjeta al pedir.</p>
+                }
+
+                @if (modo() === 'DOMICILIO' && formaPago() === 'EFECTIVO') {
                 <div>
                   <label for="po-paga" class="block text-xs font-semibold text-stone-600 mb-1">¿Con cuánto vas a pagar? (opcional)</label>
                   <input id="po-paga" type="number" inputmode="decimal" min="0" [ngModel]="pagaCon()" (ngModelChange)="pagaCon.set($event)" name="pagaCon"
@@ -680,7 +720,7 @@ interface PedidoCreado {
                 [disabled]="motivoBloqueo() !== null || enviando()"
                 class="w-full bg-orange-600 text-white rounded-xl py-3 font-bold text-sm hover:bg-orange-700 transition-colors cursor-pointer disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed"
               >
-                {{ enviando() ? 'Enviando...' : 'Confirmar pedido' }}
+                {{ enviando() ? 'Enviando...' : formaPago() === 'TARJETA' ? 'Continuar al pago' : 'Confirmar pedido' }}
               </button>
 
               @if (errorEnvio()) {
@@ -903,13 +943,48 @@ export class PublicOrderComponent implements OnInit {
   readonly enviando = signal(false);
   readonly errorEnvio = signal<string | null>(null);
   readonly pedidoCreado = signal<PedidoCreado | null>(null);
+  /** Pedido creado con tarjeta que falta pagar. */
+  readonly cobro = signal<PedidoCreado | null>(null);
+  /** Volvió de la verificación del banco: el pago ya se mandó, solo falta la confirmación. */
+  readonly soloEsperarPago = signal(false);
+
+  /** Lo que eligió el cliente; si deja de estar disponible, se usa la primera que haya. */
+  readonly formaElegida = signal<FormaPago | null>(null);
+  readonly formasDisponibles = computed<FormaPago[]>(() => {
+    const f = this.info()?.formasPago;
+    const alRecibir: FormaPago = this.modo() === 'RECOGER' ? 'TIENDA' : 'EFECTIVO';
+    if (!f) return [alRecibir];
+    const lista: FormaPago[] = [];
+    if (f.tarjeta) lista.push('TARJETA');
+    if (this.modo() === 'RECOGER' ? f.enTienda : f.efectivo) lista.push(alRecibir);
+    return lista.length ? lista : [alRecibir];
+  });
+  readonly formaPago = computed<FormaPago>(() => {
+    const elegida = this.formaElegida();
+    const disponibles = this.formasDisponibles();
+    if (elegida === 'TARJETA' && disponibles.includes('TARJETA')) return 'TARJETA';
+    if (elegida && elegida !== 'TARJETA') {
+      // Efectivo y en tienda son la misma idea según el modo: pagar al recibir.
+      const alRecibir = disponibles.find((f) => f !== 'TARJETA');
+      if (alRecibir) return alRecibir;
+    }
+    return disponibles.find((f) => f !== 'TARJETA') ?? disponibles[0];
+  });
+
+  nombreForma(f: FormaPago): string {
+    return f === 'TARJETA' ? '💳 Tarjeta' : f === 'TIENDA' ? '🏪 En caja' : '💵 Efectivo';
+  }
+
+  detalleForma(f: FormaPago): string {
+    return f === 'TARJETA' ? 'Pagas ahora, en línea' : f === 'TIENDA' ? 'Al recogerlo' : 'Al recibirlo';
+  }
 
   /**
    * La página la abre el comensal desde su teléfono, casi nunca desde esta
    * máquina. Si se está sirviendo por un dominio público, el backend también
    * tiene que serlo; en local se habla directo con localhost.
    */
-  private readonly api = (() => {
+  readonly api = (() => {
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const esLocal = host === 'localhost' || host === '127.0.0.1';
     return esLocal ? environment.apiUrl : environment.publicApiUrl;
@@ -1014,7 +1089,7 @@ export class PublicOrderComponent implements OnInit {
     if (c.pedidoMinimo !== null && this.subtotal() < c.pedidoMinimo) {
       return `El pedido mínimo es de ${formatearPesos(c.pedidoMinimo)}`;
     }
-    const pagaCon = Number(this.pagaCon()) || 0;
+    const pagaCon = this.formaPago() === 'EFECTIVO' ? Number(this.pagaCon()) || 0 : 0;
     if (pagaCon > 0 && pagaCon < this.totalAPagar()) {
       return `Con ${formatearPesos(pagaCon)} no alcanza: tu pedido suma ${formatearPesos(this.totalAPagar())}`;
     }
@@ -1041,6 +1116,7 @@ export class PublicOrderComponent implements OnInit {
     }
 
     this.cargarMenu(id);
+    this.retomarCobro();
   }
 
   /** Lleva a la categoría tocada, sin que el encabezado fijo la tape. */
@@ -1440,18 +1516,20 @@ export class PublicOrderComponent implements OnInit {
 
     if (this.modo() === 'RECOGER') {
       this.http
-        .post<{ orderId: string; turno: string; total: number }>(
+        .post<{ orderId: string; turno: string; total: number; pago: PagoEnLinea | null }>(
           `${this.api}/public/branches/${this.branchId()}/recoger/orders`, {
             nombre: this.nombre().trim(),
             telefono: this.telefono().trim(),
             consumo: 'LLEVAR',
             notas: this.notas().trim() || null,
+            formaPago: this.formaPago(),
             items,
           })
         .subscribe({
           next: (r) => this.alCrear({
             orderId: r.orderId, tokenSeguimiento: r.turno, subtotal: r.total, envioCobrado: 0, total: r.total,
             minutosEstimados: this.info()?.minutosEstimados ?? null, cambioSugerido: null, paraRecoger: true,
+            pago: r.pago,
           }),
           error: (err) => this.alFallar(err),
         });
@@ -1467,7 +1545,8 @@ export class PublicOrderComponent implements OnInit {
         latitud: this.latitud(),
         longitud: this.longitud(),
         notas: this.notas().trim() || null,
-        pagaCon: this.pagaCon(),
+        pagaCon: this.formaPago() === 'EFECTIVO' ? this.pagaCon() : null,
+        formaPago: this.formaPago(),
         guardarDireccion: this.cuenta.esCliente() && this.direccionElegida() === null && this.guardarDireccion(),
         items,
       })
@@ -1479,6 +1558,59 @@ export class PublicOrderComponent implements OnInit {
 
   private alCrear(p: PedidoCreado): void {
     this.enviando.set(false);
+    if (p.pago) {
+      // Con tarjeta el carrito se queda hasta que se pague: si se arrepiente, no lo pierde.
+      this.soloEsperarPago.set(false);
+      this.cobro.set(p);
+      this.recordarCobro(p);
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+      return;
+    }
+    this.terminar(p);
+  }
+
+  alPagar(p: PedidoCreado, estado: EstadoPago): void {
+    this.cobro.set(null);
+    this.recordarCobro(null);
+    this.terminar({ ...p, pago: null, pagadoCon: { marca: estado.marca, ultimos4: estado.ultimos4 } });
+  }
+
+  /** Regresa al pedido sin pagar. Ese pedido nunca llega al restaurante: se cancela solo a los 20 minutos. */
+  volverDelPago(): void {
+    this.cobro.set(null);
+    this.recordarCobro(null);
+  }
+
+  /**
+   * Algunos bancos sacan de la página para verificar y regresan con ?pago=.
+   * Lo pendiente se guarda en el teléfono para retomarlo al volver.
+   */
+  private recordarCobro(p: PedidoCreado | null): void {
+    try {
+      const clave = `pidefacil.cobro.${this.branchId()}`;
+      if (p) sessionStorage.setItem(clave, JSON.stringify(p));
+      else sessionStorage.removeItem(clave);
+    } catch {
+      /* sin almacenamiento: no se puede retomar tras salir de la página */
+    }
+  }
+
+  private retomarCobro(): void {
+    const id = this.route.snapshot.queryParamMap.get('pago');
+    if (!id) return;
+    try {
+      const guardado = sessionStorage.getItem(`pidefacil.cobro.${this.branchId()}`);
+      const p = guardado ? (JSON.parse(guardado) as PedidoCreado) : null;
+      if (p?.pago?.transaccionId === id) {
+        this.soloEsperarPago.set(true);
+        this.cobro.set(p);
+      }
+    } catch {
+      /* sin almacenamiento no hay nada que retomar */
+    }
+  }
+
+  private terminar(p: PedidoCreado): void {
     this.pedidoCreado.set(p);
     // Ya se pidio: si recarga, no debe volver a ver el mismo carrito.
     try {

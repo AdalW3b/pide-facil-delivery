@@ -78,6 +78,14 @@ whatsapp:
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  # Webhook de Connect (pagos de clientes a los restaurantes). Es otro endpoint
+  # en el panel de Stripe, con su propio secreto de firma.
+  # Llave de la plataforma para Connect (cuentas de los restaurantes y sus cobros).
+  # Aparte de la de la renta para poder usar la de prueba sin tocar la otra.
+  connect-secret-key: ${STRIPE_CONNECT_SECRET_KEY:}
+  # Llave publica de la plataforma: la usa el menu en linea para el formulario de tarjeta.
+  connect-publishable-key: ${STRIPE_CONNECT_PUBLISHABLE_KEY:}
+  connect-webhook-secret: ${STRIPE_CONNECT_WEBHOOK_SECRET:}
 
 # Asistente operativo. La llave maestra (32 bytes en base64) cifra las llaves
 # de IA que pone cada restaurante. Si se pierde, esas llaves no se pueden

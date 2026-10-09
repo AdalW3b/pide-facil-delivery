@@ -25,6 +25,7 @@ public class PlataformaController {
     private final SoporteService soporteService;
     private final RentaService rentaService;
     private final com.omnirest.omnirest_backend.services.asistente.AsistenteService asistenteService;
+    private final com.omnirest.omnirest_backend.services.pagoslinea.PagosLineaService pagosLinea;
 
     // ------------------------------------------------------------------
     // Modo soporte
@@ -64,6 +65,32 @@ public class PlataformaController {
     @GetMapping("/soporte/bitacora")
     public ResponseEntity<List<SoporteService.Bitacora>> bitacora(@RequestParam(required = false) UUID restaurante) {
         return ResponseEntity.ok(soporteService.bitacora(restaurante));
+    }
+
+    // ------------------------------------------------------------------
+    // Pagos en linea: la comision de Pide Facil, segun el trato con cada dueño
+    // ------------------------------------------------------------------
+
+    public record Comision(java.math.BigDecimal porcentaje) {
+    }
+
+    @GetMapping("/pagos-linea/{restaurantId}")
+    public ResponseEntity<com.omnirest.omnirest_backend.services.pagoslinea.PagosLineaService.Estado> pagosLinea(
+            @PathVariable UUID restaurantId) {
+        return ResponseEntity.ok(pagosLinea.estadoDe(restaurantId));
+    }
+
+    @PutMapping("/pagos-linea/{restaurantId}/comision")
+    public ResponseEntity<com.omnirest.omnirest_backend.services.pagoslinea.PagosLineaService.Estado> comision(
+            @PathVariable UUID restaurantId, @RequestBody Comision peticion,
+            @AuthenticationPrincipal CustomUserDetails operador) {
+        return ResponseEntity.ok(pagosLinea.fijarComision(restaurantId, peticion.porcentaje(), operador));
+    }
+
+    @GetMapping("/pagos-linea/{restaurantId}/bitacora")
+    public ResponseEntity<List<com.omnirest.omnirest_backend.services.pagoslinea.PagosLineaService.Movimiento>> bitacoraPagos(
+            @PathVariable UUID restaurantId) {
+        return ResponseEntity.ok(pagosLinea.bitacoraDe(restaurantId));
     }
 
     // ------------------------------------------------------------------
