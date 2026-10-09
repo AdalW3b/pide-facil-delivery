@@ -48,6 +48,14 @@ public class PedidoProveedorRenglon {
     @Column(nullable = false, length = 200)
     private String descripcion;
 
+    /** "10 kg", "2 caja de 24": va en negritas en el mensaje. Null en los de antes. */
+    @Column(name = "cantidad_texto", length = 80)
+    private String cantidadTexto;
+
+    /** "Arrachera". Null en los de antes. */
+    @Column(length = 120)
+    private String articulo;
+
     /** Cuanto llego, en la misma unidad o presentacion en que se pidio. */
     @Column(precision = 12, scale = 3)
     private BigDecimal recibido;

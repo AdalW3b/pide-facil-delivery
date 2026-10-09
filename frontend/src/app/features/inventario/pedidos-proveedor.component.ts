@@ -145,7 +145,7 @@ const DIAS_JS = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
         @for (p of pedidos; track p.id) {
           <article class="rounded-xl border bg-slate-900/40 p-3.5 space-y-1.5" [class]="p.estado === 'PENDIENTE' ? 'border-indigo-500/40' : 'border-slate-800 opacity-75'">
             <div class="flex items-baseline justify-between gap-3">
-              <strong class="text-sm text-white truncate">{{ p.proveedor }}</strong>
+              <strong class="text-sm text-white truncate">{{ p.proveedor }} <span class="font-mono text-[11px] font-semibold text-slate-500">{{ folio(p) }}</span></strong>
               <span class="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded" [class]="pill(p).clase">{{ pill(p).texto }}</span>
             </div>
             @if (p.estado === 'PENDIENTE') {
@@ -416,6 +416,11 @@ export class PedidosProveedorComponent implements OnChanges {
         this.avisos.error(err.error?.error || 'No se pudo mandar el pedido.');
       },
     });
+  }
+
+  /** "P-3F9A2C": el mismo folio que lleva el mensaje al proveedor. */
+  folio(p: Pedido): string {
+    return 'P-' + p.id.replace(/-/g, '').slice(0, 6).toUpperCase();
   }
 
   hora(iso: string): string {

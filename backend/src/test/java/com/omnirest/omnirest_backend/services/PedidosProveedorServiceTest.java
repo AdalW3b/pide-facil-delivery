@@ -71,7 +71,7 @@ class PedidosProveedorServiceTest {
         ArgumentCaptor<String> texto = ArgumentCaptor.forClass(String.class);
         verify(cola).encolar(eq(branchId), eq("529511234567"), texto.capture(),
                 eq(MensajeWhatsapp.Motivo.PEDIDO_PROVEEDOR), startsWith("proveedor:"));
-        assertTrue(texto.getValue().contains("• 10 kg Arrachera"), texto.getValue());
+        assertTrue(texto.getValue().contains("1. *10 kg* · Arrachera"), texto.getValue());
         assertNotNull(creado.enviadoEn());
         assertEquals("529511234567", creado.enviadoA());
     }

@@ -135,7 +135,7 @@ public class PedidosProveedorService {
         if (p.getEnviadoA() != null) {
             Branch sucursal = sucursal(branchId);
             colaWhatsapp.encolar(branchId, p.getEnviadoA(),
-                    "Buen día, le escribe " + quienEscribe(sucursal) + ". Le pedimos *cancelar* el pedido"
+                    "Buen día, le escribe " + quienEscribe(sucursal) + ".\n❌ Le pedimos *cancelar* el pedido *" + folio(p) + "*"
                             + (p.getPara() != null ? " para el " + p.getPara().format(DIA) : "") + " que le enviamos. Gracias.",
                     com.omnirest.omnirest_backend.domain.entities.MensajeWhatsapp.Motivo.PEDIDO_PROVEEDOR, "proveedor:" + p.getId());
         }
@@ -162,7 +162,8 @@ public class PedidosProveedorService {
                 throw new IllegalArgumentException(p.getName() + " se pide por pieza entera.");
             }
             String como = pres != null ? pres.getNombre() : (r.cantidad().compareTo(BigDecimal.ONE) == 0 ? "pieza" : "piezas");
-            return b.productId(p.getId()).descripcion(recortar(cant + " " + como + " " + p.getName())).build();
+            return b.productId(p.getId()).descripcion(recortar(cant + " " + como + " " + p.getName()))
+                    .cantidadTexto(corto(cant + " " + como, 80)).articulo(corto(p.getName(), 120)).build();
         }
         if (r.ingredientId() == null) throw new IllegalArgumentException("Elige un ingrediente o un producto.");
         Ingredient i = compras.ingrediente(r.ingredientId(), restaurantId);
@@ -178,7 +179,8 @@ public class PedidosProveedorService {
             como = Unidades.canonica(unidad);
             b.unidad(como);
         }
-        return b.ingredientId(i.getId()).descripcion(recortar(cant + " " + como + " " + i.getName())).build();
+        return b.ingredientId(i.getId()).descripcion(recortar(cant + " " + como + " " + i.getName()))
+                .cantidadTexto(corto(cant + " " + como, 80)).articulo(corto(i.getName(), 120)).build();
     }
 
     private ComprasDTOs.Pedido aDto(PedidoProveedor p, Proveedor proveedor, Branch sucursal) {
@@ -200,20 +202,59 @@ public class PedidosProveedorService {
      * • 10 kg Arrachera
      * Gracias.
      */
+    /**
+     * El pedido como le llega al proveedor por WhatsApp:
+     *
+     * Buen día 👋 Le escribe *Tacos Prime* (sucursal Centro).
+     *
+     * 🧾 *PEDIDO P-3F9A2C*
+     * 📅 Entregar: *mañana, viernes 10 de octubre*
+     * 📍 Dirección: Calle Real 12, Centro
+     *
+     * *Productos (2):*
+     * 1. *10 kg* · Arrachera
+     * 2. *2 caja de 24* · Coca-Cola 355 ml
+     *
+     * 📝 Nota: Antes de las 9, por favor.
+     *
+     * ¿Nos confirma si puede surtirlo completo? ¡Gracias!
+     */
     static String mensaje(PedidoProveedor p, Branch sucursal) {
-        StringBuilder sb = new StringBuilder("Buen día, le escribe ").append(quienEscribe(sucursal)).append(".\n");
+        String restaurante = sucursal.getRestaurant() != null ? sucursal.getRestaurant().getName() : sucursal.getName();
+        StringBuilder sb = new StringBuilder("Buen día 👋 Le escribe *").append(restaurante).append('*');
+        if (sucursal.getName() != null && !sucursal.getName().equalsIgnoreCase(restaurante)) {
+            sb.append(" (sucursal ").append(sucursal.getName()).append(')');
+        }
+        sb.append(".\n\n");
+        sb.append("🧾 *PEDIDO ").append(folio(p)).append("*\n");
         if (p.getPara() != null) {
             LocalDate hoy = Combos.hoy();
             String dia = p.getPara().format(DIA);
-            sb.append(p.getPara().equals(hoy) ? "Para hoy, " + dia
-                    : p.getPara().equals(hoy.plusDays(1)) ? "Para mañana, " + dia
-                    : "Para el " + dia).append(":\n");
-        } else {
-            sb.append("Le hago el siguiente pedido:\n");
+            sb.append("📅 Entregar: *").append(p.getPara().equals(hoy) ? "hoy, " + dia
+                    : p.getPara().equals(hoy.plusDays(1)) ? "mañana, " + dia : dia).append("*\n");
         }
-        p.getRenglones().forEach(r -> sb.append("• ").append(r.getDescripcion()).append('\n'));
-        if (p.getNota() != null) sb.append(p.getNota()).append('\n');
-        return sb.append("Gracias.").toString();
+        if (sucursal.getAddress() != null && !sucursal.getAddress().isBlank()) {
+            sb.append("📍 Dirección: ").append(sucursal.getAddress().trim()).append('\n');
+        }
+        List<PedidoProveedorRenglon> renglones = p.getRenglones();
+        sb.append("\n*Productos (").append(renglones.size()).append("):*\n");
+        for (int i = 0; i < renglones.size(); i++) {
+            PedidoProveedorRenglon r = renglones.get(i);
+            sb.append(i + 1).append(". ");
+            if (r.getCantidadTexto() != null && r.getArticulo() != null) {
+                sb.append('*').append(r.getCantidadTexto()).append("* · ").append(r.getArticulo());
+            } else {
+                sb.append(r.getDescripcion());
+            }
+            sb.append('\n');
+        }
+        if (p.getNota() != null) sb.append("\n📝 Nota: ").append(p.getNota()).append('\n');
+        return sb.append("\n¿Nos confirma si puede surtirlo completo? ¡Gracias!").toString();
+    }
+
+    /** "P-3F9A2C": corto, para que el proveedor lo cite al contestar. */
+    static String folio(PedidoProveedor p) {
+        return p.getId() == null ? "" : "P-" + p.getId().toString().replace("-", "").substring(0, 6).toUpperCase();
     }
 
     private PedidoProveedor pedido(UUID branchId, UUID id) {
@@ -234,6 +275,10 @@ public class PedidosProveedorService {
             quien += " (sucursal " + sucursal.getName() + ")";
         }
         return quien;
+    }
+
+    private static String corto(String s, int max) {
+        return s != null && s.length() > max ? s.substring(0, max) : s;
     }
 
     private static String recortar(String s) {

@@ -239,11 +239,16 @@ class ComprasServiceTest {
     @DisplayName("El mensaje de WhatsApp del pedido")
     void mensajeDelPedido() {
         Branch centro = Branch.builder().id(branchId).name("Centro").restaurant(restaurante).build();
-        PedidoProveedor p = PedidoProveedor.builder().proveedor("López").para(Combos.hoy().plusDays(1)).nota("Antes de las 9, por favor.").build();
-        p.getRenglones().add(PedidoProveedorRenglon.builder().descripcion("10 kg Arrachera").build());
+        centro.setAddress("Calle Real 12, Centro");
+        PedidoProveedor p = PedidoProveedor.builder().id(UUID.fromString("3f9a2c00-0000-0000-0000-000000000000"))
+                .proveedor("López").para(Combos.hoy().plusDays(1)).nota("Antes de las 9, por favor.").build();
+        p.getRenglones().add(PedidoProveedorRenglon.builder().descripcion("10 kg Arrachera").cantidadTexto("10 kg").articulo("Arrachera").build());
+        // Un renglon de antes, sin cantidad ni articulo por separado: sale con su descripcion.
         p.getRenglones().add(PedidoProveedorRenglon.builder().descripcion("2 caja de 24 Coca-Cola 355 ml").build());
         String m = PedidosProveedorService.mensaje(p, centro);
-        assertTrue(m.startsWith("Buen día, le escribe JA TechCode (sucursal Centro).\nPara mañana, "), m);
-        assertTrue(m.contains("• 10 kg Arrachera\n• 2 caja de 24 Coca-Cola 355 ml\nAntes de las 9, por favor.\nGracias."), m);
+        assertTrue(m.startsWith("Buen día 👋 Le escribe *JA TechCode* (sucursal Centro).\n\n🧾 *PEDIDO P-3F9A2C*\n📅 Entregar: *mañana, "), m);
+        assertTrue(m.contains("📍 Dirección: Calle Real 12, Centro\n"), m);
+        assertTrue(m.contains("*Productos (2):*\n1. *10 kg* · Arrachera\n2. 2 caja de 24 Coca-Cola 355 ml\n"), m);
+        assertTrue(m.endsWith("📝 Nota: Antes de las 9, por favor.\n\n¿Nos confirma si puede surtirlo completo? ¡Gracias!"), m);
     }
 }
